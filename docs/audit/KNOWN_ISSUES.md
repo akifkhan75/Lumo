@@ -562,3 +562,49 @@ a user id. The 1.2 tests and the schema comments treat it as the contact's id. T
 `DATA_ENCRYPTION_KEY` loss makes the encrypted columns unrecoverable by design. It must be backed up
 separately from the database. Rotation is supported (key ids, `DATA_ENCRYPTION_KEYS_PREVIOUS`) but
 no job re-encrypts under a new key yet beyond re-running `db:encrypt-pii` on plaintext only.
+
+## Found while building milestone 1.3 — 2026-11-13
+
+### 🔴 KI-50 — Nothing turns coordinates into a country and subdivision
+
+`@lumo/region-profiles` resolves from a country and subdivision that something else has already
+worked out. That something does not exist: the app cannot yet read its position (milestone 1.4),
+and even then needs a reverse-geocoder or boundary data. Until it does, the resolver only ever sees
+the SIM or account country, so emergency numbers are shown as _unconfirmed_ and regional numbers
+(PK 1122) as _possible_. It deliberately does not approximate with bounding boxes: a wrong number
+near a boundary is the failure the package exists to prevent. **To fix:** milestone 1.4, with a
+source whose accuracy near borders is understood.
+
+### 🔴 KI-51 — The fallback emergency number is unverified
+
+The spec's step 5 ("global safe default") defines nothing. `GLOBAL_DEFAULT` holds `112`, flagged
+`verified: false` and labelled unverified. It is a number in code, chosen by the implementation, and
+the package makes no claim about where it works. **Needs operations and counsel** to confirm or
+replace it before anyone relies on it.
+
+### 🟠 KI-52 — Every emergency number and subdivision mapping is a hypothesis
+
+Both profiles are drafts: `numbersVerified` is false, and the spec itself says counsel and
+operations must confirm them. Specifically unverified: that `1122` is **Punjab-only** (and that the
+spec's "Punjab" is code `PB`), and that PK has no other regional numbers. A wrong claim here sends
+someone to a number that does not answer.
+
+### 🟠 KI-53 — Recording consent is the strictest rule almost everywhere
+
+The US override list has nine states against the spec's own "roughly a dozen", and Pakistan has none,
+so any unlisted subdivision resolves to `all-party`. That is deliberate and safe, but it means audio
+capture will prompt for consent in places where it may not be required, until counsel supplies the
+real per-state rules. No emergency exception is assumed.
+
+### 🟡 KI-54 — "Current fix" is five minutes, and accuracy is ignored
+
+`CURRENT_FIX_MAX_AGE_MS` is five minutes because the spec does not define one. A fix's `accuracyM`
+is carried but not used: a fix with a very large error radius near a border could be resolved to the
+wrong country by the caller, and nothing here would notice. Decide an accuracy ceiling when the
+geocoder exists (KI-50).
+
+### 🟡 KI-55 — Resolution notes are English strings
+
+The uncertainty notes ("Showing Pakistan emergency numbers; we couldn't confirm your location.") are
+returned as English text. They need translating — Urdu for PK — under the localisation work
+(milestones 1.14 / 6.1), and a native-speaker review like every other safety string.

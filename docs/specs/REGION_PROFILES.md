@@ -385,3 +385,77 @@ applicability thresholds.
 **Both** — liability for a missed or delayed alert · whether an incident export is
 admissible, and what must be added if not · insurance requirements before any
 volunteer or responder feature.
+
+---
+
+## 9. As built — `@lumo/region-profiles` (milestone 1.3)
+
+The package holds the two draft profiles, the enablement gate, and the resolver. Where it
+differs from or extends the spec, **the code is right** and this section is the record.
+
+**Changes to the §1 contract**
+
+- `smsProvider` / `voiceProvider` are `{ id, contracted }`, not a bare name: a provider that is
+  only named is not a provider, and enablement requires `contracted: true` for every channel used.
+- `messaging.registrationComplete` — added. `registrationRequired: 'A2P-10DLC'` with
+  `registrationComplete` unset or false blocks enablement: nothing may send before registration.
+- `messaging.channels` is the domain's `Channel[]` (`device_direct_sms`, not `device-direct-sms`).
+- **`checklist`** — added. The §6 checklist is 14 recorded fields (`numbersVerified`,
+  `safetyCopyNativeReviewed`, …), all false in both drafts. `approved` cannot be claimed with one
+  undone. `'not-applicable'` is allowed only for `rtlVerified` in a left-to-right market.
+- `emergency.dispatchPartner` is `{ id, agreementRef }`. `canClaimDispatch: true` without a
+  non-blank `agreementRef` is refused, as is `dialPolicy: 'auto-dial-permitted'` in any market (RES-9).
+- **Subdivision codes** are the part of the ISO 3166-2 code after the country: Punjab is `PB`
+  (PK-PB), California `CA` (US-CA). The spec's "Punjab" became `PB`; that mapping is unverified (KI-52).
+
+**Enablement is two questions.** _Completeness_ (`completenessIssues`) — structurally whole and
+internally consistent. _Enablement_ (`enablementIssues`) — complete **and** `status: approved`,
+`legalReviewStatus: approved`, a named reviewer and date, and every checklist item done. A complete
+profile with a pending review is refused. Both real profiles are drafts, so neither can be enabled.
+
+**The boot assertion** (`createRegionRegistry`, wired to the API's `ENABLED_REGIONS`) applies to the
+profiles in the **enabled set**, not to every profile that exists — otherwise two unapproved drafts
+would stop the API starting for everyone. Production refuses any enabled profile that fails
+enablement and the process exits; outside production a draft may be enabled and is marked
+`internal-testing`, so it can never pass for live. An empty set is allowed. **Enablement decides
+whether Lumo provides service in a market; it never decides whether someone is shown 911.**
+
+**Resolution rules the spec left open**
+
+- **A known location is never overridden.** The sources are tried in the spec's order and the first
+  that yields a country wins; once one has, no lower source is consulted. A Californian whose
+  location is the UK is _not_ shown 911 because the UK has no profile — they get the fallback and a
+  note. The account country is used only when location, and the network country, are unavailable.
+- **"Current" means a fix at most five minutes old** (`CURRENT_FIX_MAX_AGE_MS`; the spec does not
+  define it). An older fix is "last known": its age is stated and nothing about it is confirmed.
+- **Subnational numbers** (PK's 1122) are offered only from a _current_ fix whose subdivision is in
+  the number's list. If the region cannot be confirmed they are returned separately as
+  `possibleNumbers` — neither dropped (that could hide the right number) nor asserted.
+- **Recording consent** resolves from a current fix only, and anything unknown is the **strictest**
+  rule (`all-party`) with the reason stated: an unconfirmed location, a country with no profile,
+  or a `varies-subnational` market whose subdivision is unknown or unlisted. The US list names nine
+  states while the spec says "roughly a dozen", so an unlisted state is never one-party. Pakistan
+  lists none, so it is all-party everywhere until counsel answers.
+- **No geocoding.** The resolver takes already-resolved country and subdivision codes. A bounding
+  box would give a wrong number near a boundary. Nothing yet turns coordinates into a place (KI-50).
+- **The fallback number is unverified data** (`GLOBAL_DEFAULT`), always returned with
+  `verified: false`, and the package makes no claim about where it works (KI-51).
+
+### Where each §7 test is proven
+
+| Scenario                               | Proven by                                                                                       |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Profile incomplete                     | `validation.spec.ts`, `registry.spec.ts` (production refuses; the real API process exits 1)     |
+| `legalReviewStatus: pending`           | `validation.spec.ts` — a **complete** profile with a pending review is still refused            |
+| US user in California starts recording | `resolve.spec.ts` — all-party, with notice. The recording feature itself: milestone **2.7**     |
+| PK user in Punjab triggers SOS         | `resolve.spec.ts` — `1122` offered alongside `15`. The SOS screen showing it: milestone **1.8** |
+| PK user in Sindh                       | `resolve.spec.ts` — `1122` not offered; `15`, `115`, `130` are                                  |
+| User roams PK → US mid-journey         | `resolve.spec.ts` — the number follows the fix, not the account                                 |
+| Location unavailable                   | `resolve.spec.ts` — account-country numbers with the spec's own wording                         |
+| `canClaimDispatch: false`              | `resolve.spec.ts` (`mayClaimDispatch`). A scanner over every UI string: milestone **6.5**       |
+| Urdu selected → RTL correct            | **Device test** — milestones **1.14** (floor) and **6.1**. `locale.rtl` is data here            |
+| Spend cap with PK vs US SMS cost       | **Integration** — milestone **1.7**. `commerce.currency` is data here                           |
+
+`no-hardcoded-market.spec.ts` scans `apps/` and `packages/` for dial strings with digits, currency
+codes as literals, and emergency numbers beside dialling vocabulary, and finds none outside this
+package. Its self-test proves it can see a violation and spares an unrelated `15`.
