@@ -1,0 +1,22 @@
+{
+  "name": "@lumo/safety-domain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lumo's safety logic: three state machines, escalation, idempotency. Pure — no I/O, no clock, no runtime dependencies. Imported unchanged by apps/api and apps/mobile (ADR-0009, PLAT-7).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json"
+  },
+  "devDependencies": {
+    "@lumo/tsconfig": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^4.1.2",
+    "typescript": "^5.0.4",
+    "vitest": "^4.1.2"
+  }
+}

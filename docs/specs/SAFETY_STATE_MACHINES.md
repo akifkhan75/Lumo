@@ -217,6 +217,15 @@ idempotencyKey = sha256(userId + triggerType + floor(triggerAtMs / 60000) + sess
 - The one-minute bucket is deliberate: two genuinely separate activations within
   60 seconds collapse into one incident. That is the correct trade — a duplicate
   alert storm is worse than a merged incident.
+- **The fields are joined with U+001F, not `+`.** Plain concatenation is ambiguous:
+  `("ab","c")` and `("a","bc")` would hash identically. A field containing the separator,
+  or a non-finite timestamp, is refused rather than hashed.
+- **What the key does, precisely:** it collapses _retries of one activation_ — the same
+  `triggerAtMs` always yields the same key, however skewed the device clock. It does
+  **not** merge two separate activations: the bucket has a boundary, so two triggers two
+  seconds apart that straddle it get different keys. "Two triggers within 60 s → one
+  incident" (§7) therefore needs a server-side rule as well — an open incident absorbing
+  a new trigger. See KNOWN_ISSUES.
 
 ---
 
@@ -324,27 +333,33 @@ queued event has since advanced the machine.
 
 ### EmergencyIncident
 
-| From                                                                                 | Event                 | To                    | Actor   | Guard                               | Effects                                    |
-| ------------------------------------------------------------------------------------ | --------------------- | --------------------- | ------- | ----------------------------------- | ------------------------------------------ |
-| `CREATED`                                                                            | `CANCEL`              | `CANCELLED`           | user    | within countdown **and** not duress | `stopCountdown`                            |
-| `CREATED`                                                                            | `DURESS_CANCEL`       | `LOCATING`            | user    | duress code matched                 | `markDuress`, `suppressAllDeviceUi`        |
-| `CREATED`                                                                            | `COUNTDOWN_ELAPSED`   | `LOCATING`            | system  | —                                   | `startLocationFix(timeout)`                |
-| `CREATED`                                                                            | `COUNTDOWN_SKIPPED`   | `LOCATING`            | user    | manual SOS or safeword              | —                                          |
-| `LOCATING`                                                                           | `LOCATION_ACQUIRED`   | `DISPATCHING`         | system  | —                                   | `attachLocation`                           |
-| `LOCATING`                                                                           | `LOCATION_TIMEOUT`    | `DISPATCHING`         | system  | ≤5s elapsed                         | `markLocationUnavailable`                  |
-| `DISPATCHING`                                                                        | `RECIPIENTS_RESOLVED` | `NOTIFYING`           | system  | ≥1 consented recipient              | `createAttempts`                           |
-| `DISPATCHING`                                                                        | `NO_RECIPIENTS`       | `ALL_CHANNELS_FAILED` | system  | zero consented recipients           | `promptUserToDial`                         |
-| `NOTIFYING`                                                                          | `ATTEMPT_SETTLED`     | `NOTIFYING`           | system  | attempts still pending              | `updateLedger`                             |
-| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `NOTIFIED`            | system  | every attempt at its channel max    | `updateLedger`                             |
-| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `PARTIALLY_NOTIFIED`  | system  | some at max, some failed/expired    | `updateLedger`                             |
-| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `ALL_CHANNELS_FAILED` | system  | none succeeded                      | `pageOnCall`, `promptUserToDial`           |
-| `NOTIFYING`                                                                          | `STEP_TIMEOUT`        | `NOTIFYING`           | policy  | more steps remain                   | `advanceEscalationStep`                    |
-| `NOTIFYING`, `PARTIALLY_NOTIFIED`, `NOTIFIED`, `ALL_CHANNELS_FAILED`                 | `ACK_RECEIVED`        | `ACKNOWLEDGED`        | contact | —                                   | `haltEscalation`, `notifyUserOfAck`        |
-| `ACKNOWLEDGED`                                                                       | `UNACK_RECEIVED`      | _`priorState`_        | contact | —                                   | `resumeEscalation`                         |
-| `NOTIFYING`, `PARTIALLY_NOTIFIED`, `NOTIFIED`, `ALL_CHANNELS_FAILED`, `ACKNOWLEDGED` | `RESOLVE`             | `RESOLVING`           | user    | —                                   | `haltEscalation`, `notifyContactsResolved` |
-| `RESOLVING`                                                                          | `CLOSE`               | `CLOSED`              | system  | —                                   | `sealTimeline`                             |
+| From                                                                                 | Event                 | To                    | Actor   | Guard                                | Effects                                    |
+| ------------------------------------------------------------------------------------ | --------------------- | --------------------- | ------- | ------------------------------------ | ------------------------------------------ |
+| `CREATED`                                                                            | `CANCEL`              | `CANCELLED`           | user    | within countdown **and** not duress  | `stopCountdown`                            |
+| `CREATED`                                                                            | `DURESS_CANCEL`       | `LOCATING`            | user    | duress code matched                  | `markDuress`, `suppressAllDeviceUi`        |
+| `CREATED`                                                                            | `COUNTDOWN_ELAPSED`   | `LOCATING`            | system  | —                                    | `startLocationFix(timeout)`                |
+| `CREATED`                                                                            | `COUNTDOWN_SKIPPED`   | `LOCATING`            | user    | manual SOS or safeword               | —                                          |
+| `LOCATING`                                                                           | `LOCATION_ACQUIRED`   | `DISPATCHING`         | system  | —                                    | `attachLocation`                           |
+| `LOCATING`                                                                           | `LOCATION_TIMEOUT`    | `DISPATCHING`         | system  | — (never blocks; see below)          | `markLocationUnavailable`                  |
+| `DISPATCHING`                                                                        | `RECIPIENTS_RESOLVED` | `NOTIFYING`           | system  | ≥1 consented recipient               | `createAttempts`                           |
+| `DISPATCHING`                                                                        | `NO_RECIPIENTS`       | `ALL_CHANNELS_FAILED` | system  | zero consented recipients            | `promptUserToDial`                         |
+| `NOTIFYING`                                                                          | `ATTEMPT_SETTLED`     | `NOTIFYING`           | system  | something still to come              | `updateLedger`                             |
+| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `NOTIFIED`            | system  | all reached; nothing left to run     | `updateLedger`                             |
+| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `PARTIALLY_NOTIFIED`  | system  | some reached, some failed; none left | `updateLedger`                             |
+| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `ALL_CHANNELS_FAILED` | system  | nobody reached; nothing left to run  | `pageOnCall`, `promptUserToDial`           |
+| `NOTIFYING`                                                                          | `STEP_TIMEOUT`        | `NOTIFYING`           | policy  | more steps remain                    | `advanceEscalationStep`                    |
+| `NOTIFYING`, `PARTIALLY_NOTIFIED`, `NOTIFIED`, `ALL_CHANNELS_FAILED`                 | `ACK_RECEIVED`        | `ACKNOWLEDGED`        | contact | —                                    | `haltEscalation`, `notifyUserOfAck`        |
+| `ACKNOWLEDGED`                                                                       | `UNACK_RECEIVED`      | _`priorState`_        | contact | —                                    | `resumeEscalation`                         |
+| `NOTIFYING`, `PARTIALLY_NOTIFIED`, `NOTIFIED`, `ALL_CHANNELS_FAILED`, `ACKNOWLEDGED` | `RESOLVE`             | `RESOLVING`           | user    | —                                    | `haltEscalation`, `notifyContactsResolved` |
+| `RESOLVING`                                                                          | `CLOSE`               | `CLOSED`              | system  | —                                    | `sealTimeline`                             |
 
 Terminal: `CLOSED` · `CANCELLED`.
+
+**How the guards in this table are read** (as built in `packages/safety-domain`):
+
+- **"Something still to come"** means attempts are in flight **or** a later escalation step has not run yet. `ALL_SETTLED` additionally requires that no step remains. Without that, a first step whose recipients all failed would settle the incident as `ALL_CHANNELS_FAILED` — full-screen alarm, on-call paged — while the next step has not even been dispatched. The original wording ("attempts still pending", "none succeeded") did not say so.
+- **Reached** is counted **per recipient**, not per attempt. A fallback is a new attempt on the same recipient, so "push failed, then SMS sent" is a recipient who was reached.
+- **`LOCATION_TIMEOUT` has no guard.** It was written "≤5s elapsed"; any guard on elapsed time could let a skewed clock stall an emergency. The time box is `LOCATING_TIMEBOX_MS` (5 s); the caller owns the timer. Dispatching early without a fix is safe, waiting is not (invariant 1).
 
 **Deliberate rejections:**
 
@@ -362,17 +377,17 @@ The guards here are what make the Delivery Ledger structurally honest: a transit
 a state **above the channel's `maxState` is rejected**, so a channel that cannot report
 delivery can never be recorded as delivered.
 
-| From        | Event                   | To             | Guard                                                             |
-| ----------- | ----------------------- | -------------- | ----------------------------------------------------------------- |
-| `QUEUED`    | `PROVIDER_ACCEPTED`     | `SENT`         | —                                                                 |
-| `QUEUED`    | `PROVIDER_REJECTED`     | `FAILED`       | — · triggers fallback                                             |
-| `QUEUED`    | `TTL_ELAPSED`           | `EXPIRED`      | —                                                                 |
-| `QUEUED`    | `SPEND_CAP_REACHED`     | `FAILED`       | reason `SPEND_CAP`; surfaced to the user                          |
-| `SENT`      | `RECEIPT_DELIVERED`     | `DELIVERED`    | **`channel.maxState ≥ DELIVERED`**                                |
-| `SENT`      | `ACK`                   | `ACKNOWLEDGED` | **`channel.maxState = ACKNOWLEDGED`** · ack may precede a receipt |
-| `SENT`      | `CHANNEL_CANNOT_REPORT` | `UNKNOWN`      | `channel.maxState = SENT`                                         |
-| `SENT`      | `TTL_ELAPSED`           | `EXPIRED`      | `channel.maxState > SENT` — otherwise `UNKNOWN`                   |
-| `DELIVERED` | `ACK`                   | `ACKNOWLEDGED` | **`channel.maxState = ACKNOWLEDGED`**                             |
+| From        | Event                   | To             | Guard                                                                                 |
+| ----------- | ----------------------- | -------------- | ------------------------------------------------------------------------------------- |
+| `QUEUED`    | `PROVIDER_ACCEPTED`     | `SENT`         | —                                                                                     |
+| `QUEUED`    | `PROVIDER_REJECTED`     | `FAILED`       | — · triggers fallback                                                                 |
+| `QUEUED`    | `TTL_ELAPSED`           | `EXPIRED`      | —                                                                                     |
+| `QUEUED`    | `SPEND_CAP_REACHED`     | `FAILED`       | reason `SPEND_CAP`; surfaced to the user                                              |
+| `SENT`      | `RECEIPT_DELIVERED`     | `DELIVERED`    | **the channel can reach `DELIVERED`, and the receipt comes from the source it names** |
+| `SENT`      | `ACK`                   | `ACKNOWLEDGED` | **a person can acknowledge through the channel** · ack may precede a receipt          |
+| `SENT`      | `CHANNEL_CANNOT_REPORT` | `UNKNOWN`      | the channel stops at `SENT`, **or** its receipts are provider-dependent (SMS)         |
+| `SENT`      | `TTL_ELAPSED`           | `EXPIRED`      | `channel.maxState > SENT` — otherwise `UNKNOWN`                                       |
+| `DELIVERED` | `ACK`                   | `ACKNOWLEDGED` | **a person can acknowledge through the channel**                                      |
 
 Terminal: `ACKNOWLEDGED` · `FAILED` · `EXPIRED` · `UNKNOWN` · `DELIVERED` (when the
 channel cannot reach `ACKNOWLEDGED`).
@@ -385,6 +400,29 @@ channel cannot reach `ACKNOWLEDGED`).
 | `FAILED → SENT`                         | A retry is a **new attempt** with a new `attemptNumber`, never a mutation. The history is evidence                                 |
 | `UNKNOWN → DELIVERED`                   | Once the channel has said it cannot report, a later claim is not trustworthy                                                       |
 | `ACKNOWLEDGED → DELIVERED`              | Acknowledgement supersedes delivery                                                                                                |
+
+**Who can vouch for `DELIVERED`** (`DeliveredEvidence`, in `packages/safety-domain`).
+A receipt is only accepted from the source the channel names, so the rule is a
+property of the data and not of a code path:
+
+| Channel                               | `DELIVERED` is vouched for by | Why                                                                                        |
+| ------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------ |
+| `sms`                                 | the **provider**              | Delivery receipts, where the provider and destination network support them                 |
+| `push`                                | the **device**                | A push-service receipt means FCM/APNs _accepted_ the message — not that the handset has it |
+| `web`                                 | the **device**                | The contact's browser opening the journey page                                             |
+| `voice`, `device_direct_sms`, `email` | nobody                        | These stop at `SENT`                                                                       |
+
+So an Expo, FCM or APNs receipt alone **never** moves a push attempt to `DELIVERED`; the
+app (or a notification service extension) has to report back. This is the corrected
+reading of the original "provider receipt" wording for background push.
+
+The ledger separates two ceilings: `automaticCeiling` (the furthest the channel gets with
+no human action — what "settled at its maximum" means in the rollup) and `humanAck`
+(whether a person can acknowledge through it). One `maxState` could not serve both, since
+a push can be acknowledged from its notification action yet still "settles" at `DELIVERED`.
+
+An attempt whose TTL lapses at `SENT` is `EXPIRED` where a receipt was possible and
+`UNKNOWN` where it never could be — and `EXPIRED` asks for a fallback, `UNKNOWN` does not.
 
 ### Cross-machine effects
 
@@ -416,3 +454,23 @@ Beyond full branch coverage of `transitions.ts`:
 | Two triggers within 60s                         | One incident                                                                  |
 | Session suspended then resumed                  | Returns to the prior state; no spurious escalation                            |
 | Arrival detected while escalating               | Escalation halts; session closes; contacts told it resolved                   |
+
+### Where each of these is proven
+
+Not every scenario above can be proven by a pure package. Each is mapped to what proves
+it, so none is quietly assumed:
+
+| Scenario                                        | Proven by                                                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Same activation retried ×5, offline then online | `replay.spec.ts` (dedupe by key) · `idempotency.spec.ts` · the API's `200`-on-repeat — milestone 1.8 |
+| Grace expires while offline                     | `session.spec.ts` · `replay.spec.ts` (queued, applied on reconnect, marked delayed)                  |
+| Location never acquired                         | `incident.spec.ts` · `replay.spec.ts`                                                                |
+| All channels fail                               | `incident.spec.ts` · `rollup.spec.ts` · `replay.spec.ts`                                             |
+| Acknowledgement arrives during escalation       | `incident.spec.ts` · `escalation.spec.ts` (halts; a late timer is refused)                           |
+| Duress cancel                                   | `incident.spec.ts` (goes to `LOCATING`, not `CANCELLED`). The device projection — milestone 2.5      |
+| Token expired at activation                     | **Integration** — emergency token, milestone 1.8                                                     |
+| Process killed mid-countdown                    | **Integration** — a real device, milestones 1.8 / 1.16                                               |
+| Clock skewed one hour                           | `idempotency.spec.ts` (retries still agree). Ordering by server time — milestone 1.8                 |
+| Two triggers within 60 s                        | **Not provable by the key alone** — see §4. Needs the server-side rule, milestone 1.8                |
+| Session suspended then resumed                  | `session.spec.ts` · `replay.spec.ts`                                                                 |
+| Arrival detected while escalating               | `session.spec.ts`                                                                                    |

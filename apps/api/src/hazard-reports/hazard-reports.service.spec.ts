@@ -1,12 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import {
-  CONFIRMATION_FLOOR,
-  HAZARD_TTL_DAYS,
-  HazardReportsService,
-  MAX_PAGE_SIZE,
-} from './hazard-reports.service';
+import { HAZARD_CONFIRMATION_FLOOR as CONFIRMATION_FLOOR, HAZARD_TTL_DAYS } from '@lumo/safety-domain';
+import { HazardReportsService, MAX_PAGE_SIZE } from './hazard-reports.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
