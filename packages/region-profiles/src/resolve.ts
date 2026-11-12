@@ -59,6 +59,14 @@ export interface Resolution {
   readonly fixAgeMs: number | null;
   /** Null when Lumo has no profile for the resolved country, or nothing is known. */
   readonly profile: RegionProfile | null;
+  /**
+   * The device HAS a position but it could not be placed in a country (the geocoder
+   * failed, or is offline). The answer then comes from a lower source and is NOT
+   * confirmed; this flag makes the note say so, and lets a caller tell this apart
+   * from "no location at all". Without it, a Californian in the UK whose geocoder
+   * failed would silently be shown the account country's numbers.
+   */
+  readonly unplacedFix: boolean;
   /** What is uncertain, in words. Null only when the answer is confirmed. */
   readonly note: string | null;
 }
@@ -105,6 +113,7 @@ export function resolveRegion(input: ResolveInput, profiles: readonly RegionProf
 
   const profile = country ? (profiles.find((p) => p.id === country) ?? null) : null;
   const confirmed = source === 'current-location';
+  const unplacedFix = Boolean(input.fix) && !fixCountry;
 
   let note: string | null = null;
   if (!confirmed) {
@@ -123,7 +132,11 @@ export function resolveRegion(input: ResolveInput, profiles: readonly RegionProf
     note = `Lumo has no emergency-number data for ${country}.`;
   }
 
-  return { source, confirmed, country, subdivision, fixAgeMs, profile, note };
+  if (unplacedFix) {
+    note = `We have your position but couldn't tell which country you are in. ${note}`;
+  }
+
+  return { source, confirmed, country, subdivision, fixAgeMs, profile, unplacedFix, note };
 }
 
 export interface EmergencyNumbers {
