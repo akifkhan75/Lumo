@@ -162,7 +162,7 @@ jobs:
 
       # The suite imports these packages from their built output.
       - name: Build the workspace packages the API depends on
-        run: pnpm --filter @lumo/types --filter @lumo/safety-domain build
+        run: pnpm --filter @lumo/types --filter @lumo/safety-domain --filter @lumo/region-profiles build
 
       - name: Apply migrations
         working-directory: apps/api

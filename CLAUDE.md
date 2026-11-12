@@ -42,6 +42,8 @@ apps/api        NestJS 12 REST API, Prisma 5, PostgreSQL        (the backend)
 apps/mobile     Expo 58 / React Native 0.88, styled-components  (the app)
 packages/types        shared TS domain types  (@lumo/types)
 packages/api-client   typed fetch client      (@lumo/api-client)
+packages/region-profiles  every market-specific value, as data: emergency numbers,
+                        consent law, retention, pricing (@lumo/region-profiles)
 packages/safety-domain  pure safety logic: 3 state machines, escalation,
                         idempotency (@lumo/safety-domain) — no I/O, no clock,
                         no runtime deps, 100% branch coverage enforced
@@ -82,7 +84,7 @@ pnpm typecheck                     # ⚠️ CURRENTLY A NO-OP — see below
 > [`docs/audit/TECHNICAL_AUDIT.md`](docs/audit/TECHNICAL_AUDIT.md)). Every package
 > defines the script now, test files included, and CI runs it.
 
-**Build order matters.** `packages/types` and `packages/safety-domain` → `packages/api-client` → `apps/*`.
+**Build order matters.** `packages/types`, `packages/safety-domain` and `packages/region-profiles` → `packages/api-client` → `apps/*`.
 Turbo handles it via `dependsOn: ["^build"]`. If the mobile app cannot resolve
 `@lumo/api-client`, run `pnpm build` — the package ships from `dist/`, not
 source.
