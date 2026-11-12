@@ -3,30 +3,12 @@ import { HazardType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateHazardReportDto } from './dto/create-hazard-report.dto';
 
-/**
- * How long an observation of each condition stays current. Decay is mandatory
- * (ADR-0010): a report with no expiry becomes a permanent mark on a place,
- * which is the failure mode this model exists to remove.
- *
- * The values differ by physics, not by how alarming the type sounds. A kerb
- * stays broken for weeks; a blocked path is usually cleared in days.
- *
- * This table is policy and moves to packages/safety-domain in Phase 1, so the
- * device and the server cannot disagree about whether a report is live.
- */
-export const HAZARD_TTL_DAYS: Record<HazardType, number> = {
-  POOR_LIGHTING: 30,
-  OBSTRUCTED_PATH: 7,
-  BROKEN_INFRASTRUCTURE: 60,
-  UNSAFE_CROSSING: 90,
-  THEFT_REPORTED: 14,
-  HARASSMENT_REPORTED: 14,
-  AGGRESSION_REPORTED: 14,
-  OTHER: 7,
-};
-
-/** Mirrors HAZARD_CONFIRMATION_FLOOR in @lumo/types. */
-export const CONFIRMATION_FLOOR = 3;
+// Decay times, the confirmation floor and the routing rule are policy shared with
+// the device, so they live in @lumo/safety-domain. They used to be declared here
+// (and the floor a second time in @lumo/types), where the device could not see
+// them and the two copies could drift. hazard-type-parity.ts proves, at compile
+// time, that the Prisma enum and that shared policy name the same types.
+import { hazardExpiresAt, hazardInfluencesRouting } from '@lumo/safety-domain';
 
 /** findAll is unauthenticated-by-area and must never return the whole table. */
 export const MAX_PAGE_SIZE = 200;
@@ -41,7 +23,7 @@ export class HazardReportsService {
   constructor(private prisma: PrismaService) {}
 
   private expiryFor(type: HazardType, from: Date): Date {
-    return new Date(from.getTime() + HAZARD_TTL_DAYS[type] * 24 * 60 * 60 * 1000);
+    return new Date(hazardExpiresAt(type, from.getTime()));
   }
 
   private toApi(report: ReportWithCount) {
@@ -61,8 +43,7 @@ export class HazardReportsService {
       confirmationCount,
       // A lone community report is displayed but must not steer anything.
       // A verified source is trusted without community confirmation.
-      influencesRouting:
-        report.source !== 'COMMUNITY' || confirmationCount >= CONFIRMATION_FLOOR,
+      influencesRouting: hazardInfluencesRouting(report.source, confirmationCount),
     };
   }
 
