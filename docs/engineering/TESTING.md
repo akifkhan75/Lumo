@@ -145,6 +145,15 @@ collectCoverageFrom: [
 `DashboardScreen` — which owns all the app's state — does not register in the
 coverage number. Treat the mobile figure as partial.
 
+### The database-backed suite runs in CI
+
+`apps/api/test/schema.e2e-spec.ts` (with `api.e2e-spec.ts`) needs a live Postgres and is run by
+CI's **`integration`** job: Postgres 15, `db:deploy`, seed, `db:encrypt-pii --check`, then
+`pnpm --filter api test:e2e`. It exists because the append-only triggers, the CHECK constraints
+and the erasure carve-out are invisible to `prisma migrate diff` and to any test that mocks Prisma.
+Until this job existed the e2e suite ran **nowhere**. The suite swaps the global throttler (10
+requests/second) for a very high limit, because it exercises the database, not rate limiting.
+
 ### `packages/safety-domain` is held to 100%
 
 Its `vitest.config.ts` sets 100% thresholds for branches, lines, functions and statements,

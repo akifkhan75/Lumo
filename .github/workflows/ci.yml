@@ -13,6 +13,10 @@ env:
   # Required: the API refuses to start, and its tests refuse to run, without a
   # real secret (KI-9). This value exists only inside the runner.
   JWT_SECRET: ci-only-secret-not-used-anywhere-real-0123456789
+  # Required for the same reason (KI-26): personal data is encrypted at rest and the
+  # API refuses to start without a key. 32 bytes of 0x07, base64 — meaningless
+  # outside this runner.
+  DATA_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
 
 jobs:
   verify:
@@ -119,3 +123,59 @@ jobs:
             echo "::error::schema.prisma does not match prisma/migrations. Run 'pnpm db:migrate'."
             exit 1
           fi
+
+  # The database-level guarantees — append-only history, the erasure carve-out,
+  # CHECK constraints, stable contact ids, ciphertext in the raw columns — live in
+  # triggers and constraints that `prisma migrate diff` IGNORES and that unit tests
+  # with a mocked Prisma cannot see. This job is the only thing that proves them, so
+  # a failure here is a real regression, not a flaky environment.
+  integration:
+    name: database-backed tests (triggers, constraints, encryption)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: lumo
+          POSTGRES_PASSWORD: lumo_password
+          POSTGRES_DB: lumo_db
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U lumo -d lumo_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://lumo:lumo_password@localhost:5434/lumo_db?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The suite imports these packages from their built output.
+      - name: Build the workspace packages the API depends on
+        run: pnpm --filter @lumo/types --filter @lumo/safety-domain build
+
+      - name: Apply migrations
+        working-directory: apps/api
+        run: pnpm db:deploy
+
+      # A seeded database must hold no plaintext personal data. This also keeps the
+      # seed honest: it was broken on current Node for a while and nothing noticed.
+      - name: Seed, then confirm nothing personal is stored in the clear
+        working-directory: apps/api
+        run: |
+          pnpm db:seed
+          pnpm db:encrypt-pii --check
+
+      - name: Database-backed tests
+        working-directory: apps/api
+        run: pnpm test:e2e

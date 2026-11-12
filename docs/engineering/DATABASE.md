@@ -187,17 +187,18 @@ The same command with no `--script` is the drift check: it must print
 pnpm --filter api exec prisma db seed
 ```
 
-Configured as `node --loader ts-node/esm prisma/seed.ts`. It is **idempotent** —
-`upsert` on email, which also resets the password hash — and re-running it does
-not pile up duplicates.
+Configured as `ts-node --transpile-only -P tsconfig.scripts.json prisma/seed.ts` (the previous
+`node --loader ts-node/esm` form failed outright on current Node). Needs `DATA_ENCRYPTION_KEY`, and
+writes ciphertext as the API does. It is **idempotent** — `upsert` on email, which also resets the
+password hash — and re-running it does not pile up duplicates.
 
 Seed data:
 
-|          |                                                                |
-| -------- | -------------------------------------------------------------- |
-| User     | `josim@example.com` / password **`password`**, blood type `O+` |
-| Contacts | `Mom` `111-222-3333`, `Emergency Services` `911`               |
-| Reports  | **none, deliberately**                                         |
+|          |                                                                                                                                                                                                                                   |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User     | `josim@example.com` / password **`password`**, blood type `O+`                                                                                                                                                                    |
+| Contacts | `Mom`, a fictional number, **with no consent record** — never alertable. No emergency-services contact: once dispatch exists a dev database would text it, and `911` is a US value that region profiles exist to keep out of code |
+| Reports  | **none, deliberately**                                                                                                                                                                                                            |
 
 The seed used to create three hazard reports — _"a physical assault was reported
 here last night"_ among them — at invented positions, attributed to the demo user.

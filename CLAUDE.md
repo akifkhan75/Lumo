@@ -63,7 +63,8 @@ pnpm install                       # once, from the repo root
 docker compose up -d postgres      # Postgres 15 on host port 5434
 pnpm --filter api exec prisma generate
 pnpm --filter api exec prisma migrate deploy   # migrations are the source of truth
-pnpm --filter api exec prisma db seed      # creates josim@example.com / password
+pnpm --filter api exec prisma db seed      # creates josim@example.com / password (needs DATA_ENCRYPTION_KEY)
+pnpm --filter api db:encrypt-pii --check   # exit 1 if any personal data is stored in the clear
 
 pnpm --filter api start:dev        # API — reads API_PORT, defaults to 3005
 pnpm --filter mobile start         # Metro / Expo dev server
@@ -200,10 +201,13 @@ Prisma 5.22, PostgreSQL 15 (Docker, **host port 5434**). Models: `User`,
 baseline plus the HazardReport replacement, and CI fails if the history and
 `schema.prisma` disagree. Use `prisma migrate deploy`, not `db push` (KI-5, fixed).
 
-**No `@map` on enums.** Members are SCREAMING_SNAKE in Prisma, in Postgres and on
-the wire, and the human label lives in `HAZARD_TYPE_LABELS` in `@lumo/types`.
-The predecessor `@map`'d `Poor_Lighting` to `"Poor Lighting"` and hand-translated
-it in `mapInputType`/`mapOutputType`, so a new member silently fell through to a
+**One spelling per enum, no `@map`.** Hazard enums are SCREAMING_SNAKE in Prisma, in Postgres and on
+the wire, and the human label lives in `HAZARD_TYPE_LABELS` in `@lumo/types`. The safety enums
+(`Channel`, `SessionState`, …) use **exactly the strings `@lumo/safety-domain` defines** — some
+lowercase (`push`, `walk_home`), some upper-case — because that package is the source of truth and
+a mapper between it and the database is the thing that goes wrong. `src/prisma/domain-parity.ts`
+breaks the build if they differ. The predecessor `@map`'d `Poor_Lighting` to `"Poor Lighting"` and
+hand-translated it in `mapInputType`/`mapOutputType`, so a new member silently fell through to a
 default unless all three places were edited. Do not reintroduce that.
 
 **Hazard reports expire.** `expiresAt` is set from a per-type TTL
@@ -296,7 +300,7 @@ These override convenience, and a change that breaks one is rejected:
 
 ## 14. Do not
 
-- Commit secrets. `JWT_SECRET` has no fallback and the API refuses to boot without
+- Commit secrets. `JWT_SECRET` and `DATA_ENCRYPTION_KEY` have no fallback and the API refuses to boot without
   a real one (KI-9); do not reintroduce a default. `API_KEY` is still optional
   because every AI method has a hardcoded fallback — see §8.
 - Trust `docs/archive/*`. Those are historical snapshots with claims that were
