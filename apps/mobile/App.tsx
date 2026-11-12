@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing } from 'react-native';
-import { NavigationContainer, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ActionButton, BottomNavContainer, Container, DemoMapNotice, ErrorContainer, ErrorText, Header, HeaderActions, HeaderTextContainer, HelloText, LoadingContainer, LocationText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, SafetyAssistantButton, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
+import { ActionButton, BottomNavContainer, Container, DemoMapNotice, Header, HeaderActions, HeaderTextContainer, HelloText, LocationText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, RetryButton, RetryButtonText, SafetyAssistantButton, SettingsStatusRow, SettingsStatusStrip, SettingsStatusText, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
 import { useShakeDetector } from './hooks/useShakeDetector';
 import { useVoiceActivation } from './hooks/useVoiceActivation';
 import { useAccidentDetector } from './hooks/useAccidentDetector';
+import { ApiError } from '@lumo/api-client';
 import * as apiService from './services/apiService';
 import { IconSettings, IconShield, IconWalk, IconTimer, IconFakeCall, IconSOS, IconAlert, IconMic, IconBot } from './constants';
 import { UserSettings, RootStackParamList, SettingsStackParamList } from './types';
@@ -13,6 +14,7 @@ import { UserSettings, RootStackParamList, SettingsStackParamList } from './type
 
 // Screen Imports
 import AuthScreen from './components/auth/AuthScreen';
+import BootScreen from './components/BootScreen';
 import EmergencyScreen from './components/EmergencyModal';
 import FakeCallScreen from './components/FakeCallScreen';
 import SettingsScreen from './components/settings/SettingsModal';
@@ -32,6 +34,11 @@ const DashboardScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'Dashboard'>>();
   const { onLogout } = route.params;
 
+  // Settings are NOT a precondition for anything on this screen. The SOS
+  // control, the dialler and every navigation item render from the first frame;
+  // settings only add the greeting, the profile and the hands-free triggers.
+  // Gating the whole screen on this fetch meant a slow or failed request left
+  // someone with a spinner or an error and no way to reach help (KI-27).
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,21 +50,29 @@ const DashboardScreen = () => {
       const settings = await apiService.getSettings();
       setUserSettings(settings);
     } catch (err) {
-      setError('Failed to load application data. Please try again later.');
+      // Only the server explicitly rejecting the token ends the session. A
+      // timeout, a dropped connection or a 5xx says nothing about the token, and
+      // signing someone out because their signal dropped would put a login in
+      // front of the one situation where they can least afford it.
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onLogout();
+        return;
+      }
+      setError("Couldn't load your settings.");
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [onLogout]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // Works with or without settings. It used to return early when they had not
+  // loaded, which made the button and every automatic trigger do nothing.
   const handleActivateEmergency = useCallback(() => {
-    if (!userSettings) return;
-    console.log("SOS Activated!");
-    navigation.navigate('Emergency', { settings: userSettings });
+    navigation.navigate('Emergency', { settings: userSettings ?? undefined });
   }, [userSettings, navigation]);
 
   const handleSaveSettings = useCallback(async (newSettings: UserSettings) => {
@@ -120,14 +135,6 @@ const DashboardScreen = () => {
       ).start();
   }, [pulseAnim]);
 
-  if (isLoading) {
-    return <LoadingContainer><ActivityIndicator size="large" /></LoadingContainer>;
-  }
-
-  if (error || !userSettings) {
-    return <ErrorContainer><ErrorText>{error || 'An unexpected error occurred.'}</ErrorText></ErrorContainer>;
-  }
-
   return (
     <Container>
       <MapViewContainer>
@@ -138,7 +145,7 @@ const DashboardScreen = () => {
          <MapImage source={require('./assets/images/map_bg.jpg')} />
          <Header>
             <HeaderTextContainer>
-                <HelloText>Hello {userSettings.personalInfo.fullName},</HelloText>
+                <HelloText>{userSettings ? `Hello ${userSettings.personalInfo.fullName},` : 'Hello,'}</HelloText>
 <LocationText>Location unavailable — Lumo does not read your position yet</LocationText>
                 {isListening && <VoiceGuardText><IconMic size={12} color="#16a34a" /> Voice Guard Active</VoiceGuardText>}
             </HeaderTextContainer>
@@ -146,7 +153,11 @@ const DashboardScreen = () => {
                 <ActionButton onPress={() => navigation.navigate('ReportHazard')}>
                     <IconAlert size={24} color="#f97316" />
                 </ActionButton>
-                 <ActionButton onPress={() => navigation.navigate('Settings', { onLogout: onLogout, currentSettings: userSettings, onSave: handleSaveSettings })}>
+                 <ActionButton
+                    // Settings need the loaded settings to edit; without them there is nothing to open.
+                    disabled={!userSettings}
+                    onPress={() => userSettings && navigation.navigate('Settings', { onLogout: onLogout, currentSettings: userSettings, onSave: handleSaveSettings })}
+                >
                     <IconSettings size={24} color="#4b5563" />
                 </ActionButton>
             </HeaderActions>
@@ -164,6 +175,29 @@ const DashboardScreen = () => {
             </UserImageContainer>
          </UserLocationPinContainer>
       </MapViewContainer>
+      {!userSettings && (
+        <SettingsStatusStrip>
+          <SettingsStatusRow>
+            {isLoading && <ActivityIndicator size="small" color="#78350f" />}
+            <SettingsStatusText accessibilityLiveRegion="polite">
+              {isLoading ? 'Loading your settings…' : (error ?? "Couldn't load your settings.")}
+            </SettingsStatusText>
+          </SettingsStatusRow>
+          <SettingsStatusText>
+            Shake, voice and crash triggers are off until your settings load.
+            The SOS button still opens the emergency screen and phone dialler.
+          </SettingsStatusText>
+          {!isLoading && (
+            <RetryButton
+              onPress={fetchData}
+              accessibilityRole="button"
+              accessibilityLabel="Try loading your settings again"
+            >
+              <RetryButtonText>Try again</RetryButtonText>
+            </RetryButton>
+          )}
+        </SettingsStatusStrip>
+      )}
       <BottomNavContainer>
             <NavItemContainer onPress={() => navigation.navigate('CommunitySafety')}>
                 <IconShield size={28} color="#4b5563" />
@@ -174,7 +208,11 @@ const DashboardScreen = () => {
                 <NavItemLabel>Follow Me</NavItemLabel>
             </NavItemContainer>
             <SOSButtonContainer>
-                <SOSButton onPress={handleActivateEmergency}>
+                <SOSButton
+                    onPress={handleActivateEmergency}
+                    accessibilityRole="button"
+                    accessibilityLabel="Emergency. Opens the emergency screen and phone dialler"
+                >
                     <IconSOS size={32} color="green" />
                     <SOSText>SOS</SOSText>
                 </SOSButton>
@@ -227,21 +265,73 @@ const SettingsNavigator = ({ route }: { route: RouteProp<RootStackParamList, 'Se
 };
 
 const MainStack = createNativeStackNavigator<RootStackParamList>();
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+type AuthState = 'restoring' | 'signedIn' | 'signedOut';
 
 const App = () => {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    
-    const handleLogin = () => setIsAuthenticated(true);
-    const handleLogout = () => {
-        setIsAuthenticated(false);
-    };
+    // The stored session is read once on launch (KI-4). Until that finishes the
+    // app shows a boot screen that carries its own emergency control, and any
+    // fault reading it means signed out, never a crash.
+    const [authState, setAuthState] = useState<AuthState>('restoring');
+
+    useEffect(() => {
+        let cancelled = false;
+        apiService
+            .restoreSession()
+            .then((restored) => { if (!cancelled) setAuthState(restored ? 'signedIn' : 'signedOut'); })
+            .catch(() => { if (!cancelled) setAuthState('signedOut'); });
+        return () => { cancelled = true; };
+    }, []);
+
+    const handleLogin = useCallback(() => setAuthState('signedIn'), []);
+    // Stable identity: it is handed to screens through route params and read in
+    // an effect dependency, so a new function each render would refetch forever.
+    const handleLogout = useCallback(() => {
+        // Clears the in-memory token and the stored one. Logout used to clear
+        // neither, so the next launch restored a session the user had ended.
+        // Not awaited: the in-memory token is cleared synchronously inside, and
+        // the storage delete cannot reject (tokenStorage swallows its own faults).
+        apiService.signOut();
+        setAuthState('signedOut');
+    }, []);
+
+    // The emergency screen is registered outside the auth conditional, so it
+    // survives the session changing underneath it — a stored session finishing
+    // its restore, or a 401 landing — and the user is not moved off it. But the
+    // screens that were beneath it are removed by that change, which leaves a
+    // stack of one route: Close then has nowhere to go and silently does
+    // nothing. Put the correct root back underneath, keeping them where they are.
+    useEffect(() => {
+        if (authState === 'restoring' || !navigationRef.isReady()) return;
+        const state = navigationRef.getRootState();
+        const only = state?.routes.length === 1 ? state.routes[0] : undefined;
+        if (!only || only.name !== 'Emergency') return;
+        const root = authState === 'signedIn'
+            ? { name: 'Dashboard' as const, params: { onLogout: handleLogout } }
+            : { name: 'Auth' as const };
+        navigationRef.resetRoot({
+            index: 1,
+            routes: [root, { name: 'Emergency', key: only.key, params: only.params as RootStackParamList['Emergency'] }],
+        });
+    }, [authState, handleLogout]);
 
     return (
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef}>
             <MainStack.Navigator screenOptions={{ headerShown: false }}>
-                {!isAuthenticated ? (
+                {authState === 'restoring' ? (
+                    <MainStack.Screen name="Boot">
+                        {props => <BootScreen onEmergency={() => props.navigation.navigate('Emergency')} />}
+                    </MainStack.Screen>
+                ) : authState === 'signedOut' ? (
                      <MainStack.Screen name="Auth">
-                        {props => <AuthScreen {...props} onLoginSuccess={handleLogin} />}
+                        {props => (
+                            <AuthScreen
+                                {...props}
+                                onLoginSuccess={handleLogin}
+                                onEmergency={() => props.navigation.navigate('Emergency')}
+                            />
+                        )}
                     </MainStack.Screen>
                 ) : (
                     <>
@@ -259,11 +349,13 @@ const App = () => {
                             <MainStack.Screen name="ReportHazard" component={ReportHazardScreen} />
                             <MainStack.Screen name="SafetyAssistant" component={SafetyAssistantScreen} />
                         </MainStack.Group>
-                        <MainStack.Group screenOptions={{ presentation: 'fullScreenModal' }}>
-                            <MainStack.Screen name="Emergency" component={EmergencyScreen} />
-                        </MainStack.Group>
                     </>
                 )}
+                {/* Outside the auth conditional on purpose: the emergency screen
+                    must exist whether or not anyone is signed in. */}
+                <MainStack.Group screenOptions={{ presentation: 'fullScreenModal' }}>
+                    <MainStack.Screen name="Emergency" component={EmergencyScreen} />
+                </MainStack.Group>
             </MainStack.Navigator>
         </NavigationContainer>
     );

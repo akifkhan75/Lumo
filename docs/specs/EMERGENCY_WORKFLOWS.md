@@ -53,6 +53,12 @@ On duress cancel:
 - **No delivery state, acknowledgement or recording indicator renders on the device.**
 - Acknowledgements are recorded and relayed to contacts, never shown locally.
 
+> **Open question — needs counsel.** `PRO-1` and both region profiles require a
+> recording notice (`requiresOnScreenNotice: true`), while this section forbids any
+> recording indicator under duress. Both cannot hold. **Until answered, no capture
+> happens during a duress incident.** Tracked as KI-28 in
+> [`../audit/KNOWN_ISSUES.md`](../audit/KNOWN_ISSUES.md).
+
 Threat context: T1/T3 in `../engineering/THREAT_MODEL.md`.
 
 ## 4. Offline (RES-16)

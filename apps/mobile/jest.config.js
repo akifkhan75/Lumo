@@ -5,6 +5,7 @@ module.exports = {
   ],
   setupFiles: ['./jest-setup.js'],
   collectCoverageFrom: [
+    'App.tsx',
     'hooks/**/*.{ts,tsx}',
     'services/**/*.{ts,tsx}',
     'components/**/*.{ts,tsx}',

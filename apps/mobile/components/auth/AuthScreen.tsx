@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ImageBackground } from 'react-native';
 import styled from 'styled-components/native';
+import EmergencyAffordance from '../common/EmergencyAffordance';
 import * as apiService from '../../services/apiService';
 import { IconMail, IconLock, IconUser, IconArrowLeft } from '../../constants';
 
@@ -140,7 +141,11 @@ const ErrorText = styled(Text)`
 `;
 
 
-const Onboarding = ({ onGetStarted }: { onGetStarted: () => void }) => (
+const OnboardingEmergency = styled(View)`
+  margin-top: 16px;
+`;
+
+const Onboarding = ({ onGetStarted, onEmergency }: { onGetStarted: () => void; onEmergency: () => void }) => (
     <OnboardingContainer>
         <OnboardingImage source={require('../../assets/images/onboarding_hero.jpg')} resizeMode="cover">
         </OnboardingImage>
@@ -151,11 +156,18 @@ const Onboarding = ({ onGetStarted }: { onGetStarted: () => void }) => (
                 <OnboardingButtonText>Get Started</OnboardingButtonText>
                 <IconArrowLeft size={20} color="white" />
             </OnboardingButton>
+            {/* The first screen a signed-out person sees has to carry this too. */}
+            <OnboardingEmergency>
+                <EmergencyAffordance onPress={onEmergency} />
+            </OnboardingEmergency>
         </OnboardingContent>
     </OnboardingContainer>
 );
 
-const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
+// `onEmergency` is required, not optional: this is the screen someone lands on
+// when they are signed out, and a signed-out person must still be able to reach
+// the emergency screen and the phone dialler.
+const AuthScreen = ({ onLoginSuccess, onEmergency }: { onLoginSuccess: () => void; onEmergency: () => void }) => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [step, setStep] = useState<'onboarding' | 'auth'>('onboarding');
   const [email, setEmail] = useState('josim@example.com');
@@ -199,7 +211,7 @@ const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
   };
 
   if (step === 'onboarding') {
-    return <Onboarding onGetStarted={() => setStep('auth')} />;
+    return <Onboarding onGetStarted={() => setStep('auth')} onEmergency={onEmergency} />;
   }
 
   return (
@@ -263,6 +275,8 @@ const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
             <SwitchButtonText>{mode === 'login' ? 'Sign up' : 'Log in'}</SwitchButtonText>
         </TouchableOpacity>
       </SwitchTextContainer>
+
+      <EmergencyAffordance onPress={onEmergency} />
     </Container>
   );
 };

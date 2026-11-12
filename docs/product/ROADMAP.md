@@ -22,7 +22,7 @@ lacks. CI green with a **real** typecheck.
 ## Phase 1 — Core personal safety
 
 `PLAT-7` `PLAT-1` `PLAT-2` `PLAT-4` `PLAT-5` `PLAT-8` · `DET-1/2/3/9` ·
-`RES-1…RES-14` `RES-16…RES-18` · `PRO-6/7/9`
+`RES-1…RES-4` `RES-6…RES-14` `RES-16…RES-18` · `PRO-6/7/9`
 
 `packages/safety-domain` extracted **first**, 100% branch-covered, before any feature
 uses it · contacts **with consent** · circles with scoped, expiring membership ·
@@ -87,7 +87,7 @@ install-free-link loop · trust and transparency page.
 
 `PLAT-3` `PLAT-11` `PLAT-12` — professional monitoring (only where a real partner and
 process exist) · dispatch under formal agreement · wearables incl. standalone LTE SOS ·
-public-alert feeds · i18n and RTL · full WCAG AA · biometric lock and stealth mode.
+public-alert feeds · i18n (message catalogue and further languages; RTL layout of safety-critical screens lands in Phase 1 with the accessibility floor) · full WCAG AA · biometric lock and stealth mode.
 
 **Exit:** every integration has a signed agreement, an operational owner, a test
 procedure, a supported geography, a failure process and an accurate user-facing
@@ -97,7 +97,7 @@ description.
 
 Earthquake/crisis alerting at platform scale · satellite SOS · OS power-button capture
 · unilateral emergency dispatch · crash detection marketed as automotive-grade ·
-continuous background location by default.
+continuous background location by default · guaranteed legal admissibility of evidence.
 
 ## Sequencing notes
 
