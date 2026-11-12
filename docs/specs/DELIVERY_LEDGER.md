@@ -63,15 +63,22 @@ profile, so the UI derives what it may display:
 ```ts
 interface ChannelCapability {
   channel: Channel;
-  maxState: "SENT" | "DELIVERED" | "ACKNOWLEDGED";
-  deliveryReceipts: "always" | "provider-dependent" | "never";
+  // The furthest the channel gets with NO human action: what "settled at its
+  // maximum" means in the incident rollup.
+  automaticCeiling: "SENT" | "DELIVERED";
+  // Who may vouch for DELIVERED. A receipt from any other source is rejected.
+  // Push is "device": a push-service receipt only means the service accepted it.
+  deliveredEvidence: "provider" | "device" | "none";
+  humanAck: boolean; // can a person acknowledge through this channel?
+  receipts: "always" | "provider-dependent" | "device-side" | "never";
   isEmergencyGrade: boolean; // email → false
   requiresConsent: boolean; // per region profile
 }
 ```
 
-A channel whose `maxState` is `SENT` can never show a "delivered" affordance. The UI
-cannot lie because it has no data with which to lie.
+A channel whose `automaticCeiling` is `SENT` can never show a "delivered" affordance, and
+no channel can reach `DELIVERED` on the word of a source it does not name. The UI cannot
+lie because it has no data with which to lie.
 
 ---
 

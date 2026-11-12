@@ -105,3 +105,34 @@ step 2, not step 1 · non-consented recipient skipped and ledgered · spend cap 
 the ladder and tells the user · all steps exhausted → `ALL_CHANNELS_FAILED` + dial
 prompt · per-template defaults applied · policy visible to the user before it runs ·
 identical input sequence yields identical output (determinism).
+
+## As built — `stepLadder` in `packages/safety-domain`
+
+The evaluator is a pure function of `(state, event, input)`, where `input` carries the
+policy, a `Directory` (who exists, who has consented, what each circle contains), the
+injected clock `now`, and `spendCapRecipientsRemaining`. It returns **decisions** —
+`DISPATCH`, `SKIP`, `SCHEDULE_TIMEOUT`, `NOTIFY_USER_CAP`, `HALT`, `RESUME`,
+`PROMPT_EMERGENCY_NUMBER`, `EXHAUSTED` — and the notifications module executes them.
+
+Where this document was silent, it does the following. Each is a decision to review:
+
+- **A step whose recipients are all skipped does not wait out its timeout.** There is nobody
+  to wait for, so the ladder moves straight on. If that was the last step, it exhausts.
+- **A person already contacted is not contacted again** by a later step (`ALREADY_CONTACTED`),
+  and a person named twice, directly or through a circle, is contacted once.
+- **A cap hit is told to the user once per advance** (`NOTIFY_USER_CAP`), not once per skipped
+  person. Whichever of the policy maximum and the spend cap has less room is the recorded
+  reason; a tie is attributed to the policy maximum.
+- **A stale or early timer changes nothing.** `STEP_TIMEOUT` carries the step it belongs to;
+  a timer for another step, or one firing before the deadline, is a no-op. A timer after a
+  halt is refused (`NOT_RUNNING`).
+- **`UNACK` re-arms the in-flight step's timeout and does not re-dispatch.** Its recipients
+  were already contacted. After the resumed step times out, the ladder moves on.
+- **`requireAck` is carried through to the dispatch unchanged.** This document defines the
+  field and its default but no behaviour, so the evaluator does not interpret it.
+- **Policy validation refuses a step that can only email.** Email is supplementary and never
+  an emergency channel; a step with no emergency-grade channel is not an alert.
+- **`describePolicy` shows the plan before it runs** (RES-4), and says "will try to" — nothing
+  in it claims a message arrives.
+- **"Date Check-In: contact 1 (discreet)"** is not representable: the policy shape has no
+  discreet flag. The template uses the same shape as the others.

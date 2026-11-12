@@ -454,3 +454,70 @@ Phase 1 of [`../product/ROADMAP.md`](../product/ROADMAP.md): **device location**
 (`expo-location`) and a real map, which together finish KI-2 and unblock
 **KI-3** (a real SOS, behind the Verified Delivery Ledger) — the product's reason
 to exist.
+
+## Found while building milestone 1.1 — 2026-11-12
+
+Encoding the §6a tables line by line surfaced places where the spec was ambiguous or
+contradicted itself. Each was resolved toward never blocking help; none was resolved silently.
+
+### 🔴 KI-36 — The idempotency key cannot merge two separate activations
+
+§7 requires "two triggers within 60 s → one incident". The key is
+`sha256(… · floor(triggerAtMs / 60000) · …)`, and a bucket has a boundary: two triggers two
+seconds apart that straddle it get **different keys**. The key collapses _retries of one
+activation_ (same `triggerAtMs` → same key, whatever the clock skew); it cannot merge distinct
+ones. **To fix:** a server-side rule — an open incident absorbs a new trigger from the same user
+— in milestone 1.8. Until then the §7 scenario is not met, and the test says so explicitly
+rather than passing by a lucky timestamp. The fields were also joined with `+`, which is
+ambiguous; they now use U+001F.
+
+### 🟠 KI-37 — `ALL_SETTLED` had no "ladder complete" guard
+
+As written, "none succeeded" fired as soon as the first step's attempts all failed — declaring
+`ALL_CHANNELS_FAILED` (a full-screen alarm, on-call paged) while the next step had not been
+dispatched. Fixed in code and in §6a: settling needs nothing in flight **and** no step remaining.
+
+### 🟠 KI-38 — Multiple acknowledgers are not modelled
+
+There is no `ACKNOWLEDGED + ACK_RECEIVED` row, so a second contact responding is an
+`ILLEGAL_TRANSITION` the caller must treat as benign. Worse, `UNACK_RECEIVED` returns the incident
+to its prior state **even if another contact is still responding** — resuming the ladder under
+someone who is on their way. **To fix:** the caller must emit `UNACK_RECEIVED` only when no
+acknowledgement remains; better, track acknowledgers in the machine. Milestone 1.8.
+
+### 🟠 KI-39 — Session table gaps
+
+`SOS_RAISED` exists only from `ACTIVE`, not from `CHECK_IN_DUE`, `GRACE` or `ESCALATING`; and
+`CHECK_IN_DEADLINE_REACHED` has no row from `SUSPENDED`, so a deadline passing offline replays as
+a `RECONCILIATION_CONFLICT`. No rows were added. **Creating an incident must never depend on the
+session transition succeeding** — an SOS from a graced session still has to dispatch.
+
+### 🟡 KI-40 — `requireAck` has no defined behaviour
+
+`EscalationStep.requireAck` has a default (true) and no semantics. The evaluator carries it
+through unchanged. Decide what it means before the notifications module reads it.
+
+### 🟡 KI-41 — A lapsed TTL on an unreceipted push or SMS is `EXPIRED`, which counts as failed
+
+By §6a, `SENT` + TTL on a channel that _could_ have reported is `EXPIRED`; the rollup counts
+`EXPIRED` as not reached and the attempt asks for a fallback. For SMS (receipts are
+provider-dependent) the message may well have arrived, so the incident can read "couldn't reach
+Mum" for someone who was reached, and the fallback sends again. This errs toward more alerts,
+bounded by the spend cap. Whether it should be `UNKNOWN` is a product decision.
+
+### 🟡 KI-42 — The rollup is per recipient; the spec says per attempt
+
+§3 reads as per-attempt. With fallbacks that misreports ("push failed, SMS sent" is a recipient
+who was reached). The code rolls up per recipient and §3 should say so.
+
+### 🟡 KI-43 — `LOCATION_TIMEOUT` "≤5s elapsed"
+
+Read literally it is a guard that could refuse an early timeout. It has no guard: a skewed clock
+must not be able to stall dispatch. The 5 s time box is exported as `LOCATING_TIMEBOX_MS`.
+
+### 🟡 KI-44 — The confirmation floor is still declared twice
+
+`@lumo/safety-domain` now owns `HAZARD_CONFIRMATION_FLOOR` and the API uses it. `@lumo/types`
+still exports its own copy, which `apps/mobile` imports. It is left until the mobile milestone-1.0
+PR (#9) lands, to avoid a lockfile conflict. **To fix:** point mobile at the shared constant and
+delete the copy in `@lumo/types`.
