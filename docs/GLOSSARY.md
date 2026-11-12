@@ -135,6 +135,97 @@ commits, PRs and docs.
 
 ---
 
+---
+
+## Target domain vocabulary
+
+Introduced by the specification suite. Use these words in code, docs and UI copy;
+the terms they replace are marked.
+
+**Safety Session** — `SafetySession`
+A user-initiated plan with an expected outcome: a journey, a check-in, an activity.
+Owns timers and deadlines. **An overdue session is not an emergency** — it escalates
+_into_ one. [`specs/SAFETY_STATE_MACHINES.md`](specs/SAFETY_STATE_MACHINES.md)
+
+**Emergency Incident** — `EmergencyIncident`
+The response. Created by an explicit SOS, an escalated session, or a confirmed
+automatic trigger. Owns dispatch and the ledger.
+
+**Notification Attempt** — `NotificationAttempt`
+One per **recipient × channel**. The unit of truth behind the Delivery Ledger.
+
+**Verified Delivery Ledger**
+Per-contact, per-channel record of what was attempted, delivered and acknowledged.
+Replaces the single success tick. [`specs/DELIVERY_LEDGER.md`](specs/DELIVERY_LEDGER.md)
+
+**Channel ceiling** — `ChannelCapability.maxState`
+The highest state a channel can truthfully report. Background push stops at
+`DELIVERED`; device-direct SMS at `SENT`. Transitions above the ceiling are rejected,
+so the UI cannot lie.
+
+**`UNKNOWN`**
+A terminal attempt state meaning the channel cannot report further. Honest
+uncertainty — **never rendered as success**.
+
+**`SUSPENDED`**
+A live session with no connectivity. Timers run locally; remote delivery is **not**
+guaranteed, and the UI must say so.
+
+**`ALL_CHANNELS_FAILED`**
+Nothing got out. A full-screen state with a one-tap emergency dial, and it pages
+on-call.
+
+**Hazard Report** — `HazardReport` · _replaces `DangerZone`_
+An observation about a **condition** — with source, age, confirmations and an expiry —
+not a verdict about a place. Has no `severity` and no demographic field.
+[ADR-0010](adr/0010-hazard-reports-replace-danger-zones.md)
+
+**Escalation Policy** — `EscalationPolicy`
+The user-owned ordered plan: who is contacted, over which channels, with what
+timeouts. Visible before it runs. [`specs/ESCALATION_POLICY.md`](specs/ESCALATION_POLICY.md)
+
+**Grace period**
+The window between a missed check-in and escalation. Default 300s, **minimum 60s,
+never zero** — an ordinary delay is not evidence of an attack.
+
+**Emergency token**
+A narrowly-scoped, short-lived token authorising exactly one action: create and
+dispatch an incident. Exists so an expired session never blocks an SOS (PLAT-4).
+
+**Idempotency key**
+Device-minted before the first attempt, so retries converge on one incident.
+Deliberately buckets to the minute: a merged incident beats an alert storm.
+
+**Duress code**
+A second PIN that appears to cancel while escalating silently. The device reveals
+nothing. Counters coerced cancellation (T1/T3).
+
+**Practice Mode**
+Exercises the whole pipeline while notifying nobody. Gates activation. A practice
+incident **cannot** acquire a real notification attempt.
+
+**Region Profile** — `RegionProfile`
+All market-specific values: emergency numbers, providers, recording-consent rules,
+retention, locale, pricing. Emergency numbers and recording rules resolve from
+**device location**, never the account. [`specs/REGION_PROFILES.md`](specs/REGION_PROFILES.md)
+
+**Safety Signal** — `SafetySignal`
+What a model emits. It never escalates; a deterministic engine decides
+([ADR-0013](adr/0013-ai-never-decides.md)).
+
+**`safety-domain`**
+The pure, dependency-free, 100%-branch-covered package holding the three state
+machines and the escalation rules — imported unchanged by client **and** server, so
+they cannot disagree ([ADR-0009](adr/0009-shared-safety-domain.md)).
+
+**Activation** _(product metric)_
+≥2 consented contacts **and** one completed Practice Mode run. Not signup.
+
+**Stalkerware inversion** _(threat T2)_
+The risk that Lumo's own sharing becomes a tracking tool. Mitigated by consent
+re-confirmation, an always-visible sharing indicator, and no persistent background
+location.
+
 ## Naming: resolved, with leftovers to know about
 
 The product is **Lumo** (2026-10-26). Earlier names — `NeuroShield`, `InSafe`,

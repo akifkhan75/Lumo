@@ -99,6 +99,48 @@ network via `apiService` only; sensor logic in a `hooks/` hook with the
 
 ---
 
+---
+
+## The four invariants
+
+These override convenience. A change that breaks one is rejected, regardless of how
+useful it is:
+
+1. **No success state without a verified record** (PLAT-9). The SOS screen currently
+   violates this — it says "Emergency Calling…" and contacts nobody.
+2. **AI emits signals; a deterministic engine decides**
+   ([ADR-0013](adr/0013-ai-never-decides.md)).
+3. **Distinguish attempted / delivered / acknowledged** — never one tick
+   ([ADR-0012](adr/0012-delivery-ledger.md)).
+4. **No configuration may track someone without a visible, revocable indicator on
+   their own device** (threat T2). Instant rejection.
+
+## Use the project skills
+
+Seven skills in `.claude/skills/` encode this discipline. Invoke the relevant one
+rather than re-deriving the rules:
+
+| Skill                  | When                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| `emergency-review`     | **Any** diff touching SOS, triggers, notifications, escalation, location, evidence or safety copy |
+| `safety-spec`          | Writing or changing anything in `docs/specs/` or the PRD                                          |
+| `delivery-ledger`      | Notification states, channel capabilities, incident rollup                                        |
+| `region-profile`       | Adding or validating a market                                                                     |
+| `safety-state-machine` | `packages/safety-domain`, sessions, incidents, idempotency                                        |
+| `a11y-safety`          | Any safety-critical UI                                                                            |
+| `lumo-docs`            | After editing docs — requirement-ID, link and format checks                                       |
+
+`emergency-review` is not optional for emergency-path changes. It is the gate that
+catches fake success states, missing failure paths, SOS blocked on auth, unbounded
+loops and copy that exceeds platform capability.
+
+## Requirement IDs
+
+Every feature traces to an ID in [`product/PRD.md`](product/PRD.md)
+(`PREV-` `DET-` `RES-` `PRO-` `REC-` `PLAT-`). An ID is assigned once, never reused,
+has testable acceptance criteria, and appears in exactly one phase of
+[`product/ROADMAP.md`](product/ROADMAP.md). Reference the ID in the PR.
+
 ## Four rules specific to a safety app
 
 These are not style preferences. They are why the product exists.
