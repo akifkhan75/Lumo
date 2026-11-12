@@ -51,3 +51,15 @@ append-only.
 ## Revisit when
 
 A channel offers stronger guarantees — add it to the capability data, not the code.
+
+## Erratum — 2026-11-12
+
+The Context above says background push "can prove device arrival". It cannot. Expo's
+documentation states that a push receipt with status `ok` means only that Google or
+Apple _accepted_ the notification — "this doesn't guarantee that the device has
+received the message" — and APNs offers no per-message device receipt at all.
+
+The **Decision is unchanged**: capability is data, and each channel's maximum truthful
+state is declared rather than assumed. What changes is the data. Background push is
+capped at `SENT` from the provider, and reaches `DELIVERED` only through a device-side
+receipt posted back by the app. See [`DELIVERY_LEDGER.md`](../specs/DELIVERY_LEDGER.md) §2.

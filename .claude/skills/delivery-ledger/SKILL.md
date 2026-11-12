@@ -17,20 +17,21 @@ Only **`ACKNOWLEDGED`** means a human knows. `SENT` means a provider accepted it
 
 ## Channel ceilings — never exceed
 
-| Channel | Max |
-| --- | --- |
-| Push, app foreground | `ACKNOWLEDGED` |
-| Push, background | `DELIVERED` |
-| SMS via provider | `DELIVERED` where provider **and destination network** support receipts, else `UNKNOWN` |
-| Device-direct SMS | `SENT` |
-| Voice | `SENT` → answered (answered ≠ understood) |
-| Email | `SENT`, never emergency-grade |
-| Web journey page | `ACKNOWLEDGED` |
+| Channel              | Max                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| Push, app foreground | `ACKNOWLEDGED`                                                                          |
+| Push, background     | `SENT` from the provider; `DELIVERED` only with a device-side receipt                   |
+| SMS via provider     | `DELIVERED` where provider **and destination network** support receipts, else `UNKNOWN` |
+| Device-direct SMS    | `SENT`                                                                                  |
+| Voice                | `SENT` → answered (answered ≠ understood)                                               |
+| Email                | `SENT`, never emergency-grade                                                           |
+| Web journey page     | `ACKNOWLEDGED`                                                                          |
 
 Capability is **data** (`ChannelCapability`), not a comment. The UI derives what it
 may display, so it cannot lie.
 
 ## Rules
+
 1. One attempt per recipient × channel. Append-only history; the row's state is a
    materialised view of its latest event.
 2. A fallback is a **new attempt**, never an overwrite.
