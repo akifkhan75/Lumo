@@ -2,7 +2,7 @@
 #   docker build -f apps/api/Dockerfile -t lumo-api .
 #
 # The build context is the repository root because the API depends on
-# workspace packages (@lumo/types) that live outside apps/api.
+# workspace packages (@lumo/types, @lumo/safety-domain) that live outside apps/api.
 
 # ---- deps -------------------------------------------------------------------
 FROM node:20-bookworm-slim AS deps
@@ -24,6 +24,7 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/types/package.json ./packages/types/
 COPY packages/api-client/package.json ./packages/api-client/
+COPY packages/safety-domain/package.json ./packages/safety-domain/
 COPY packages/tsconfig/package.json ./packages/tsconfig/
 
 # The API's postinstall generates the Prisma client, so the schema has to be
@@ -31,7 +32,7 @@ COPY packages/tsconfig/package.json ./packages/tsconfig/
 COPY apps/api/prisma ./apps/api/prisma
 
 # The mobile app is not part of this image and its native toolchain is large.
-RUN pnpm install --frozen-lockfile --filter api... --filter @lumo/types...
+RUN pnpm install --frozen-lockfile --filter api... --filter @lumo/types... --filter @lumo/safety-domain...
 
 # ---- build ------------------------------------------------------------------
 FROM deps AS build
@@ -41,10 +42,11 @@ COPY packages ./packages
 COPY apps/api ./apps/api
 
 RUN pnpm --filter @lumo/types build \
+ && pnpm --filter @lumo/safety-domain build \
  && pnpm --filter api build
 
 # Drop dev dependencies from the tree that gets copied forward.
-RUN pnpm install --frozen-lockfile --filter api... --filter @lumo/types... --prod
+RUN pnpm install --frozen-lockfile --filter api... --filter @lumo/types... --filter @lumo/safety-domain... --prod
 
 # ---- runtime ----------------------------------------------------------------
 FROM node:20-bookworm-slim AS runtime
