@@ -14,3 +14,11 @@ import 'reflect-metadata';
  */
 process.env.JWT_SECRET =
   process.env.JWT_SECRET || 'test-only-secret-not-used-anywhere-real-0123456789';
+
+/**
+ * Personal data is encrypted at rest and the API refuses to start without a key
+ * (KI-26), so the suite supplies one. A fixed, obviously-not-secret value: tests
+ * that need to see ciphertext read it back from the database, not from here.
+ */
+process.env.DATA_ENCRYPTION_KEY =
+  process.env.DATA_ENCRYPTION_KEY || Buffer.alloc(32, 7).toString('base64');

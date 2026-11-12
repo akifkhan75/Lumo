@@ -163,6 +163,32 @@ Two kinds of test there are worth knowing about before you add a transition:
   `process`, `require`, a package import or a Node built-in, or subclasses `Error`.** The
   package must run unchanged on a phone and a server.
 
+### The database-backed suite runs in CI
+
+`apps/api/test/schema.e2e-spec.ts` (with `api.e2e-spec.ts`) needs a live Postgres and is run by
+CI's **`integration`** job: Postgres 15, `db:deploy`, seed, `db:encrypt-pii --check`, then
+`pnpm --filter api test:e2e`. It exists because the append-only triggers, the CHECK constraints
+and the erasure carve-out are invisible to `prisma migrate diff` and to any test that mocks Prisma.
+Until this job existed the e2e suite ran **nowhere**. The suite swaps the global throttler (10
+requests/second) for a very high limit, because it exercises the database, not rate limiting.
+
+### `packages/safety-domain` is held to 100%
+
+Its `vitest.config.ts` sets 100% thresholds for branches, lines, functions and statements,
+and its `test` script runs with `--coverage`, so **`pnpm test` fails — and so does CI — if a
+single branch is unreached** (ADR-0009). A branch in a safety machine that no test reaches is
+a transition nobody has checked. The gate was verified to bite: adding one untested branch
+makes the run exit non-zero.
+
+Two kinds of test there are worth knowing about before you add a transition:
+
+- **`tables.spec.ts` holds a hand-transcribed copy of the spec's §6a rows** and compares it
+  to the code, so the _spec_ is what is being tested. Changing a row means changing the spec
+  first, then both.
+- **`purity.spec.ts` fails if the source touches a clock, randomness, timers, the network,
+  `process`, `require`, a package import or a Node built-in, or subclasses `Error`.** The
+  package must run unchanged on a phone and a server.
+
 ---
 
 ## Gaps

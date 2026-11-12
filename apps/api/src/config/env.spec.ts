@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getCorsOrigins, getJwtSecret, getPort, requireEnv } from './env';
+import { randomBytes } from 'node:crypto';
+import { getCorsOrigins, getDataEncryptionKeyring, getJwtSecret, getPort, requireEnv } from './env';
 
 const VALID_SECRET = 'a'.repeat(48);
 
@@ -82,5 +83,77 @@ describe('env', () => {
       delete process.env.SOME_MISSING_VAR;
       expect(() => requireEnv('SOME_MISSING_VAR')).toThrow(/SOME_MISSING_VAR/);
     });
+  });
+});
+
+describe('getDataEncryptionKeyring', () => {
+  const b64 = () => randomBytes(32).toString('base64');
+
+  it('refuses to start without a key — personal data must not be quietly stored in the clear', () => {
+    expect(() => getDataEncryptionKeyring({})).toThrow(/Missing required environment variable DATA_ENCRYPTION_KEY/);
+    expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: '   ' })).toThrow(/Missing required/);
+  });
+
+  it('tells you how to make one', () => {
+    expect(() => getDataEncryptionKeyring({})).toThrow('openssl rand -base64 32');
+  });
+
+  it('accepts base64 of exactly 32 bytes, named k1 by default', () => {
+    const k = b64();
+    const ring = getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: k });
+    expect(ring.currentId).toBe('k1');
+    expect(ring.keys.get('k1')!.equals(Buffer.from(k, 'base64'))).toBe(true);
+  });
+
+  it('rejects a key of the wrong length, which would otherwise weaken or break the cipher', () => {
+    for (const n of [16, 24, 31, 33, 64]) {
+      const bad = randomBytes(n).toString('base64');
+      expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: bad }), `${n} bytes`).toThrow(/exactly 32 bytes/);
+    }
+  });
+
+  it('rejects an all-zero key', () => {
+    expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') })).toThrow(/all zero/);
+  });
+
+  it('honours a custom key id and validates it', () => {
+    expect(getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEY_ID: '2026-q4' }).currentId).toBe('2026-q4');
+    expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEY_ID: 'has:colon' })).toThrow(/key id may only contain/);
+    expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEY_ID: 'x'.repeat(33) })).toThrow(/key id may only contain/);
+  });
+
+  describe('previous keys (decrypt-only, for rotation)', () => {
+    it('are loaded alongside the current one', () => {
+      const ring = getDataEncryptionKeyring({
+        DATA_ENCRYPTION_KEY: b64(),
+        DATA_ENCRYPTION_KEY_ID: 'new',
+        DATA_ENCRYPTION_KEYS_PREVIOUS: `old1:${b64()}, old2:${b64()}`,
+      });
+      expect([...ring.keys.keys()].sort()).toEqual(['new', 'old1', 'old2']);
+      expect(ring.currentId).toBe('new');
+    });
+    it('must look like id:key', () => {
+      expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEYS_PREVIOUS: 'nocolon' })).toThrow(/id:base64key/);
+      expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEYS_PREVIOUS: ':abc' })).toThrow(/id:base64key/);
+    });
+    it('must be valid keys with valid, unique ids', () => {
+      expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEYS_PREVIOUS: 'old:AAAA' })).toThrow(/exactly 32 bytes/);
+      expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEYS_PREVIOUS: `bad id:${b64()}` })).toThrow(/key id may only contain/);
+      expect(() => getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64(), DATA_ENCRYPTION_KEYS_PREVIOUS: `k1:${b64()}` })).toThrow(/appears twice/);
+    });
+    it('are optional', () => {
+      expect(getDataEncryptionKeyring({ DATA_ENCRYPTION_KEY: b64() }).keys.size).toBe(1);
+    });
+  });
+
+  it('reads process.env by default', () => {
+    const before = process.env.DATA_ENCRYPTION_KEY;
+    process.env.DATA_ENCRYPTION_KEY = b64();
+    try {
+      expect(getDataEncryptionKeyring().currentId).toBe('k1');
+    } finally {
+      if (before === undefined) delete process.env.DATA_ENCRYPTION_KEY;
+      else process.env.DATA_ENCRYPTION_KEY = before;
+    }
   });
 });

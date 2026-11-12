@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { CryptoModule } from './crypto/crypto.module';
 import { SettingsModule } from './settings/settings.module';
 import { HazardReportsModule } from './hazard-reports/hazard-reports.module';
 import { AuthModule } from './auth/auth.module';
@@ -23,6 +24,7 @@ import { AiModule } from './ai/ai.module';
       { name: 'long', ttl: 60_000, limit: 120 },
     ]),
     PrismaModule,
+    CryptoModule,
     SettingsModule,
     HazardReportsModule,
     AuthModule,

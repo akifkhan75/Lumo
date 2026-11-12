@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "db:encrypt-pii": "ts-node --transpile-only -P tsconfig.scripts.json scripts/encrypt-pii.ts",
     "db:status": "prisma migrate status",
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -68,6 +69,6 @@
     "vitest": "^4.1.2"
   },
   "prisma": {
-    "seed": "node --loader ts-node/esm prisma/seed.ts"
+    "seed": "ts-node --transpile-only -P tsconfig.scripts.json prisma/seed.ts"
   }
 }

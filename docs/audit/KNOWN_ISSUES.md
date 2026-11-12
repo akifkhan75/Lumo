@@ -379,6 +379,13 @@ string), no dashboards. A delivery regression would be invisible.
 Email, full name, blood type, allergies and contact phone numbers. No field-level
 encryption.
 
+> **Mostly resolved — 2026-11-13 (Phase 1, milestone 1.2).** Contact **phone and email**, and
+> users' **blood type and allergies**, are AES-256-GCM ciphertext bound to model, column and row id
+> (`DATA_ENCRYPTION_KEY`, required at boot; versioned format with key ids for rotation). Verified by
+> reading the raw columns after the HTTP flow, and by refusing a ciphertext copied into another row.
+> **Still plaintext:** the account `email` and `fullName` (not in the spec's list). Legacy plaintext
+> is read tolerantly and counted until `db:encrypt-pii` converts it — see KI-47.
+
 ---
 
 ## 🔴 KI-27 — SOS is unavailable whenever the settings fetch fails
@@ -613,3 +620,37 @@ must not be able to stall dispatch. The 5 s time box is exported as `LOCATING_TI
 still exports its own copy, which `apps/mobile` imports. It was left until the mobile milestone-1.0
 work (#9) landed, to avoid a lockfile conflict; that has now happened, so it can be done.
 **To fix:** point mobile at the shared constant and delete the copy in `@lumo/types`.
+
+## Found while building milestone 1.2 — 2026-11-13
+
+### 🟠 KI-45 — A removed contact's personal data is never purged
+
+Contacts are soft-deleted so the delivery ledger's ids always resolve, but the row keeps its
+(encrypted) phone and email indefinitely. Erasing a person's number after removal belongs to the
+retention job (milestone 2.11); until it exists, "remove" hides a contact without destroying them.
+
+### 🟠 KI-46 — The erasure flag is a convention, not a privilege boundary
+
+Append-only history refuses `DELETE` unless the transaction ran `SET LOCAL lumo.erasure = 'on'`.
+Anything that can open a transaction can set it, so this stops a bug and a careless statement, not a
+determined or compromised caller. **To fix:** run the erasure procedure under a separate database
+role that alone may delete from those tables, and the app role without it.
+
+### 🟡 KI-47 — Unencrypted legacy values are tolerated on read
+
+A value without the `enc:v1:` prefix is returned as it is and counted
+(`PiiCipher.legacyPlaintextReads`), because refusing to read a contact's phone number is worse than
+reading it. Nothing writes plaintext. Run `pnpm --filter api db:encrypt-pii --check` (exit 1 if any
+remains) on every environment after deploying; CI runs it on a seeded database.
+
+### 🟡 KI-48 — `ConsentRecord.grantedById` is ambiguous for contact consent
+
+Contact consent is granted by the **contact**, who may not be a Lumo user, so `grantedById` cannot be
+a user id. The 1.2 tests and the schema comments treat it as the contact's id. The invite flow
+(milestone 1.6) must fix what it means before it writes real rows.
+
+### 🟡 KI-49 — No key-loss recovery
+
+`DATA_ENCRYPTION_KEY` loss makes the encrypted columns unrecoverable by design. It must be backed up
+separately from the database. Rotation is supported (key ids, `DATA_ENCRYPTION_KEYS_PREVIOUS`) but
+no job re-encrypts under a new key yet beyond re-running `db:encrypt-pii` on plaintext only.

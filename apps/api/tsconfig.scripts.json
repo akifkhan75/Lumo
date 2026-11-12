@@ -1,0 +1,18 @@
+{
+  // For one-off Node scripts (the seed, db:encrypt-pii) that import from src/. They
+  // run under ts-node as CommonJS; the Nest project config is built for `nest build`.
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
+    "target": "ES2022",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  // Only the scripts: they pull in the few src/ files they import (config/env and
+  // crypto/pii-cipher, neither of which uses Nest decorators).
+  "include": ["prisma/**/*.ts", "scripts/**/*.ts"]
+}

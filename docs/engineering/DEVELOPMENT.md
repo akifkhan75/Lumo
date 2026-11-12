@@ -97,13 +97,14 @@ file must be in `apps/api/.env` (or exported in your shell).
 
 ### API — `apps/api/.env`
 
-| Variable       | Used by         | Default if unset                  | Notes                                                                      |
-| -------------- | --------------- | --------------------------------- | -------------------------------------------------------------------------- |
-| `DATABASE_URL` | Prisma          | —                                 | Required; port **5434**                                                    |
-| `API_PORT`     | `config/env.ts` | `3005`                            | Rejected if it is not a valid port                                         |
-| `JWT_SECRET`   | `config/env.ts` | **none — the API will not start** | Must be ≥32 characters and not an example value. `openssl rand -base64 48` |
-| `CORS_ORIGINS` | `config/env.ts` | empty → no browser origin         | Comma-separated. The mobile app is not subject to CORS                     |
-| `API_KEY`      | `ai.service.ts` | none → fallback responses         | Google Gemini key. Optional: the app works without it                      |
+| Variable              | Used by         | Default if unset                  | Notes                                                                                                                                                                                                                           |
+| --------------------- | --------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`        | Prisma          | —                                 | Required; port **5434**                                                                                                                                                                                                         |
+| `API_PORT`            | `config/env.ts` | `3005`                            | Rejected if it is not a valid port                                                                                                                                                                                              |
+| `JWT_SECRET`          | `config/env.ts` | **none — the API will not start** | Must be ≥32 characters and not an example value. `openssl rand -base64 48`                                                                                                                                                      |
+| `DATA_ENCRYPTION_KEY` | `config/env.ts` | **none — the API will not start** | base64 of 32 bytes: `openssl rand -base64 32`. Encrypts contact phone/email, blood type and allergies at rest. **Losing it loses the data.** Optional `DATA_ENCRYPTION_KEY_ID` and `DATA_ENCRYPTION_KEYS_PREVIOUS` for rotation |
+| `CORS_ORIGINS`        | `config/env.ts` | empty → no browser origin         | Comma-separated. The mobile app is not subject to CORS                                                                                                                                                                          |
+| `API_KEY`             | `ai.service.ts` | none → fallback responses         | Google Gemini key. Optional: the app works without it                                                                                                                                                                           |
 
 `JWT_SECRET` has no fallback by design (KI-9): a safety API that boots
 misconfigured and looks healthy is worse than one that refuses to start.
@@ -145,7 +146,7 @@ pnpm --filter api db:seed
 
 ```bash
 docker build -f apps/api/Dockerfile -t lumo-api .   # context is the repo root
-docker run -p 3005:3005 -e JWT_SECRET=... -e DATABASE_URL=... lumo-api
+docker run -p 3005:3005 -e JWT_SECRET=... -e DATA_ENCRYPTION_KEY=... -e DATABASE_URL=... lumo-api
 ```
 
 Migrations are **not** run on container start. Apply them as a separate step

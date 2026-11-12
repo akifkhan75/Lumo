@@ -102,10 +102,11 @@ model TrustedContact {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name       String
   phone      String                       // encrypted at rest
-  email      String?
+  email      String?                      // encrypted at rest
   consentId  String?  @unique
   consent    ConsentRecord? @relation(fields: [consentId], references: [id])
   priority   Int      @default(0)
+  removedAt  DateTime?                    // soft delete: the ledger refers to contacts by id
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   @@index([userId, priority])
@@ -372,3 +373,62 @@ DB-1 is closed: the schema now indexes `TrustedContact(userId)`,
 **Confirmation counts are derived**, not stored: `HazardConfirmation` is one
 uniquely-constrained row per person per report, so a count cannot be inflated by
 one account and cannot drift from a denormalised column.
+
+---
+
+## As built — Phase 1 schema (milestone 1.2)
+
+`apps/api/prisma/schema.prisma` and migration `20261112140000_phase1_sessions_incidents_ledger`
+implement the Phase 1 block above. Where the code differs from the block, **the code is
+right** and this section is the record:
+
+- **`TrustedContact.removedAt`** — contacts are soft-deleted. `NotificationAttempt.recipientId`
+  is a plain id (not a foreign key), so a hard delete would leave the evidence pointing at
+  nothing. Removed contacts leave every read and every recipient list; the row stays.
+  Purging a removed contact's personal data belongs to the retention job (2.11).
+- **Editing a contact's phone or email revokes the consent** (`ConsentRecord.revokedAt` +
+  `revokedReason`), and clears `consentId`. The person at the old number agreed, not whoever
+  has the new one. Formatting-only changes (`+1 (555) 010-6000` → `+15550106000`) and
+  name-only edits keep it. The record is never deleted — it is evidence.
+- **`ConsentRecord.revokedReason`** — added; a revocation with no reason is a gap in the evidence.
+- **`LocationSnapshot.expiresAt`** — required. The Rules section requires decay on location
+  snapshots; the model block above omitted the column. It is `NOT NULL`: whoever writes a
+  snapshot must supply the region profile's retention.
+- **`LocationSnapshot`/`SafetySession`/`EmergencyIncident` relations** are declared (the block
+  left some as bare ids), so deleting a session or incident removes its snapshots.
+- **`EmergencyIncident.evidence`** is omitted until `EvidenceAsset` exists (Phase 2).
+- **`EscalationPolicy`** is now a model (it was referenced by `SafetySession.escalationPolicyId`
+  but never declared). `steps` is JSON validated by `validatePolicy()` in `@lumo/safety-domain`;
+  a recipient that no longer exists is skipped and ledgered at run time, not rejected at write
+  time. `SafetySession.escalationPolicyId` uses `ON DELETE NO ACTION`, not `RESTRICT`: deleting a
+  user cascades to its sessions **and** its policies in one statement, and `RESTRICT` is checked
+  before the sessions are gone.
+- **Enum members are exactly the strings `@lumo/safety-domain` defines** — lowercase for
+  `Channel`, `TriggerType`, `SessionKind`, `Actor`, `IncidentMode`, `ConsentKind`; upper-case for
+  the three state enums — with no `@map` and no mappers. `src/prisma/domain-parity.ts` breaks the
+  build if the two ever differ, and `test/schema.e2e-spec.ts` compares the labels in Postgres.
+
+### What the database enforces (and the drift gate cannot see)
+
+Hand-written in the migration. `prisma migrate diff` ignores all of it, so
+`test/schema.e2e-spec.ts` proves it and CI's `integration` job runs that suite:
+
+- **Append-only history.** `SessionEvent`, `IncidentEvent`, `NotificationEvent` and `AuditLog`
+  refuse `UPDATE` always, refuse `TRUNCATE` always, and refuse `DELETE` unless the transaction ran
+  `SET LOCAL lumo.erasure = 'on'`. The carve-out exists because retention and the right to erasure
+  (PRO-5) require history to be deletable by a deliberate procedure, and a user deletion cascades
+  through these tables. It is a **convention enforced by review, not a privilege boundary** —
+  anything that can open a transaction can set it. The parents (attempts, incidents, sessions)
+  update their `state` and are deliberately **not** append-only.
+- **CHECK constraints.** `graceSeconds >= 60` (a test fails if this differs from
+  `MIN_GRACE_SECONDS`), `maxRecipientsPerIncident >= 1`, `deviationGraceSeconds > 0`, a valid
+  latitude/longitude/accuracy/battery on `LocationSnapshot`, `attemptNumber >= 1`,
+  `costMinorUnits >= 0`.
+- **One default policy per user** (partial unique index).
+
+### Encryption at rest
+
+`TrustedContact.phone`, `TrustedContact.email`, `User.bloodType`, `User.allergies` are AES-256-GCM
+ciphertext (`enc:v1:<keyId>:<iv>:<tag>:<data>`), bound to model, column and **row id** so a value
+copied into another row fails authentication. The key is `DATA_ENCRYPTION_KEY`, required at boot.
+`fullName` and `email` (the account's) are **not** encrypted — they are not in the spec's list.

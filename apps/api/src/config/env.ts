@@ -60,3 +60,67 @@ export function getPort(): number {
   }
   return port;
 }
+
+/**
+ * The keys personal data is encrypted with at rest (KI-26).
+ *
+ * Required, with no default, for the same reason JWT_SECRET has none: a deployment
+ * that forgot to set it must refuse to start, not quietly run with a value that is
+ * published in this repository.
+ *
+ *   DATA_ENCRYPTION_KEY            base64 of 32 random bytes:  openssl rand -base64 32
+ *   DATA_ENCRYPTION_KEY_ID         names the key (default "k1"); stored with every value
+ *   DATA_ENCRYPTION_KEYS_PREVIOUS  "id:base64,id:base64" — retired keys that can still
+ *                                  DECRYPT. Rotating means: set the new key and id,
+ *                                  move the old one here, run db:encrypt-pii, then
+ *                                  drop it once nothing refers to it.
+ *
+ * Losing the key loses the data: there is no recovery. Back it up separately from
+ * the database it protects.
+ */
+export function getDataEncryptionKeyring(env: NodeJS.ProcessEnv = process.env): {
+  currentId: string;
+  keys: Map<string, Buffer>;
+} {
+  const KEY_BYTES = 32;
+  const decode = (name: string, value: string): Buffer => {
+    const key = Buffer.from(value, 'base64');
+    if (key.length !== KEY_BYTES) {
+      throw new Error(`${name} must be base64 of exactly ${KEY_BYTES} bytes. Generate one with: openssl rand -base64 32`);
+    }
+    if (key.every(b => b === 0)) {
+      throw new Error(`${name} is all zero bytes, which is not a real key. Generate one with: openssl rand -base64 32`);
+    }
+    return key;
+  };
+  const validId = (id: string, where: string) => {
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) {
+      throw new Error(`${where}: a key id may only contain letters, digits, "_" and "-" (max 32). Got "${id}".`);
+    }
+  };
+
+  const raw = env.DATA_ENCRYPTION_KEY;
+  if (!raw || raw.trim() === '') {
+    throw new Error(
+      'Missing required environment variable DATA_ENCRYPTION_KEY. ' +
+        'Personal data is encrypted at rest and the API will not start without a key. ' +
+        'Generate one with: openssl rand -base64 32',
+    );
+  }
+  const currentId = (env.DATA_ENCRYPTION_KEY_ID ?? 'k1').trim();
+  validId(currentId, 'DATA_ENCRYPTION_KEY_ID');
+
+  const keys = new Map<string, Buffer>();
+  keys.set(currentId, decode('DATA_ENCRYPTION_KEY', raw.trim()));
+
+  for (const entry of (env.DATA_ENCRYPTION_KEYS_PREVIOUS ?? '').split(',').map(e => e.trim()).filter(Boolean)) {
+    const at = entry.indexOf(':');
+    if (at < 1) throw new Error(`DATA_ENCRYPTION_KEYS_PREVIOUS entries must look like "id:base64key", got "${entry.slice(0, 12)}…"`);
+    const id = entry.slice(0, at);
+    validId(id, 'DATA_ENCRYPTION_KEYS_PREVIOUS');
+    if (keys.has(id)) throw new Error(`Key id "${id}" appears twice; ids must be unique`);
+    keys.set(id, decode(`DATA_ENCRYPTION_KEYS_PREVIOUS["${id}"]`, entry.slice(at + 1)));
+  }
+
+  return { currentId, keys };
+}
