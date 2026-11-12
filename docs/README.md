@@ -82,8 +82,9 @@ Lumo — Your Light in the Dark.
 2. **Hazard reports have real coordinates, but there is no map and the device cannot
    read its own position.** Reports are listed, not pinned, and submitting one is
    unavailable rather than guessing a point (KI-2, ADR-0010).
-3. **Auth does not survive a restart.** The JWT lives in a module variable, and logout
-   never clears it (KI-4).
+3. **There is no refresh token.** The session survives a restart (the JWT is kept in the
+   keystore), but a 7-day token still expires into a login screen (KI-4). Only an HTTP 401
+   ends a session; a dropped connection does not.
 
 The parts that _are_ real — sensor hooks, module boundaries, shared types, AI
 fallbacks, test suites — are well built. The gap is that the response half of the

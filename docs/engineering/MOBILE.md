@@ -50,10 +50,14 @@ Files named `*Modal.tsx` are **navigator screens** presented modally, not
 NavigationContainer
 └── MainStack  (createNativeStackNavigator, headerShown: false)
     │
-    ├── NOT authenticated
-    │   └── Auth                    AuthScreen  (onboarding → login/signup tabs)
+    ├── restoring the stored session (brief, bounded)
+    │   └── Boot                    BootScreen  (carries an emergency control)
     │
-    └── authenticated
+    ├── signed out
+    │   └── Auth                    AuthScreen  (onboarding → login/signup tabs;
+    │                                            both views carry an emergency control)
+    │
+    └── signed in
         ├── Dashboard               params: { onLogout }
         │
         ├── Group  presentation: 'modal'
@@ -66,14 +70,20 @@ NavigationContainer
         │   ├── ReportHazard        params: none
         │   └── SafetyAssistant
         │
-        └── Group  presentation: 'fullScreenModal'
-            └── Emergency           params: { settings }
+    └── Group  presentation: 'fullScreenModal'      (OUTSIDE the auth conditional)
+        └── Emergency           params: { settings? }  — optional
 ```
 
 Auth is a **conditional branch of the navigator**, so `handleLogout()` unmounts
-every authenticated screen — no manual reset needed, and no authenticated state
-can survive a logout in memory except the token itself
-([KI-4](../audit/KNOWN_ISSUES.md)).
+every authenticated screen — no manual reset needed. It also clears the stored
+token ([KI-4](../audit/KNOWN_ISSUES.md)).
+
+**`Emergency` is deliberately not part of that conditional.** It must exist whether
+or not anyone is signed in, and it must open with no params, so a signed-out person
+or a person whose settings have not loaded can still reach it. Because it survives
+a session change underneath it, `App.tsx` rebuilds the stack beneath it when the
+session changes while it is open — otherwise React Navigation drops the screens that
+no longer exist, leaving one route and a Close button that does nothing.
 
 Param lists are typed in `types.ts` as `RootStackParamList` and
 `SettingsStackParamList`. Keep them current — they are the only compile-time check
@@ -138,8 +148,12 @@ Two irregularities to be aware of:
   `.signup`, duplicating that logic and swallowing the server's error message
   (`throw new Error('HTTP error')`). There is also a leftover
   `console.log('resp', response)`. ([KI-10](../audit/KNOWN_ISSUES.md))
-- `setAuthToken` writes both `currentToken` and `apiClient.setToken`, but
-  `handleLogout` in `App.tsx` never calls it — the token outlives the session.
+
+`ApiClient` bounds every request with a 10 s timeout and throws a typed `ApiError`
+(`kind: 'http' | 'timeout' | 'network'`, plus `status`). Callers decide on the cause:
+only `isUnauthorized` (an HTTP 401) means the credential was rejected. The token
+survives a restart in `expo-secure-store` via `services/tokenStorage.ts`, which never
+throws and never hangs — a fault there means "signed out".
 
 ---
 

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ApiClient } from './index';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ApiClient, ApiError } from './index';
 
 describe('ApiClient', () => {
   let client: ApiClient;
@@ -37,11 +37,11 @@ describe('ApiClient', () => {
     const result = await client.login('josim@example.com', 'password');
     expect(result).toEqual(mockAuthResponse);
     expect(client.getToken()).toBe('jwt-auth-token-123');
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/auth/login`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/auth/login`, expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'josim@example.com', password: 'password' }),
-    });
+    }));
   });
 
   it('performs signup successfully and stores token', async () => {
@@ -58,11 +58,11 @@ describe('ApiClient', () => {
     const result = await client.signup('New User', 'new@example.com', 'password123');
     expect(result).toEqual(mockAuthResponse);
     expect(client.getToken()).toBe('jwt-signup-token-456');
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/auth/signup`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/auth/signup`, expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fullName: 'New User', name: 'New User', email: 'new@example.com', password: 'password123' }),
-    });
+    }));
   });
 
   it('throws descriptive error on failed HTTP responses', async () => {
@@ -102,9 +102,9 @@ describe('ApiClient', () => {
 
     const settings = await client.getSettings();
     expect(settings).toEqual(mockSettings);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/settings`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/settings`, expect.objectContaining({
       headers: { Authorization: 'Bearer auth-token' },
-    });
+    }));
   });
 
   it('updates settings with PUT request', async () => {
@@ -122,14 +122,14 @@ describe('ApiClient', () => {
 
     const result = await client.updateSettings(updatedSettings);
     expect(result).toEqual(updatedSettings);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/settings`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/settings`, expect.objectContaining({
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer auth-token',
       },
       body: JSON.stringify(updatedSettings),
-    });
+    }));
   });
 
   it('fetches hazard reports', async () => {
@@ -152,9 +152,9 @@ describe('ApiClient', () => {
 
     const reports = await client.getHazardReports();
     expect(reports).toEqual(mockReports);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/hazard-reports`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/hazard-reports`, expect.objectContaining({
       headers: { Authorization: 'Bearer auth-token' },
-    });
+    }));
   });
 
   it('passes a page size through when fetching hazard reports', async () => {
@@ -163,9 +163,7 @@ describe('ApiClient', () => {
 
     await client.getHazardReports(10);
     expect(global.fetch).toHaveBeenCalledWith(
-      `${baseUrl}/api/v1/hazard-reports?take=10`,
-      { headers: { Authorization: 'Bearer auth-token' } },
-    );
+      `${baseUrl}/api/v1/hazard-reports?take=10`, expect.objectContaining({ headers: { Authorization: 'Bearer auth-token' } }));
   });
 
   it('reports a hazard with its coordinates', async () => {
@@ -187,14 +185,14 @@ describe('ApiClient', () => {
 
     const result = await client.reportHazard(newReport);
     expect(result).toEqual(mockCreated);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/hazard-reports`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/hazard-reports`, expect.objectContaining({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer auth-token',
       },
       body: JSON.stringify(newReport),
-    });
+    }));
   });
 
   it('confirms a hazard report', async () => {
@@ -207,9 +205,7 @@ describe('ApiClient', () => {
     const result = await client.confirmHazardReport('2');
     expect(result).toEqual({ id: '2', confirmationCount: 1 });
     expect(global.fetch).toHaveBeenCalledWith(
-      `${baseUrl}/api/v1/hazard-reports/2/confirm`,
-      { method: 'POST', headers: { Authorization: 'Bearer auth-token' } },
-    );
+      `${baseUrl}/api/v1/hazard-reports/2/confirm`, expect.objectContaining({ method: 'POST', headers: { Authorization: 'Bearer auth-token' } }));
   });
 
   it('fetches fake call script from AI endpoint', async () => {
@@ -226,9 +222,9 @@ describe('ApiClient', () => {
 
     const script = await client.getFakeCallScript();
     expect(script).toEqual(mockScript);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/ai/fake-call-script`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/ai/fake-call-script`, expect.objectContaining({
       headers: { Authorization: 'Bearer auth-token' },
-    });
+    }));
   });
 
   it('fetches self defense tips from AI endpoint', async () => {
@@ -242,9 +238,9 @@ describe('ApiClient', () => {
 
     const tips = await client.getSelfDefenseTips();
     expect(tips).toEqual(mockTips);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/ai/self-defense-tips`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/ai/self-defense-tips`, expect.objectContaining({
       headers: { Authorization: 'Bearer auth-token' },
-    });
+    }));
   });
 
   it('interacts with safety chat assistant', async () => {
@@ -258,13 +254,96 @@ describe('ApiClient', () => {
 
     const response = await client.safetyChat('Is this area safe?');
     expect(response).toEqual(mockChatResponse);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/ai/safety-chat`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/ai/safety-chat`, expect.objectContaining({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer auth-token',
       },
       body: JSON.stringify({ message: 'Is this area safe?', history: [] }),
+    }));
+  });
+
+  describe('failure kinds', () => {
+    it('carries the HTTP status so a caller can tell a rejected credential from an outage', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ message: 'Unauthorized' }),
+      } as any);
+
+      const err = await client.getSettings().catch((e) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ kind: 'http', status: 401, isUnauthorized: true });
+    });
+
+    it('does not treat a 5xx as a rejected credential', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({ message: 'Unavailable' }),
+      } as any);
+
+      const err = await client.getSettings().catch((e) => e);
+      expect(err).toMatchObject({ kind: 'http', status: 503, isUnauthorized: false });
+    });
+
+    it('reports a network failure without a status and never as unauthorized', async () => {
+      global.fetch = vi.fn().mockRejectedValue(new TypeError('Network request failed'));
+
+      const err = await client.getSettings().catch((e) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ kind: 'network', status: null, isUnauthorized: false });
+    });
+
+    it('sends an abort signal with every request', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) } as any);
+
+      await client.getSettings();
+      const init = (global.fetch as any).mock.calls[0][1];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+  });
+
+  describe('timeout', () => {
+    // A fetch that never answers, and rejects only when it is aborted: the
+    // behaviour of a real request on a dead connection.
+    const hangingFetch = () =>
+      vi.fn((_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+        }),
+      );
+
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('gives up on a request that never answers', async () => {
+      global.fetch = hangingFetch() as any;
+      const failure = client.getSettings().catch((e) => e);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      const err = await failure;
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ kind: 'timeout', status: null, isUnauthorized: false });
+    });
+
+    it('honours a custom ceiling', async () => {
+      const quick = new ApiClient(baseUrl, null, { timeoutMs: 500 });
+      global.fetch = hangingFetch() as any;
+      const failure = quick.getSettings().catch((e) => e);
+
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(await failure).toMatchObject({ kind: 'timeout' });
+    });
+
+    it('does not time out a request that answers in time', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: 1 }) } as any);
+      await expect(client.getSettings()).resolves.toEqual({ ok: 1 });
+      // The timer must be cleared, or it fires later against a finished request.
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });

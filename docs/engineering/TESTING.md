@@ -133,6 +133,7 @@ A new workspace package consumed by the app must match that pattern, or you get
 
 ```js
 collectCoverageFrom: [
+  "App.tsx",
   "hooks/**",
   "services/**",
   "components/**",
@@ -140,9 +141,9 @@ collectCoverageFrom: [
 ];
 ```
 
-`App.tsx` and `App.styled.ts` are **outside** the collection scope, so
-`DashboardScreen` — which owns all the app's state — does not register in the
-coverage number. Treat the mobile figure as partial.
+`App.tsx` is **inside** the collection scope as of milestone 1.0, so `DashboardScreen`
+— which owns all the app's state — registers in the coverage number. `App.styled.ts`
+is still outside it (styles only).
 
 ---
 
