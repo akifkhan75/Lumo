@@ -1,0 +1,20 @@
+{
+  "extends": "@lumo/tsconfig/base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // The shared base sets no target, so it compiles to ES5 — where a class
+    // extending Error loses its prototype chain (this broke @lumo/api-client's
+    // ApiError in the shipped build while its tests, run on source, passed).
+    // This package must not depend on what the base happens to default to.
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    // No ambient types: no DOM, no Node. `fetch`, `process`, `setTimeout` and
+    // `require` then fail to typecheck instead of slipping into a package that
+    // has to run unchanged on a phone and on a server.
+    "types": []
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.spec.ts", "src/testing/**"]
+}

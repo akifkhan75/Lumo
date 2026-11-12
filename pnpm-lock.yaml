@@ -28,6 +28,9 @@ importers:
       '@google/genai':
         specifier: ^1.8.0
         version: 1.52.0
+      '@lumo/region-profiles':
+        specifier: workspace:*
+        version: link:../../packages/region-profiles
       '@lumo/safety-domain':
         specifier: workspace:*
         version: link:../../packages/safety-domain
@@ -283,6 +286,28 @@ importers:
       vitest:
         specifier: ^4.1.2
         version: 4.1.11(@types/node@24.19.1)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.2(@types/node@24.19.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
+
+  packages/region-profiles:
+    dependencies:
+      '@lumo/safety-domain':
+        specifier: workspace:*
+        version: link:../safety-domain
+    devDependencies:
+      '@lumo/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      '@vitest/coverage-v8':
+        specifier: ^4.1.2
+        version: 4.1.11(vitest@4.1.11)
+      typescript:
+        specifier: ^5.0.4
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.2
+        version: 4.1.11(@types/node@20.19.43)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@8.3.2(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
 
   packages/safety-domain:
     devDependencies:

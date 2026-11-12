@@ -1,0 +1,25 @@
+{
+  "name": "@lumo/region-profiles",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Everything market-specific, as data: emergency numbers, messaging, recording-consent law, retention, locale, pricing. No market-specific value may be hard-coded anywhere else (ADR-0011, PLAT-1). Pure: no I/O, no clock, no geocoding.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json"
+  },
+  "dependencies": {
+    "@lumo/safety-domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@lumo/tsconfig": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^4.1.2",
+    "typescript": "^5.0.4",
+    "vitest": "^4.1.2"
+  }
+}
