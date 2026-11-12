@@ -3,13 +3,16 @@ import { Logger } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
-import { getCorsOrigins, getJwtSecret, getPort } from './config/env';
+import { getCorsOrigins, getDataEncryptionKeyring, getJwtSecret, getPort } from './config/env';
 
 async function bootstrap() {
   // Fail before the server binds, not on the first request that needs a
   // token. A misconfigured safety API that looks healthy is worse than one
   // that refuses to start (KI-9).
   getJwtSecret();
+  // Same reasoning for the key personal data is encrypted with (KI-26): without it
+  // the API would have nothing to read contacts' phone numbers with.
+  getDataEncryptionKeyring();
 
   const app = await NestFactory.create(AppModule);
 
