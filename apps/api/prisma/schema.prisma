@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id               String            @id @default(uuid())
-  email            String            @unique
-  passwordHash     String
-  fullName         String
-  bloodType        String?
-  allergies        String?
-  
+  id           String  @id @default(uuid())
+  email        String  @unique
+  passwordHash String
+  fullName     String
+  // bloodType and allergies are encrypted at rest (KI-26): see src/crypto.
+  bloodType    String?
+  allergies    String?
+
   locationSharingEnabled   Boolean @default(true)
   shareLocationOnSos       Boolean @default(true)
   sendSmsOnSos             Boolean @default(false)
@@ -22,28 +23,64 @@ model User {
   voiceActivationEnabled   Boolean @default(false)
   accidentDetectionEnabled Boolean @default(false)
 
-  trustedContacts  TrustedContact[]
-  hazardReports      HazardReport[]       // conditions this user has reported
+  // Which market's rules apply to this account (docs/specs/REGION_PROFILES.md).
+  // A plain string, not a relation: region profiles are data in
+  // @lumo/region-profiles, not rows.
+  regionProfileId String?
+
+  trustedContacts     TrustedContact[]
+  hazardReports       HazardReport[] // conditions this user has reported
   hazardConfirmations HazardConfirmation[] // reports this user has confirmed
 
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-}
+  sessions           SafetySession[]
+  incidents          EmergencyIncident[]
+  devices            Device[]
+  escalationPolicies EscalationPolicy[]
 
-model TrustedContact {
-  id        String   @id @default(uuid())
-  name      String
-  phone     String
-  
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Every settings read loads a user's contacts; a sequential scan of the
-  // whole table is not acceptable on the path that resolves who to alert.
-  @@index([userId])
+  @@index([regionProfileId])
+}
+
+model TrustedContact {
+  // Stable for the life of the contact. A NotificationAttempt points at this id,
+  // so the id must survive every edit — and it does not change when a contact
+  // is removed, because a removed contact is soft-deleted (see removedAt).
+  id   String @id @default(uuid())
+  name String
+
+  // phone and email are encrypted at rest (KI-26): see src/crypto. They are
+  // opaque ciphertext to the database and cannot be queried or indexed.
+  phone String
+  email String?
+
+  // Alert order. Lower is contacted first.
+  priority Int @default(0)
+
+  // The CONTACT's agreement to the role (RES-7). A contact with no consent record,
+  // or a revoked one, is never alerted. Editing the phone number or email revokes
+  // it: the person at the old number agreed, not whoever has the new one.
+  consentId String?        @unique
+  consent   ConsentRecord? @relation(fields: [consentId], references: [id])
+
+  // Soft delete. The delivery ledger is evidence and refers to contacts by id; a
+  // hard delete would leave attempts pointing at nothing. A removed contact drops
+  // out of every read and every recipient resolution but its row stays, so an
+  // attempt always resolves. Purging its personal data is the retention job's
+  // work (milestone 2.11), not a side effect of removal.
+  removedAt DateTime?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Every settings read and every recipient resolution loads a user's contacts in
+  // alert order; a sequential scan is not acceptable on the path that decides who
+  // to alert.
+  @@index([userId, priority])
 }
 
 // A hazard report describes a CONDITION at a place, not a verdict about a
@@ -84,19 +121,19 @@ model HazardReport {
   longitude      Float
   accuracyMetres Float?
 
-  reportedAt  DateTime @default(now())
+  reportedAt DateTime @default(now())
 
   // Decay is mandatory, not a cleanup job. A condition reported months ago is
   // not evidence about today, and findMany filters on this column.
-  expiresAt   DateTime
+  expiresAt DateTime
 
   confirmations HazardConfirmation[]
 
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   // The list query filters on expiry and orders by recency.
@@ -109,15 +146,374 @@ model HazardReport {
 // than denormalised onto HazardReport — a counter column drifts, and a drifted
 // count here would promote an unconfirmed report into routing.
 model HazardConfirmation {
-  id        String   @id @default(uuid())
-  reportId  String
-  report    HazardReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id       String       @id @default(uuid())
+  reportId String
+  report   HazardReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
   @@unique([reportId, userId])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: sessions, incidents and the delivery ledger
+// (docs/specs/DATA_MODEL.md). Enum members are EXACTLY the strings that
+// @lumo/safety-domain defines — no @map, no mappers — and
+// src/prisma/domain-parity.ts breaks the build if the two ever differ.
+// ---------------------------------------------------------------------------
+
+enum Actor {
+  user
+  system
+  policy
+  contact
+}
+
+enum Channel {
+  push
+  sms
+  voice
+  device_direct_sms
+  email
+  web
+}
+
+enum TriggerType {
+  manual
+  shake
+  voice
+  safeword
+  crash
+  fall
+  missed_check_in
+  duress
+}
+
+enum SessionKind {
+  walk_home
+  date
+  ride
+  travel
+  outdoor
+  custom
+}
+
+enum SessionState {
+  CREATED
+  ACTIVE
+  CHECK_IN_DUE
+  GRACE
+  ESCALATING
+  ALERTED
+  ARRIVED
+  CLOSED
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum IncidentState {
+  CREATED
+  LOCATING
+  DISPATCHING
+  NOTIFYING
+  PARTIALLY_NOTIFIED
+  NOTIFIED
+  ALL_CHANNELS_FAILED
+  ACKNOWLEDGED
+  RESOLVING
+  CLOSED
+  CANCELLED
+}
+
+enum IncidentMode {
+  real
+  practice
+}
+
+enum AttemptState {
+  QUEUED
+  SENT
+  DELIVERED
+  ACKNOWLEDGED
+  FAILED
+  EXPIRED
+  UNKNOWN
+}
+
+enum ConsentKind {
+  contact_role
+  location_sharing
+  recording
+  data_processing
+}
+
+// Consent is a record, never a flag, and a record is evidence: it is revoked by
+// setting revokedAt, never deleted.
+model ConsentRecord {
+  id              String      @id @default(uuid())
+  // The Lumo user this consent is about; null when the subject (a contact) is not one.
+  subjectId       String?
+  grantedById     String
+  kind            ConsentKind
+  scope           String
+  grantedAt       DateTime    @default(now())
+  revokedAt       DateTime?
+  // Why it was revoked (e.g. CONTACT_CHANGED_NUMBER, CONTACT_REMOVED). Not in the
+  // original spec; a revocation with no reason is a gap in the evidence.
+  revokedReason   String?
+  // PRO-8: periodic re-confirmation.
+  reconfirmDueAt  DateTime?
+  regionProfileId String
+  version         String
+
+  contact TrustedContact?
+
+  @@index([grantedById, kind])
+  @@index([reconfirmDueAt])
+}
+
+// The user's escalation plan (docs/specs/ESCALATION_POLICY.md). The spec defined
+// the shape but DATA_MODEL.md never declared the model, although
+// SafetySession.escalationPolicyId points at one. Steps are JSON validated by
+// validatePolicy() in @lumo/safety-domain at write time; a recipient that no
+// longer exists is skipped and ledgered at run time, not rejected here.
+model EscalationPolicy {
+  id                             String  @id @default(uuid())
+  userId                         String
+  user                           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                           String
+  isDefault                      Boolean @default(false)
+  // A CHECK constraint (>= 60) backs the minimum in the database.
+  graceSeconds                   Int     @default(300)
+  steps                          Json
+  maxRecipientsPerIncident       Int     @default(5)
+  stopOnAcknowledgement          Boolean @default(true)
+  resumeOnUnacknowledge          Boolean @default(true)
+  promptEmergencyNumberOnFailure Boolean @default(true)
+  deviationGraceSeconds          Int     @default(180)
+
+  sessions SafetySession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SafetySession {
+  id                 String           @id @default(uuid())
+  userId             String
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind               SessionKind
+  state              SessionState     @default(CREATED)
+  // Restored from SUSPENDED.
+  priorState         SessionState?
+  destinationLat     Float?
+  destinationLng     Float?
+  destinationLabel   String?
+  expectedArrivalAt  DateTime?
+  checkInDueAt       DateTime?
+  // NoAction, not Restrict: deleting a user cascades to its sessions AND its
+  // policies in one statement, and Restrict is checked immediately, before the
+  // sessions are gone. NoAction is checked at the end of the statement.
+  escalationPolicyId String
+  escalationPolicy   EscalationPolicy @relation(fields: [escalationPolicyId], references: [id], onDelete: NoAction)
+  shareLocation      Boolean          @default(true)
+  startedAt          DateTime?
+  endedAt            DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  events    SessionEvent[]
+  locations LocationSnapshot[]
+  links     JourneyLink[]
+  incidents EmergencyIncident[]
+
+  @@index([userId, state])
+  // The server-side watchdog scans this to find overdue check-ins.
+  @@index([checkInDueAt])
+}
+
+// APPEND-ONLY. Updates are refused by a trigger and deletes need the erasure
+// procedure (see the migration). The history is the evidence.
+model SessionEvent {
+  id         String        @id @default(uuid())
+  sessionId  String
+  session    SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fromState  SessionState?
+  toState    SessionState
+  event      String
+  actor      Actor
+  reason     String?
+  // When it actually happened, not when it synced.
+  occurredAt DateTime
+  recordedAt DateTime      @default(now())
+
+  @@index([sessionId, occurredAt])
+}
+
+// Every location is a snapshot: accuracy and capture time are NON-nullable, so
+// nothing can render a fix without its precision and its age (RES-10).
+model LocationSnapshot {
+  id         String             @id @default(uuid())
+  sessionId  String?
+  session    SafetySession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  incidentId String?
+  incident   EmergencyIncident? @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  latitude   Float
+  longitude  Float
+  accuracyM  Float
+  capturedAt DateTime
+  batteryPct Int?
+  source     String
+  // Mandatory decay, driven by the region profile's retention window. Required by
+  // the Rules section of DATA_MODEL.md but absent from its model block.
+  expiresAt  DateTime
+
+  @@index([sessionId, capturedAt])
+  @@index([incidentId, capturedAt])
+  @@index([expiresAt])
+}
+
+model EmergencyIncident {
+  id                String         @id @default(uuid())
+  userId            String
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId         String?
+  session           SafetySession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  // Minted on the device; collapses retries of one activation.
+  idempotencyKey    String         @unique
+  triggerType       TriggerType
+  mode              IncidentMode   @default(real)
+  isDuress          Boolean        @default(false)
+  state             IncidentState  @default(CREATED)
+  // Restored after an un-acknowledgement.
+  priorState        IncidentState?
+  locationAvailable Boolean        @default(false)
+  triggeredAt       DateTime
+  dispatchedAt      DateTime?
+  acknowledgedAt    DateTime?
+  resolvedAt        DateTime?
+  closedAt          DateTime?
+  regionProfileId   String
+  createdAt         DateTime       @default(now())
+
+  attempts  NotificationAttempt[]
+  events    IncidentEvent[]
+  locations LocationSnapshot[]
+  // evidence EvidenceAsset[] — arrives with the model, in Phase 2.
+
+  @@index([userId, createdAt])
+  @@index([state])
+}
+
+// APPEND-ONLY: the incident timeline.
+model IncidentEvent {
+  id         String            @id @default(uuid())
+  incidentId String
+  incident   EmergencyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  fromState  IncidentState?
+  toState    IncidentState
+  event      String
+  actor      Actor
+  reason     String?
+  occurredAt DateTime
+  recordedAt DateTime          @default(now())
+
+  @@index([incidentId, occurredAt])
+}
+
+// One per recipient per channel; the unit of truth behind the Delivery Ledger.
+// A retry is a NEW row with a new attemptNumber, never a mutation of an old one.
+model NotificationAttempt {
+  id                String            @id @default(uuid())
+  incidentId        String
+  incident          EmergencyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  // A TrustedContact id. Deliberately NOT a foreign key: contacts are soft-
+  // deleted so the id always resolves, and a recipient may later be something
+  // other than a contact (a circle member who is not one). The id never changes.
+  recipientId       String
+  channel           Channel
+  attemptNumber     Int               @default(1)
+  escalationStep    Int
+  state             AttemptState      @default(QUEUED)
+  stateReason       String?
+  queuedAt          DateTime          @default(now())
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  acknowledgedAt    DateTime?
+  failedAt          DateTime?
+  providerMessageId String?
+  providerStatus    String?
+  costMinorUnits    Int               @default(0)
+  currency          String?
+
+  events NotificationEvent[]
+
+  @@unique([incidentId, recipientId, channel, attemptNumber])
+  @@index([incidentId])
+  @@index([state])
+}
+
+// APPEND-ONLY. NotificationAttempt.state is a materialised view of the latest
+// event here; this table is the source of truth.
+model NotificationEvent {
+  id         String              @id @default(uuid())
+  attemptId  String
+  attempt    NotificationAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  toState    AttemptState
+  reason     String?
+  occurredAt DateTime            @default(now())
+
+  @@index([attemptId, occurredAt])
+}
+
+model JourneyLink {
+  id           String        @id @default(uuid())
+  sessionId    String
+  session      SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Only the HASH is stored, never the token (T6).
+  tokenHash    String        @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  pinHash      String?
+  viewCount    Int           @default(0)
+  lastViewedAt DateTime?
+
+  @@index([expiresAt])
+}
+
+model Device {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform     String
+  osVersion    String
+  pushToken    String?
+  // What is actually armed on this device, probed rather than assumed.
+  capabilities Json
+  lastSeenAt   DateTime  @default(now())
+  revokedAt    DateTime?
+
+  @@index([userId])
+}
+
+// APPEND-ONLY. metadata must NEVER hold coordinates, phone numbers or message
+// bodies (PLAT-8).
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  action      String
+  subjectType String
+  subjectId   String
+  metadata    Json?
+  at          DateTime @default(now())
+
+  @@index([actorId, at])
+  @@index([subjectType, subjectId])
 }

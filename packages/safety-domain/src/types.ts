@@ -30,3 +30,19 @@ export type TriggerType = (typeof TRIGGER_TYPES)[number];
 
 export const SESSION_KINDS = ['walk_home', 'date', 'ride', 'travel', 'outdoor', 'custom'] as const;
 export type SessionKind = (typeof SESSION_KINDS)[number];
+
+/**
+ * `practice` rehearses the whole pipeline and notifies nobody. It is enforced at
+ * the notification boundary, not at the call site (docs/specs/PRACTICE_MODE.md).
+ */
+export const INCIDENT_MODES = ['real', 'practice'] as const;
+export type IncidentMode = (typeof INCIDENT_MODES)[number];
+
+/**
+ * Consent is a record, not a flag, and it comes in kinds
+ * (docs/engineering/PRIVACY_AND_CONSENT.md): the contact agreeing to the role,
+ * the person being shared agreeing to the sharing, recording consent, and
+ * consent to process data.
+ */
+export const CONSENT_KINDS = ['contact_role', 'location_sharing', 'recording', 'data_processing'] as const;
+export type ConsentKind = (typeof CONSENT_KINDS)[number];
