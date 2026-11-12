@@ -8,6 +8,8 @@
  * account. A safety product must refuse to start in that state.
  */
 
+import { createRegionRegistry, parseEnabledRegions, type RegionRegistry } from '@lumo/region-profiles';
+
 const MIN_JWT_SECRET_LENGTH = 32;
 
 export function requireEnv(name: string): string {
@@ -123,4 +125,24 @@ export function getDataEncryptionKeyring(env: NodeJS.ProcessEnv = process.env): 
   }
 
   return { currentId, keys };
+}
+
+/**
+ * Which markets Lumo serves, and the gate that decides whether it may (ADR-0011).
+ *
+ *   ENABLED_REGIONS   comma-separated profile ids, e.g. "PK,US". Unset or blank means
+ *                     none — which is allowed: the API starts and serves no market.
+ *
+ * A market can be switched on only if its profile is complete AND its legal review
+ * is approved. In production anything less makes the API REFUSE TO START, rather
+ * than serve users under rules nobody has signed off. Outside production a draft may
+ * be enabled so the system can be built against it; it is marked internal-testing and
+ * can never pass for live.
+ *
+ * This gates SERVICE, not safety information: emergency numbers are shown from any
+ * known profile whether or not its market is enabled.
+ */
+export function getRegionRegistry(env: NodeJS.ProcessEnv = process.env): RegionRegistry {
+  const environment = env.NODE_ENV === 'production' ? 'production' : env.NODE_ENV === 'test' ? 'test' : 'development';
+  return createRegionRegistry({ enabled: parseEnabledRegions(env.ENABLED_REGIONS), environment });
 }

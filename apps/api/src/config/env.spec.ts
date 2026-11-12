@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { getCorsOrigins, getDataEncryptionKeyring, getJwtSecret, getPort, requireEnv } from './env';
+import { getCorsOrigins, getDataEncryptionKeyring, getJwtSecret, getPort, getRegionRegistry, requireEnv } from './env';
 
 const VALID_SECRET = 'a'.repeat(48);
 
@@ -154,6 +154,40 @@ describe('getDataEncryptionKeyring', () => {
     } finally {
       if (before === undefined) delete process.env.DATA_ENCRYPTION_KEY;
       else process.env.DATA_ENCRYPTION_KEY = before;
+    }
+  });
+});
+
+describe('getRegionRegistry', () => {
+  it('starts with no markets enabled when ENABLED_REGIONS is unset — nothing is served, and that is allowed', () => {
+    for (const NODE_ENV of ['production', 'test', 'development', undefined]) {
+      expect(getRegionRegistry({ NODE_ENV } as NodeJS.ProcessEnv).enabled).toEqual([]);
+    }
+  });
+
+  it('REFUSES TO START in production when a listed market is a draft with a pending legal review', () => {
+    expect(() => getRegionRegistry({ NODE_ENV: 'production', ENABLED_REGIONS: 'PK' } as NodeJS.ProcessEnv)).toThrow(/Cannot enable "PK" in production/);
+    expect(() => getRegionRegistry({ NODE_ENV: 'production', ENABLED_REGIONS: 'US' } as NodeJS.ProcessEnv)).toThrow(/LEGAL_REVIEW_PENDING/);
+  });
+
+  it('outside production a draft may be enabled, marked internal-testing', () => {
+    for (const NODE_ENV of ['test', 'development', undefined]) {
+      const r = getRegionRegistry({ NODE_ENV, ENABLED_REGIONS: 'PK,US' } as NodeJS.ProcessEnv);
+      expect(r.enabled).toEqual([{ id: 'PK', mode: 'internal-testing' }, { id: 'US', mode: 'internal-testing' }]);
+    }
+  });
+
+  it('refuses a market that does not exist, in every environment', () => {
+    expect(() => getRegionRegistry({ NODE_ENV: 'test', ENABLED_REGIONS: 'XX' } as NodeJS.ProcessEnv)).toThrow(/no such profile/);
+  });
+
+  it('reads process.env by default', () => {
+    const before = process.env.ENABLED_REGIONS;
+    delete process.env.ENABLED_REGIONS;
+    try {
+      expect(getRegionRegistry().enabled).toEqual([]);
+    } finally {
+      if (before !== undefined) process.env.ENABLED_REGIONS = before;
     }
   });
 });

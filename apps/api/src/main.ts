@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
-import { getCorsOrigins, getDataEncryptionKeyring, getJwtSecret, getPort } from './config/env';
+import { getCorsOrigins, getDataEncryptionKeyring, getJwtSecret, getPort, getRegionRegistry } from './config/env';
 
 async function bootstrap() {
   // Fail before the server binds, not on the first request that needs a
@@ -13,6 +13,9 @@ async function bootstrap() {
   // Same reasoning for the key personal data is encrypted with (KI-26): without it
   // the API would have nothing to read contacts' phone numbers with.
   getDataEncryptionKeyring();
+  // And for the markets: a profile that is incomplete or not legally approved must not
+  // be served in production, and the API refuses to start rather than serve it.
+  getRegionRegistry();
 
   const app = await NestFactory.create(AppModule);
 
