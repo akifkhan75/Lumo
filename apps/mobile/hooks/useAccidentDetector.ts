@@ -7,6 +7,11 @@ const ACCIDENT_THRESHOLD = 6.0; // High G-force (~60 m/s²) for crash detection
 const ACCIDENT_TIMEOUT = 1000; // ms to prevent multiple triggers
 
 export const useAccidentDetector = (onDetect: () => void, enabled: boolean = true) => {
+  // KI-20: held in a ref so a change of callback identity does not tear the
+  // subscription down. See useShakeDetector.
+  const onDetectRef = useRef(onDetect);
+  onDetectRef.current = onDetect;
+
   const lastDetectionTimeRef = useRef(0);
   const subscriptionRef = useRef<AccelerometerSubscription | null>(null);
 
@@ -26,7 +31,7 @@ export const useAccidentDetector = (onDetect: () => void, enabled: boolean = tru
             if (now - lastDetectionTimeRef.current > ACCIDENT_TIMEOUT) {
               lastDetectionTimeRef.current = now;
               console.log('Accident detected with force:', force);
-              onDetect();
+              onDetectRef.current();
             }
           }
         });
@@ -49,6 +54,6 @@ export const useAccidentDetector = (onDetect: () => void, enabled: boolean = tru
         subscriptionRef.current = null;
       }
     };
-  }, [enabled, onDetect]);
+  }, [enabled]);
 };
 

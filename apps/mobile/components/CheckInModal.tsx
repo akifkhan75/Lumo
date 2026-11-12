@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { IconArrowLeft, IconTimer } from '../constants';
+import DemoBanner from './common/DemoBanner';
 
 const Container = styled(View)`
   flex: 1;
@@ -97,38 +98,42 @@ const CheckInScreen = () => {
   const route = useRoute();
   const { onEmergency } = route.params as { onEmergency: () => void; };
 
+  // The deadline is the source of truth, not a counter. Decrementing once per
+  // tick silently loses time whenever the JS thread is paused (backgrounded,
+  // Doze, Low Power Mode), so a check-in that should have expired would not
+  // fire. Deriving from a wall-clock deadline makes the timer correct the
+  // moment the app runs again.
+  //
+  // KNOWN LIMIT: this still only fires while the app is alive. Firing a missed
+  // check-in from a terminated app needs a scheduled background task, which is
+  // Phase 1 work (see docs/specs/SAFETY_CHECK.md).
+  const [deadline, setDeadline] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const timerRef = useRef<any>(null);
-  const onClose = () => navigation.goBack();
 
-  const clearTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
+  const onClose = useCallback(() => navigation.goBack(), [navigation]);
 
   useEffect(() => {
-    if (timeLeft === null) return;
-    if (timeLeft <= 0) {
-      clearTimer();
-      onClose();
-      onEmergency();
+    if (deadline === null) {
+      setTimeLeft(null);
       return;
     }
-    
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => (prev !== null ? prev - 1 : null));
-    }, 1000);
+    const tick = () => setTimeLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
 
-    return () => clearTimer();
-  }, [timeLeft, onEmergency, onClose]);
+  useEffect(() => {
+    if (deadline === null || timeLeft === null || timeLeft > 0) return;
+    setDeadline(null);
+    onClose();
+    onEmergency();
+  }, [deadline, timeLeft, onClose, onEmergency]);
 
-  const handleStartTimer = (seconds: number) => setTimeLeft(seconds);
-  
+  const handleStartTimer = (seconds: number) => setDeadline(Date.now() + seconds * 1000);
+
   const handleCancelTimer = () => {
-    clearTimer();
-    setTimeLeft(null);
+    setDeadline(null);
     onClose();
   };
 
@@ -148,17 +153,22 @@ const CheckInScreen = () => {
         <Title>Scheduled Check-In</Title>
       </Header>
       
+      <DemoBanner>
+        A missed check-in opens the SOS screen locally. No contact is messaged,
+        and the timer only runs while this app is open.
+      </DemoBanner>
+
       <Body>
         {timeLeft !== null ? (
           <>
             <Description>Check-in required in:</Description>
             <TimerText>{formatTime(timeLeft)}</TimerText>
-            <Description style={{fontSize: 12}}>If you don't check-in before the timer runs out, an emergency alert will be automatically triggered.</Description>
+            <Description style={{fontSize: 12}}>If the timer runs out, Lumo opens the SOS screen on this phone. It does not yet contact anyone for you.</Description>
           </>
         ) : (
           <>
             <IconTimer size={96} color="#3b82f6" style={{marginBottom: 16}}/>
-            <Description>Set a timer. If you don't cancel it in time, we'll automatically send an alert to your emergency contacts.</Description>
+            <Description>Set a timer. If you don't cancel it in time, Lumo opens the SOS screen on this phone.</Description>
             <TimeOptionsGrid>
               {TIME_OPTIONS.map(opt => (
                 <TimeOptionButton key={opt.value} onPress={() => handleStartTimer(opt.value)}>

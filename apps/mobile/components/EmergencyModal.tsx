@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { UserSettings } from '../types';
 import { getSelfDefenseTips } from '../services/apiService';
-import { IconArrowLeft, IconVolumeUp, IconZap, IconMic, IconUsers } from '../constants';
+import { IconArrowLeft, IconVolumeUp, IconZap, IconMic } from '../constants';
+import DemoBanner from './common/DemoBanner';
 
 const Container = styled(View)`
   flex: 1;
   justify-content: space-between;
   padding: 16px;
-  background-color: #3b82f6; /* blue-500 */
+  background-color: #475569; /* slate-600 — deliberately not an "active" colour */
 `;
 
 const Header = styled(View)`
@@ -63,14 +64,6 @@ const ContactsRing = styled(View)`
     justify-content: center;
 `;
 
-const ContactCircleImage = styled(Image)`
-    width: 64px;
-    height: 64px;
-    border-radius: 32px;
-    border-width: 4px;
-    border-color: white;
-`;
-
 const LumoLogoContainer = styled(View)`
     position: absolute;
     align-items: center;
@@ -107,33 +100,31 @@ const ButtonText = styled(Text)`
     font-weight: bold;
 `;
 
-const NearbyVolunteersContainer = styled(View)`
+const BannerSpacer = styled(View)`
     margin-top: 16px;
-    padding: 12px;
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
 `;
 
-const NotifyingText = styled(Text)`
-    font-size: 14px;
-    font-weight: 600;
-    color: white;
-    text-align: center;
+const CallButton = styled(TouchableOpacity)`
+    width: 100%;
+    background-color: #dc2626; /* red-600 */
+    padding: 16px 24px;
+    border-radius: 9999px;
+    align-items: center;
 `;
 
 // --- Components --- //
 
 import Feather from '@expo/vector-icons/Feather';
 
-const ContactCircle = ({role, icon, color, angle}: {role: string, icon: string, color: string, angle: number}) => (
+const ContactCircle = ({role, icon, angle}: {role: string, icon: string, angle: number}) => (
     <View style={{ position: 'absolute', top: '50%', left: '50%', marginTop: -32, marginLeft: -32, transform: [{ rotate: `${angle}deg` }, { translateX: 110 }, { rotate: `-${angle}deg` }] }}>
         <View style={{
             width: 64,
             height: 64,
             borderRadius: 32,
             borderWidth: 3,
-            borderColor: '#ffffff',
-            backgroundColor: color,
+            borderColor: 'rgba(255,255,255,0.5)',
+            backgroundColor: '#64748b', /* slate-500 — placeholder, not a live recipient */
             alignItems: 'center',
             justifyContent: 'center',
             shadowColor: '#000',
@@ -148,13 +139,17 @@ const ContactCircle = ({role, icon, color, angle}: {role: string, icon: string, 
     </View>
 );
 
-const contacts = [
-    { name: "Police", role: "POLICE", icon: "shield", color: "#1e40af" },
-    { name: "EMS", role: "EMS", icon: "activity", color: "#dc2626" },
-    { name: "Mom", role: "MOM", icon: "heart", color: "#db2777" },
-    { name: "Security", role: "SEC", icon: "lock", color: "#d97706" },
-    { name: "Dad", role: "DAD", icon: "phone", color: "#2563eb" },
-    { name: "Guard", role: "GUARD", icon: "users", color: "#059669" },
+// Illustration, not data. These are not the user's contacts and none of them
+// is contacted. The ring is kept because the layout is the one Phase 1 fills
+// with real recipients and real per-channel delivery state; it is rendered
+// greyed out and captioned so it cannot be read as "these people know".
+const placeholderContacts = [
+    { name: "Police", role: "POLICE", icon: "shield" },
+    { name: "EMS", role: "EMS", icon: "activity" },
+    { name: "Mom", role: "MOM", icon: "heart" },
+    { name: "Security", role: "SEC", icon: "lock" },
+    { name: "Dad", role: "DAD", icon: "phone" },
+    { name: "Guard", role: "GUARD", icon: "users" },
 ];
 
 const DefenseGuide = ({ onFinish }: { onFinish: () => void }) => {
@@ -170,7 +165,7 @@ const DefenseGuide = ({ onFinish }: { onFinish: () => void }) => {
             <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 20, alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
                 <Text style={{fontSize: 28, fontWeight: 'bold', color: 'white', marginBottom: 16, textAlign: 'center'}}>SELF-DEFENSE MODE</Text>
                  <IconVolumeUp size={48} color="#fbbF04" />
-                 <Text style={{fontWeight: '600', color: '#fbbF04', marginBottom: 24, marginTop: 16}}>LOUD ALARM ACTIVE</Text>
+                 <Text style={{fontWeight: '600', color: '#fbbF04', marginBottom: 24, marginTop: 16}}>Alarm not implemented — no sound is playing</Text>
                 {isLoading ? <ActivityIndicator color="white" /> : <Text style={{fontSize: 18, color: 'white', textAlign: 'center', minHeight: 60}}>{tips[0] || ''}</Text>}
                 <TouchableOpacity onPress={onFinish} style={{marginTop: 32, backgroundColor: 'white', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 999}}>
                     <Text style={{color: 'black', fontWeight: 'bold'}}>End Defense Mode</Text>
@@ -180,12 +175,6 @@ const DefenseGuide = ({ onFinish }: { onFinish: () => void }) => {
     );
 };
 
-const NearbyVolunteers = () => (
-    <NearbyVolunteersContainer>
-        <NotifyingText><IconUsers size={14} color="white"/> Notifying Nearby Volunteers...</NotifyingText>
-    </NearbyVolunteersContainer>
-);
-
 
 const EmergencyScreen = () => {
   const navigation = useNavigation();
@@ -194,7 +183,6 @@ const EmergencyScreen = () => {
 
   const [showDefenseGuide, setShowDefenseGuide] = useState(false);
   const onClose = () => navigation.goBack();
-  const isRecording = false; 
 
   return (
     <Container>
@@ -205,26 +193,36 @@ const EmergencyScreen = () => {
         </BackButton>
         <TitleContainer>
             <Subtitle>SOS</Subtitle>
-            <Title>Emergency Calling...</Title>
+            <Title>Nothing has been sent</Title>
             <Description>
-                Notifying your contacts, emergency services, and sharing your location.
-                {settings.personalInfo.bloodType && ` Blood type: ${settings.personalInfo.bloodType}.`}
+                Lumo cannot yet contact anyone. No message has gone to your
+                contacts, no emergency service has been called, and your
+                location has not been shared. If you need help now, call your
+                local emergency number.
+                {settings.personalInfo.bloodType && ` Your saved blood type is ${settings.personalInfo.bloodType}.`}
             </Description>
         </TitleContainer>
+        <BannerSpacer>
+            <DemoBanner>
+                This screen is a demonstration of the SOS layout. Alerting,
+                location sharing and recording are not built yet.
+            </DemoBanner>
+        </BannerSpacer>
       </Header>
       
       <MainContent>
         <ContactsRing>
-            {contacts.map((c, i) => <ContactCircle key={c.name} {...c} angle={(i * 360/contacts.length)} />)}
+            {placeholderContacts.map((c, i) => (
+                <ContactCircle key={c.name} {...c} angle={(i * 360 / placeholderContacts.length)} />
+            ))}
             <LumoLogoContainer>
                 <LumoText>Lumo</LumoText>
-                <LumoSubtext>Safety is Freedom</LumoSubtext>
+                <LumoSubtext>Example recipients — not contacted</LumoSubtext>
             </LumoLogoContainer>
         </ContactsRing>
       </MainContent>
       
       <Footer>
-        <NearbyVolunteers />
         <View style={{flexDirection: 'row', justifyContent: 'center', gap: 16, marginVertical: 8}}>
             <TouchableOpacity onPress={() => setShowDefenseGuide(true)} style={{alignItems: 'center'}}>
                 <View style={{width: 64, height: 64, borderRadius: 32, backgroundColor: '#f59e0b', justifyContent: 'center', alignItems: 'center'}}>
@@ -232,15 +230,26 @@ const EmergencyScreen = () => {
                 </View>
                 <Text style={{color: 'white', fontSize: 12, fontWeight: '600', marginTop: 4}}>Defense</Text>
             </TouchableOpacity>
-            <View style={{alignItems: 'center', opacity: isRecording ? 1 : 0.7}}>
+            <View style={{alignItems: 'center', opacity: 0.45}} accessibilityState={{disabled: true}}>
                 <View style={{width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center'}}>
-                    <IconMic size={32} color={isRecording ? '#ef4444' : 'white'}/>
+                    <IconMic size={32} color="white"/>
                 </View>
-                <Text style={{color: 'white', fontSize: 12, fontWeight: '600', marginTop: 4}}>{isRecording ? 'Recording' : 'Record Mic'}</Text>
+                <Text style={{color: 'white', fontSize: 12, fontWeight: '600', marginTop: 4}}>Not available</Text>
             </View>
         </View>
+        {/*
+          The one thing on this screen that actually works. Opening the dialler
+          is user-initiated, which is the only form of emergency dialling the
+          platforms permit and the only one Lumo should ever perform. It is
+          left empty rather than pre-filled because the correct number depends
+          on where the user physically is, and the region profile that resolves
+          that is Phase 1.
+        */}
+        <CallButton onPress={() => Linking.openURL('tel:')} accessibilityRole="button">
+          <ButtonText>Open phone dialler</ButtonText>
+        </CallButton>
         <BottomButton onPress={onClose}>
-          <ButtonText>I'm Safe Now</ButtonText>
+          <ButtonText>Close</ButtonText>
         </BottomButton>
       </Footer>
     </Container>

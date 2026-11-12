@@ -223,3 +223,12 @@ export const PinPulseCircle = styled(Animated.View)<{ pulseColor: string }>`
     border-radius: 16px;
     background-color: ${props => props.pulseColor};
 `;
+
+// Sits under the dashboard header, over the placeholder map. Removed with the
+// placeholder map.
+export const DemoMapNotice = styled.View`
+  position: absolute;
+  top: 110px;
+  left: 16px;
+  right: 16px;
+`;

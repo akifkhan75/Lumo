@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Switch, SafeAreaView } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { UserSettings, SettingsStackParamList } from '../../types';
+import { SettingsStackParamList } from '../../types';
 import { IconProfile, IconContact, IconLocation, IconAlert, IconLogout, IconChevronRight, IconArrowLeft } from '../../constants';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 

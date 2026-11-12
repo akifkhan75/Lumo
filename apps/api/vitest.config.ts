@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
     globals: true,
+    setupFiles: ['./test/setup-env.ts'],
     root: './',
     include: ['**/*.spec.ts'],
   },

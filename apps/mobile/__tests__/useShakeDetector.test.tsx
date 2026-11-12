@@ -101,4 +101,37 @@ describe('useShakeDetector', () => {
     expect(Accelerometer.requestPermissionsAsync).toHaveBeenCalled();
     expect(Accelerometer.addListener).toHaveBeenCalled();
   });
+
+  // Regression: KI-20. handleActivateEmergency is rebuilt on every settings
+  // save. If the subscription is keyed on its identity, a detector that is
+  // meant to be always on gets torn down and restarted by unrelated state.
+  it('keeps one subscription when only the callback identity changes', async () => {
+    let root: any;
+
+    await act(async () => {
+      root = renderer.create(<HookWrapper onShake={() => {}} enabled={true} />);
+      await Promise.resolve();
+    });
+
+    expect(Accelerometer.addListener).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.update(<HookWrapper onShake={() => {}} enabled={true} />);
+      await Promise.resolve();
+    });
+
+    expect(Accelerometer.addListener).toHaveBeenCalledTimes(1);
+    expect(mockRemove).not.toHaveBeenCalled();
+
+    // The newest callback is still the one that fires.
+    const latest = jest.fn();
+    await act(async () => {
+      root.update(<HookWrapper onShake={latest} enabled={true} />);
+      await Promise.resolve();
+    });
+    act(() => {
+      listenerCallback({ x: 3.0, y: 3.0, z: 0 });
+    });
+    expect(latest).toHaveBeenCalledTimes(1);
+  });
 });

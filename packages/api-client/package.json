@@ -8,7 +8,8 @@
     "build": "tsc",
     "dev": "tsc -w",
     "test": "vitest run",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@lumo/types": "workspace:*"

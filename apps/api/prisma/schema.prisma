@@ -39,6 +39,10 @@ model TrustedContact {
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Every settings read loads a user's contacts; a sequential scan of the
+  // whole table is not acceptable on the path that resolves who to alert.
+  @@index([userId])
 }
 
 enum DangerZoneSeverity {
@@ -69,4 +73,8 @@ model DangerZone {
   
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
+
+  @@index([userId])
+  // findAll orders by reportedAt desc and has no bound on table size.
+  @@index([reportedAt])
 }

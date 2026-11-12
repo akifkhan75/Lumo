@@ -1,63 +1,14 @@
-export enum ModalType {
-  FakeCall = 'FAKE_CALL',
-  Settings = 'SETTINGS',
-  FollowMe = 'FOLLOW_ME',
-  CheckIn = 'CHECK_IN',
-  CommunitySafety = 'COMMUNITY_SAFETY',
-  ReportDangerZone = 'REPORT_DANGER_ZONE',
-  SafetyAssistant = 'SAFETY_ASSISTANT',
-}
+// Shared domain types live in @lumo/types and are re-exported here so that
+// mobile code can keep importing from a single local module. They were
+// previously duplicated verbatim in this file (KI-6): two copies of the same
+// contract that the compiler had no way to keep in step, so the client and the
+// server could drift apart silently.
+//
+// Only types that are genuinely mobile-specific — the navigation parameter
+// lists — are declared here.
+export * from '@lumo/types';
 
-export type ChatRole = 'user' | 'model';
-
-export interface ChatMessage {
-  role: ChatRole;
-  text: string;
-}
-
-export interface TrustedContact {
-  id: string;
-  name: string;
-  phone: string;
-}
-
-export interface PersonalInfo {
-  fullName: string;
-  bloodType: string;
-  allergies: string;
-}
-
-export interface SecuritySettings {
-  locationSharingEnabled: boolean;
-  shareLocationOnSos: boolean;
-  sendSmsOnSos: boolean;
-  shakeToSosEnabled: boolean;
-  voiceActivationEnabled: boolean;
-  accidentDetectionEnabled: boolean;
-}
-
-export interface UserSettings {
-  personalInfo: PersonalInfo;
-  trustedContacts: TrustedContact[];
-  security: SecuritySettings;
-}
-
-export interface FakeCallScript {
-  callerName: string;
-  script: string[];
-}
-
-export type DangerZoneSeverity = 'low' | 'medium' | 'high';
-export type DangerZoneType = 'Theft' | 'Assault' | 'Harassment' | 'Poor Lighting' | 'Suspicious Activity';
-
-export interface DangerZone {
-  id: string;
-  location: { top: string; left: string };
-  severity: DangerZoneSeverity;
-  type: DangerZoneType;
-  description: string;
-  reportedAt: string;
-}
+import type { UserSettings, DangerZoneSeverity, DangerZoneType } from '@lumo/types';
 
 export type RootStackParamList = {
   Auth: undefined;

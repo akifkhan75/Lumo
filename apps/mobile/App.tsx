@@ -2,8 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing } from 'react-native';
 import { NavigationContainer, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { StackNavigationProp } from '@react-navigation/stack';
-import { ActionButton, BottomNavContainer, Container, DangerZonePinContainer, ErrorContainer, ErrorText, Header, HeaderActions, HeaderTextContainer, HelloText, LoadingContainer, LocationText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, PinCircleBase, PinPulseCircle, SafetyAssistantButton, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
+import { ActionButton, BottomNavContainer, Container, DangerZonePinContainer, DemoMapNotice, ErrorContainer, ErrorText, Header, HeaderActions, HeaderTextContainer, HelloText, LoadingContainer, LocationText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, PinCircleBase, PinPulseCircle, SafetyAssistantButton, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
 import { useShakeDetector } from './hooks/useShakeDetector';
 import { useVoiceActivation } from './hooks/useVoiceActivation';
 import { useAccidentDetector } from './hooks/useAccidentDetector';
@@ -25,6 +24,7 @@ import CheckInScreen from './components/CheckInModal';
 import CommunitySafetyScreen from './components/CommunitySafetyModal';
 import ReportDangerZoneScreen from './components/ReportDangerZoneModal';
 import SafetyAssistantScreen from './components/SafetyAssistantModal';
+import DemoBanner from './components/common/DemoBanner';
 
 
 const DangerZonePin = ({ zone }: { zone: DangerZone }) => {
@@ -105,7 +105,7 @@ const DashboardScreen = () => {
     navigation.navigate('Emergency', { settings: userSettings });
   }, [userSettings, navigation]);
 
-  const handleSaveSettings = async (newSettings: UserSettings) => {
+  const handleSaveSettings = useCallback(async (newSettings: UserSettings) => {
     try {
         const updatedSettings = await apiService.updateSettings(newSettings);
         setUserSettings(updatedSettings);
@@ -113,7 +113,7 @@ const DashboardScreen = () => {
         Alert.alert("Error", "Failed to save settings. Please try again.");
         console.error(err);
     }
-  };
+  }, []);
 
   const handleAddDangerZone = async (details: { type: DangerZoneType; severity: DangerZoneSeverity; description: string; }) => {
     try {
@@ -134,20 +134,40 @@ const DashboardScreen = () => {
   const accidentEnabled = userSettings?.security.accidentDetectionEnabled ?? false;
 
   useShakeDetector(handleActivateEmergency, shakeEnabled);
-  const { error: voiceError, isListening } = useVoiceActivation(handleActivateEmergency, voiceEnabled);
+  const { error: voiceError, isListening, clearError: clearVoiceError } = useVoiceActivation(handleActivateEmergency, voiceEnabled);
   useAccidentDetector(handleActivateEmergency, accidentEnabled);
-  
+
+  // Read inside the effect below without making it a dependency. Saving
+  // settings replaces this object, and an effect that both depends on it and
+  // writes to it re-fires forever — previously one alert and one PUT per
+  // render, indefinitely.
+  const userSettingsRef = useRef(userSettings);
+  userSettingsRef.current = userSettings;
+  const handledVoiceErrorRef = useRef<string | null>(null);
+
   useEffect(() => {
-      if (voiceError) {
-          Alert.alert("Voice Activation Warning", `${voiceError}\n\nThe feature has been disabled. You can try re-enabling it in Settings.`);
-          if(userSettings){
-            handleSaveSettings({
-                ...userSettings,
-                security: { ...userSettings.security, voiceActivationEnabled: false }
-            });
-          }
+      if (!voiceError) {
+          handledVoiceErrorRef.current = null;
+          return;
       }
-  }, [voiceError, userSettings]);
+      // One alert per distinct failure, never one per render.
+      if (handledVoiceErrorRef.current === voiceError) return;
+      handledVoiceErrorRef.current = voiceError;
+
+      Alert.alert(
+          "Voice activation stopped",
+          `${voiceError}\n\nHands-free SOS is off. The SOS button and shake-to-SOS still work. You can re-enable voice in Settings.`
+      );
+
+      const current = userSettingsRef.current;
+      if (current?.security.voiceActivationEnabled) {
+          handleSaveSettings({
+              ...current,
+              security: { ...current.security, voiceActivationEnabled: false }
+          });
+      }
+      clearVoiceError();
+  }, [voiceError, handleSaveSettings, clearVoiceError]);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -176,7 +196,7 @@ const DashboardScreen = () => {
          <Header>
             <HeaderTextContainer>
                 <HelloText>Hello {userSettings.personalInfo.fullName},</HelloText>
-                <LocationText>San diago, 8453 Street, Italy</LocationText>
+<LocationText>Location unavailable — Lumo does not read your position yet</LocationText>
                 {isListening && <VoiceGuardText><IconMic size={12} color="#16a34a" /> Voice Guard Active</VoiceGuardText>}
             </HeaderTextContainer>
             <HeaderActions>
@@ -188,6 +208,12 @@ const DashboardScreen = () => {
                 </ActionButton>
             </HeaderActions>
          </Header>
+         <DemoMapNotice>
+            <DemoBanner>
+              The map is a static picture. The pins are sample reports placed at
+              random — they are not positions, and the avatar is not you.
+            </DemoBanner>
+         </DemoMapNotice>
          <UserLocationPinContainer style={{transform: [{translateX: -32}, {translateY: -32}]}}>
             <UserImagePulse style={{ transform: [{ scale: pulseAnim }] }} />
             <UserImageContainer>

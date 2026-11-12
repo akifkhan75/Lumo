@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Required: the API refuses to start, and its tests refuse to run, without a
+  # real secret (KI-9). This value exists only inside the runner.
+  JWT_SECRET: ci-only-secret-not-used-anywhere-real-0123456789
+
+jobs:
+  verify:
+    name: lint · typecheck · build · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version:` — the root package.json's packageManager field is the
+      # single source of truth, and naming it twice is an error.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  # The honesty check is a separate job so its failure is unambiguous in the
+  # PR checks list. It is not a style rule (PLAT-9).
+  no-fake-success:
+    name: no unproven success claims
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/check-no-fake-success.mjs
+
+  migrations:
+    name: migrations apply cleanly and match the schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: lumo
+          POSTGRES_PASSWORD: lumo_password
+          POSTGRES_DB: lumo_db
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U lumo -d lumo_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://lumo:lumo_password@localhost:5434/lumo_db?schema=public
+      SHADOW_DATABASE_URL: postgresql://lumo:lumo_password@localhost:5434/lumo_shadow?schema=public
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version:` — the root package.json's packageManager field is the
+      # single source of truth, and naming it twice is an error.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        working-directory: apps/api
+        run: pnpm db:deploy
+
+      # The shadow database must exist before migrate diff can replay the
+      # migration history into it. Created through Prisma rather than psql so
+      # the job does not depend on a client being present on the runner.
+      - name: Create the shadow database
+        working-directory: apps/api
+        run: echo 'CREATE DATABASE lumo_shadow;' | pnpm exec prisma db execute --url "$DATABASE_URL" --stdin
+
+      - name: Fail if the schema has drifted from the migration history
+        working-directory: apps/api
+        run: |
+          DIFF=$(pnpm exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --script)
+          echo "$DIFF"
+          if ! echo "$DIFF" | grep -q 'This is an empty migration'; then
+            echo "::error::schema.prisma does not match prisma/migrations. Run 'pnpm db:migrate'."
+            exit 1
+          fi

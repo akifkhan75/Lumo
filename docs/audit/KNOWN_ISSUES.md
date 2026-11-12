@@ -22,6 +22,8 @@ building on something real and building on a prototype.
 
 ## 🔴 KI-3 — SOS notifies nobody
 
+> **Partially addressed — 2026-10-27.** Not fixed. The screen no longer claims otherwise — it says "Nothing has been sent" in those words and offers the phone dialler. `scripts/check-no-fake-success.mjs` fails the build if the old copy returns.
+
 **`apps/mobile/components/EmergencyModal.tsx`**
 
 The emergency screen renders "Emergency Calling…", "Notifying your contacts,
@@ -44,6 +46,8 @@ plus `expo-location` on the client. Depends on KI-2.
 ---
 
 ## 🔴 KI-2 — There is no real map, and no real coordinates
+
+> **Partially addressed — 2026-10-27.** Not fixed. The screens that show it now say so: the dashboard map carries a demo banner and reports state that they are placed at random on a picture.
 
 **`apps/api/prisma/schema.prisma`, `danger-zones.service.ts`, `App.tsx`**
 
@@ -75,6 +79,8 @@ dropped once the static map is gone.
 ---
 
 ## 🔴 KI-1 — The API address is a hardcoded LAN IP
+
+> **Resolved — 2026-10-27.** The base URL comes from `EXPO_PUBLIC_API_URL`, falling back in development to the host serving the JS bundle. The API default port is 3005, matching `.env.example`.
 
 **`apps/mobile/services/apiService.ts:5-6`**
 
@@ -117,6 +123,8 @@ session on boot, clear-on-logout, a refresh token, and a 401 interceptor in
 
 ## 🟠 KI-5 — No Prisma migrations exist
 
+> **Resolved — 2026-10-27.** Baseline migration at `apps/api/prisma/migrations/20261027000000_baseline`, verified against a clean postgres:15 with no drift. CI fails if `schema.prisma` and the migration history disagree.
+
 `apps/api/prisma/` contains only `schema.prisma` and `seed.ts`. There is **no
 `migrations/` directory**. The schema has only ever been applied with `db push`,
 which means no reviewable history and no safe production deploy path.
@@ -130,6 +138,8 @@ then migrations only.
 ---
 
 ## 🟠 KI-7 — Settings updates are unvalidated
+
+> **Resolved — 2026-10-27.** `UpdateSettingsDto` validates the body; the contact set is replaced inside one transaction. Omitting `trustedContacts` leaves them alone, `[]` clears them.
 
 **`apps/api/src/settings/settings.controller.ts`**
 
@@ -152,6 +162,8 @@ save and is not transactional — a failure between the two leaves the user with
 
 ## 🟠 KI-8 — Three features are UI-only mocks
 
+> **Partially addressed — 2026-10-27.** Not fixed. All three carry a `DemoBanner` saying what does not work.
+
 | Feature               | File                       | What is fake                                                                                                                                                                  |
 | --------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Follow Me             | `FollowMeModal.tsx`        | `shareLink` is the constant `https://lumo.example/follow/jS8fD9kL`. No session is created, no location streamed. "Start Sharing" sets local state.                            |
@@ -164,6 +176,8 @@ API and are **not** in this list.
 ---
 
 ## 🟡 KI-6 — `packages/types` is duplicated in the mobile app
+
+> **Resolved — 2026-10-27.** `apps/mobile/types.ts` re-exports `@lumo/types` and declares only the navigation parameter lists.
 
 `apps/mobile/types.ts` is a byte-for-byte copy of `packages/types/src/index.ts`
 plus `RootStackParamList` / `SettingsStackParamList`. Both are imported across the
@@ -181,6 +195,8 @@ export type RootStackParamList = {/* … */};
 ---
 
 ## 🟡 KI-9 — Insecure secret fallbacks
+
+> **Resolved — 2026-10-27.** `getJwtSecret()` is the only accessor and throws when the variable is missing, under 32 characters, or still an example value. `bootstrap()` calls it before the server binds. Verified against the built container.
 
 `JWT_SECRET` falls back to `'super-secret-default-key'` in **two** places
 (`auth.module.ts`, `jwt.strategy.ts`). A deploy that forgets the env var ships a
@@ -208,6 +224,8 @@ email already exists" never reaches the user), and leaves a
 
 ## 🟡 KI-11 — No CI, no API container
 
+> **Resolved — 2026-10-27.** Three CI jobs (verify · no-fake-success · migrations) and `apps/api/Dockerfile`, built and smoke-tested.
+
 No `.github/` directory. `docker/` is an empty directory and there is no
 `Dockerfile` for the API, despite a `.dockerignore` at the root.
 `docs/archive/PROJECT_AUDIT.md` lists "DevOps: Docker, Docker Compose, GitHub
@@ -226,6 +244,8 @@ model and lifting the string into config rather than repeating it.
 ---
 
 ## ⚪ KI-13 — Dead files and directories
+
+> **Resolved — 2026-10-27.** `packages/config`, `packages/validation` and `packages/eslint-config` deleted.
 
 | Path                                                               | Status                                                                   |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
@@ -262,6 +282,8 @@ Found while writing the specification suite. Full detail and severity rationale 
 
 ### 🔴 KI-16 — Unbounded alert and request loop
 
+> **Resolved — 2026-10-27.** The hook clears its error when the feature is turned off and exposes `clearError`; the screen handles each distinct failure once, reading settings through a ref so the effect no longer depends on what it writes.
+
 **`apps/mobile/App.tsx:140-151`.** The effect depends on `userSettings`, and its body
 calls `handleSaveSettings`, which calls `setUserSettings(...)` — a new object identity,
 so the effect re-runs. `voiceError` never clears (`useVoiceActivation` sets it on error
@@ -274,6 +296,8 @@ error — i.e. in the hands-free safety path.
 
 ### 🟠 KI-17 — `pnpm typecheck` is a silent no-op
 
+> **Resolved — 2026-10-27.** Every package defines `tsc --noEmit`, both test suites are inside the checked set, and it is a CI gate.
+
 `turbo run typecheck --dry=json` resolves **all 8 tasks to `<NONEXISTENT>`** — no
 package defines the script. It exits 0 having checked nothing, while the repo's own
 docs instructed using it as a quality gate.
@@ -282,14 +306,20 @@ docs instructed using it as a quality gate.
 
 ### 🟠 KI-18 — `pnpm lint` fails, so it cannot gate CI
 
+> **Resolved — 2026-10-27.** 0 errors. Generated output is no longer linted, and a warning ratchet at 46 stops the count growing.
+
 27 pre-existing errors: unused imports plus 20 × `jest is not defined` in
 `jest-setup.js` (missing ESLint jest env). Must be green before CI can enforce it.
 
 ### 🟡 KI-19 — `exhaustive-deps` not enforced
 
+> **Resolved — 2026-10-27.** The one `exhaustive-deps` error is fixed. The rule is already an error under `@react-native`; what hid KI-16 was that lint never ran clean enough to read.
+
 Which is why KI-16 was invisible. Enable as an error on the mobile app.
 
 ### 🟠 KI-20 — Sensor re-subscription churn
+
+> **Resolved — 2026-10-27.** All three hooks hold their callback in a ref and key their subscription on `enabled` alone. Regression tests assert one subscription across a callback identity change.
 
 `handleActivateEmergency` is keyed on `userSettings` and passed to all three hooks, so
 **every settings save** tears down the accelerometer listeners and destroys/restarts
@@ -302,15 +332,21 @@ magnitude. Battery doubled for no benefit; merge into one subscription, two thre
 
 ### 🟠 KI-22 — No API hardening
 
+> **Resolved — 2026-10-27.** helmet, an explicit CORS allowlist (empty by default) and a throttler at 10/s and 120/min. Verified against the running container.
+
 No `helmet`, no `compression`, no `@nestjs/throttler`. `/auth/login` is openly
 brute-forceable; `/ai/*` is an uncapped cost vector.
 
 ### 🟠 KI-23 — No global exception filter
 
+> **Resolved — 2026-10-27.** `AllExceptionsFilter` returns one shape with a reference id, keeps validation detail, and never returns internals.
+
 Validation returns `message` as an **array**, plain exceptions as a **string**, so
 arrays reach the UI stringified. Stack traces may leak.
 
 ### 🟡 KI-24 — No pagination, no indexes
+
+> **Partially addressed — 2026-10-27.** Indexes added — `TrustedContact(userId)`, `DangerZone(userId)`, `DangerZone(reportedAt)`. **Pagination is still missing**; `GET /danger-zones` remains an unbounded `findMany`.
 
 `GET /danger-zones` is an unbounded `findMany` over every row ever created, and the
 schema has **no explicit indexes at all** — not even on `reportedAt`, its sole sort key.
@@ -327,16 +363,25 @@ encryption.
 
 ---
 
-## Revised order of work
+## Phase 0 status — 2026-10-27
 
-Phase 0 of [`../product/ROADMAP.md`](../product/ROADMAP.md):
+**Resolved:** KI-1, KI-5, KI-6, KI-7, KI-9, KI-11, KI-13, KI-16, KI-17, KI-18,
+KI-19, KI-20, KI-22, KI-23.
 
-1. **KI-16** — an active defect in the safety path
-2. **KI-17, KI-18, KI-19** — make the quality gates real before relying on them
-3. **KI-9, KI-5** — secrets and migrations; small, and they gate deployability
-4. **KI-1** — config, so the app runs anywhere
-5. **KI-22, KI-23** — API hardening
-6. **KI-7, KI-10, KI-6** — correctness and cleanup
-7. **KI-11** — CI, so it all stays fixed
+**Partially addressed:** KI-2, KI-3, KI-8 (labelled in-app as demos, not
+implemented) · KI-24 (indexes done, pagination outstanding).
 
-Then Phase 1: **KI-2** (geo model) → **KI-3** (real SOS) — the product's reason to exist.
+**Still open:** KI-4 (in-memory auth state), KI-10 (login/signup bypass the
+shared client), KI-12 (dated Gemini model string), KI-14 (unreachable AI chat
+history), KI-15 (no accessibility pass), KI-21 (two accelerometer
+subscriptions), KI-25 (no observability), KI-26 (PII in plaintext).
+
+KI-21 is deliberately left: DET-4 replaces single-threshold impact detection
+with sequence analysis in Phase 3, and merging the two subscriptions now would
+be rewritten then. KI-15 is a Phase 1 gate, not a cleanup.
+
+### Next
+
+Phase 1 of [`../product/ROADMAP.md`](../product/ROADMAP.md): **KI-2** (a real
+geo model, via the `DangerZone` → `HazardReport` rename) → **KI-3** (a real
+SOS, behind the Verified Delivery Ledger) — the product's reason to exist.

@@ -216,6 +216,39 @@ describe('Feature and Modal Screens', () => {
         testRenderer.unmount();
       });
     });
+
+    // Regression: KI-19. The countdown used to decrement a counter once per
+    // tick, so any time the JS thread was paused (backgrounded, Doze, Low
+    // Power Mode) was simply lost and an overdue check-in never fired. The
+    // deadline is now wall-clock, so it expires as soon as the app runs again.
+    it('expires against the wall clock, not against ticks it managed to run', () => {
+      const onEmergency = jest.fn();
+      mockRouteParams = { onEmergency };
+      let testRenderer: any;
+      act(() => {
+        testRenderer = renderer.create(<CheckInScreen />);
+      });
+
+      // Start the 15-minute timer.
+      const buttons = getPressableButtons(testRenderer.root);
+      act(() => {
+        buttons[1].props.onPress();
+      });
+
+      // Simulate the app being suspended past the deadline: the clock moves,
+      // but only one tick ever runs.
+      act(() => {
+        jest.setSystemTime(Date.now() + 16 * 60 * 1000);
+        jest.advanceTimersByTime(1000);
+      });
+
+      expect(onEmergency).toHaveBeenCalledTimes(1);
+      expect(mockGoBack).toHaveBeenCalled();
+
+      act(() => {
+        testRenderer.unmount();
+      });
+    });
   });
 
   describe('CommunitySafetyScreen', () => {

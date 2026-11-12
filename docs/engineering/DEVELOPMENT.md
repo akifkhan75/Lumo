@@ -95,13 +95,25 @@ Copy `.env.example`. Nothing here is loaded automatically by the API — there i
 `@nestjs/config` module, so values are read straight from `process.env` and the
 file must be in `apps/api/.env` (or exported in your shell).
 
-| Variable              | Used by                             | Default if unset             | Notes                                                    |
-| --------------------- | ----------------------------------- | ---------------------------- | -------------------------------------------------------- |
-| `DATABASE_URL`        | Prisma                              | —                            | Required; port **5434**                                  |
-| `API_PORT`            | `main.ts`                           | **3001**                     | Set it to `3005`                                         |
-| `JWT_SECRET`          | `auth.module.ts`, `jwt.strategy.ts` | `'super-secret-default-key'` | **Insecure fallback** — [KI-9](../audit/KNOWN_ISSUES.md) |
-| `API_KEY`             | `ai.service.ts`                     | none → fallback responses    | Google Gemini key. Optional: the app works without it    |
-| `EXPO_PUBLIC_API_URL` | **nothing**                         | —                            | Declared but unread — [KI-1](../audit/KNOWN_ISSUES.md)   |
+### API — `apps/api/.env`
+
+| Variable       | Used by         | Default if unset                  | Notes                                                                      |
+| -------------- | --------------- | --------------------------------- | -------------------------------------------------------------------------- |
+| `DATABASE_URL` | Prisma          | —                                 | Required; port **5434**                                                    |
+| `API_PORT`     | `config/env.ts` | `3005`                            | Rejected if it is not a valid port                                         |
+| `JWT_SECRET`   | `config/env.ts` | **none — the API will not start** | Must be ≥32 characters and not an example value. `openssl rand -base64 48` |
+| `CORS_ORIGINS` | `config/env.ts` | empty → no browser origin         | Comma-separated. The mobile app is not subject to CORS                     |
+| `API_KEY`      | `ai.service.ts` | none → fallback responses         | Google Gemini key. Optional: the app works without it                      |
+
+`JWT_SECRET` has no fallback by design (KI-9): a safety API that boots
+misconfigured and looks healthy is worse than one that refuses to start.
+
+### Mobile — `apps/mobile/.env`
+
+| Variable               | Used by                  | Default if unset                    | Notes                                                   |
+| ---------------------- | ------------------------ | ----------------------------------- | ------------------------------------------------------- |
+| `EXPO_PUBLIC_API_URL`  | `services/apiService.ts` | derived from the Metro bundler host | Required for any build not run against a local bundler  |
+| `EXPO_PUBLIC_API_PORT` | `services/apiService.ts` | `3005`                              | Used by the development fallback; must match `API_PORT` |
 
 ---
 
@@ -114,9 +126,30 @@ pnpm build        # types → api-client → apps
 pnpm dev          # every dev task, persistent, uncached
 pnpm test
 pnpm lint
-pnpm typecheck
+pnpm typecheck    # real since Phase 0: tsc --noEmit in every package
 pnpm format       # prettier over **/*.{ts,tsx,md}
+pnpm check:honesty # PLAT-9 — fails on UI copy claiming an unproven outcome
 ```
+
+### Database
+
+```bash
+docker compose up -d                   # postgres on host port 5434
+pnpm --filter api db:deploy            # apply migrations
+pnpm --filter api db:migrate           # create a migration from schema changes
+pnpm --filter api db:status
+pnpm --filter api db:seed
+```
+
+### API container
+
+```bash
+docker build -f apps/api/Dockerfile -t lumo-api .   # context is the repo root
+docker run -p 3005:3005 -e JWT_SECRET=... -e DATABASE_URL=... lumo-api
+```
+
+Migrations are **not** run on container start. Apply them as a separate step
+before rollout: a crash-looping container must not re-run schema changes.
 
 ### API
 

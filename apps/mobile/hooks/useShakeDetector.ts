@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Accelerometer } from 'expo-sensors';
-import { Platform } from 'react-native';
 
 type AccelerometerSubscription = ReturnType<typeof Accelerometer.addListener>;
 
@@ -17,6 +16,13 @@ export const useShakeDetector = (
     timeout?: number;
   }
 ) => {
+  // KI-20: the caller rebuilds onShake whenever user settings change. Keying
+  // the subscription on its identity meant every settings save tore down the
+  // accelerometer listener and set it up again — a detector that is supposed
+  // to be always on, restarted by unrelated state.
+  const onShakeRef = useRef(onShake);
+  onShakeRef.current = onShake;
+
   const lastShakeTimeRef = useRef(0);
   const subscriptionRef = useRef<AccelerometerSubscription | null>(null);
   const [hasPermission, setHasPermission] = useState(true);
@@ -79,7 +85,7 @@ export const useShakeDetector = (
           if (now - lastShakeTimeRef.current > timeout) {
             lastShakeTimeRef.current = now;
             console.log(`Shake detected: ${magnitude.toFixed(2)}G`);
-            onShake();
+            onShakeRef.current();
           }
         }
       });
@@ -87,7 +93,7 @@ export const useShakeDetector = (
       console.warn('Failed to start accelerometer:', error);
       setIsActive(false);
     }
-  }, [enabled, threshold, timeout, onShake, checkSensorPermissions, stopDetection]);
+  }, [enabled, threshold, timeout, checkSensorPermissions, stopDetection]);
 
   useEffect(() => {
     if (enabled) {

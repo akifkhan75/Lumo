@@ -11,3 +11,7 @@ dist
 !.env.example
 *.log
 **/.DS_Store
+coverage
+test
+**/*.spec.ts
+**/*.e2e-spec.ts

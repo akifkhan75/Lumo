@@ -173,19 +173,17 @@ source** — a fresh clone needs `pnpm build` before `pnpm --filter mobile start
 
 ## 3. Workspace inventory
 
-| Package                  | Purpose                                     | State               |
-| ------------------------ | ------------------------------------------- | ------------------- |
-| `apps/api`               | NestJS REST API                             | Active              |
-| `apps/mobile`            | React Native app                            | Active              |
-| `packages/types`         | Shared domain types, no runtime code        | Active              |
-| `packages/api-client`    | `ApiClient` class — one method per endpoint | Active              |
-| `packages/tsconfig`      | `base.json` extended by the others          | Active              |
-| `packages/config`        | —                                           | **Empty directory** |
-| `packages/validation`    | —                                           | **Empty directory** |
-| `packages/eslint-config` | —                                           | **Empty directory** |
+| Package               | Purpose                                     | State  |
+| --------------------- | ------------------------------------------- | ------ |
+| `apps/api`            | NestJS REST API                             | Active |
+| `apps/mobile`         | React Native app                            | Active |
+| `packages/types`      | Shared domain types, no runtime code        | Active |
+| `packages/api-client` | `ApiClient` class — one method per endpoint | Active |
+| `packages/tsconfig`   | `base.json` extended by the others          | Active |
 
-The three empty ones are placeholders from the migration plan. They are listed
-here so nobody imports from them expecting content.
+`packages/config`, `packages/validation` and `packages/eslint-config` were
+empty placeholder directories from the migration plan and were deleted in
+Phase 0 (KI-13). New packages are created when something goes in them.
 
 ---
 

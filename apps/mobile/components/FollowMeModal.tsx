@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Image, ImageBackground, Alert, Platform } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation } from '@react-navigation/native';
-import { IconArrowLeft, IconShare, IconRoute } from '../constants';
+import { IconArrowLeft, IconShare } from '../constants';
+import DemoBanner from './common/DemoBanner';
 
 const Container = styled(View)`
   flex: 1;
@@ -89,9 +90,9 @@ const FollowMeScreen = () => {
     const wasActive = monitoringActive;
     setMonitoringActive(prev => !prev);
     if (!wasActive) {
-      Alert.alert("Monitoring Started", "Your location is now being shared via the link.");
+      Alert.alert("Not sharing yet", "Lumo cannot share your location yet. This toggle changes nothing outside this screen.");
     } else {
-       Alert.alert("Monitoring Stopped", "You have stopped sharing your location.");
+       Alert.alert("Stopped", "Nothing was being shared.");
        onClose();
     }
   }
@@ -105,9 +106,14 @@ const FollowMeScreen = () => {
         <Title>Follow Me</Title>
       </Header>
       
+      <DemoBanner>
+        Journey sharing is not built. The link is a placeholder, the map is a
+        static image, and your location is not leaving this device.
+      </DemoBanner>
+
       <Body>
         <View>
-          <Description>Share this link with a trusted contact to let them track your journey in real-time.</Description>
+          <Description>A journey link will let a trusted contact follow you in a browser. The link below is a placeholder and does not resolve to anything.</Description>
           <ShareLinkContainer>
             <ShareLinkText numberOfLines={1}>{shareLink}</ShareLinkText>
             <TouchableOpacity onPress={handleShare} style={{padding: 8}}>

@@ -4,6 +4,7 @@ import styled from 'styled-components/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { DangerZoneType, DangerZoneSeverity } from '../types';
 import { IconArrowLeft, IconAlert } from '../constants';
+import DemoBanner from './common/DemoBanner';
 
 const Container = styled(KeyboardAvoidingView).attrs({
     behavior: Platform.OS === "ios" ? "padding" : "height"
@@ -148,6 +149,12 @@ const ReportDangerZoneScreen = () => {
                     {DANGER_TYPES.map(t => <OptionButton key={t} selected={type === t} onPress={() => setType(t)}><OptionText selected={type === t}>{t}</OptionText></OptionButton>)}
                 </OptionsContainer>
             </View>
+
+            <DemoBanner>
+                Reports are stored, but they are placed at a random point near the
+                centre of a picture of a map. Nobody is notified and nothing is
+                moderated.
+            </DemoBanner>
 
             <View>
                 <Label>Severity Level</Label>

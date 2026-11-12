@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from 'rea
 import styled from 'styled-components/native';
 import { useNavigation } from '@react-navigation/native';
 import { IconShield, IconUsers, IconWalk, IconCar, IconRoute, IconArrowLeft } from '../constants';
+import DemoBanner from './common/DemoBanner';
 
 const Container = styled(View)`
   flex: 1;
@@ -142,6 +143,7 @@ const SafeWalkView = () => {
 const DangerZoneView = () => (
     <ViewContainer>
        <Subtitle>Community-Reported Zones</Subtitle>
+       <DemoBanner>Sample text. These are not real reports from anyone.</DemoBanner>
        <View style={{gap: 8}}>
             <View style={{backgroundColor: 'white', padding: 12, borderRadius: 8}}><Text style={{fontWeight: '600'}}>Elm Street Park:</Text><Text>"Poor lighting after 9 PM."</Text></View>
             <View style={{backgroundColor: 'white', padding: 12, borderRadius: 8}}><Text style={{fontWeight: '600'}}>Downtown Station:</Text><Text>"Suspicious individuals reported."</Text></View>
@@ -162,11 +164,11 @@ const CommunitySafetyScreen = () => {
       default:
         return (
           <>
-            <FeatureInfo icon={<IconWalk size={32} color="#0891b2" />} title="Safe Walk" description="Request a volunteer to virtually accompany you." actionText="Find a Volunteer" onAction={() => setView('safeWalk')} />
-            <FeatureInfo icon={<IconRoute size={32} color="#0891b2" />} title="Path Deviation Alerts" description="Enabled in 'Follow Me' before your trip." />
+            <FeatureInfo icon={<IconWalk size={32} color="#0891b2" />} title="Safe Walk" description="Planned: request a volunteer to virtually accompany you." actionText="Preview" onAction={() => setView('safeWalk')} />
+            <FeatureInfo icon={<IconRoute size={32} color="#0891b2" />} title="Path Deviation Alerts" description="Planned. Lumo does not track a route or notice a deviation yet." />
             <FeatureInfo icon={<IconShield size={32} color="#0891b2" />} title="Danger Zones" description="View and report unsafe areas." actionText="View & Report Zones" onAction={() => setView('dangerZones')} />
-            <FeatureInfo icon={<IconUsers size={32} color="#0891b2" />} title="Nearby Volunteers" description="During an SOS, nearby volunteers can be notified to assist." />
-            <FeatureInfo icon={<IconCar size={32} color="#0891b2" />} title="Accident Detection" description="Detects car crashes and auto-alerts contacts. Enable in Settings." />
+            <FeatureInfo icon={<IconUsers size={32} color="#0891b2" />} title="Nearby Volunteers" description="Planned. No volunteer network exists and nobody is notified." />
+            <FeatureInfo icon={<IconCar size={32} color="#0891b2" />} title="Impact Detection" description="Detects a large impact and opens the SOS screen. It cannot tell a crash from a dropped phone, and it alerts nobody. Enable in Settings." />
           </>
         );
     }
@@ -182,6 +184,10 @@ const CommunitySafetyScreen = () => {
       </Header>
       
       <ScrollContainer>
+        <DemoBanner>
+          Nothing in the Community Hub is connected to a real community. Every
+          entry below describes what is planned, not what works.
+        </DemoBanner>
         {renderContent()}
       </ScrollContainer>
       

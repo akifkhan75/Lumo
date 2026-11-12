@@ -83,4 +83,30 @@ describe('useAccidentDetector', () => {
 
     expect(Accelerometer.addListener).not.toHaveBeenCalled();
   });
+
+  // Regression: KI-20. See useShakeDetector — same cause, same consequence.
+  it('keeps one subscription when only the callback identity changes', async () => {
+    let root: any;
+
+    await act(async () => {
+      root = renderer.create(<AccidentHookWrapper onDetect={() => {}} enabled={true} />);
+      await Promise.resolve();
+    });
+
+    expect(Accelerometer.addListener).toHaveBeenCalledTimes(1);
+
+    const latest = jest.fn();
+    await act(async () => {
+      root.update(<AccidentHookWrapper onDetect={latest} enabled={true} />);
+      await Promise.resolve();
+    });
+
+    expect(Accelerometer.addListener).toHaveBeenCalledTimes(1);
+    expect(mockRemove).not.toHaveBeenCalled();
+
+    act(() => {
+      listenerCallback({ x: 7.0, y: 0, z: 0 });
+    });
+    expect(latest).toHaveBeenCalledTimes(1);
+  });
 });
