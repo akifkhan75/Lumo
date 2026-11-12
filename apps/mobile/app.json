@@ -27,7 +27,8 @@
           "microphonePermission": "Allow Lumo to access your microphone for hands-free emergency voice activation.",
           "speechRecognitionPermission": "Allow Lumo to recognize your voice to trigger emergency alerts hands-free."
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

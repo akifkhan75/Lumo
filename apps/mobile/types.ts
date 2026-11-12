@@ -11,6 +11,7 @@ export * from '@lumo/types';
 import type { UserSettings } from '@lumo/types';
 
 export type RootStackParamList = {
+  Boot: undefined;
   Auth: undefined;
   Dashboard: { onLogout: () => void; };
   Settings: { onLogout: () => void; currentSettings: UserSettings; onSave: (settings: UserSettings) => Promise<void>; };
@@ -22,7 +23,9 @@ export type RootStackParamList = {
   // cannot read one yet, so the screen explains that instead of submitting.
   ReportHazard: undefined;
   SafetyAssistant: undefined;
-  Emergency: { settings: UserSettings; };
+  // Settings are optional: Emergency is reachable signed out and before the
+  // settings fetch finishes, and must open either way.
+  Emergency: { settings?: UserSettings; } | undefined;
 };
 
 export type SettingsStackParamList = {
