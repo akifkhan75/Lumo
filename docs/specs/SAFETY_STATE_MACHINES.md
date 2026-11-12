@@ -132,19 +132,19 @@ This machine owns the response.
 
 ### States
 
-| State                 | Meaning                                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `CREATED`             | Incident exists. Trigger type and idempotency key recorded.                                                              |
-| `LOCATING`            | Acquiring the best available fix. **Time-boxed; never blocks dispatch.**                                                 |
-| `DISPATCHING`         | Recipients and channels resolved.                                                                                        |
-| `NOTIFYING`           | Attempts in flight.                                                                                                      |
-| `PARTIALLY_NOTIFIED`  | At least one channel reached its maximum truthful state; at least one failed. **Rendered as partial, never as success.** |
-| `NOTIFIED`            | Every attempt reached its channel's maximum truthful state.                                                              |
-| `ALL_CHANNELS_FAILED` | Nothing got out. **Must be shown prominently with the next action for the user.**                                        |
-| `ACKNOWLEDGED`        | A human confirmed they are responding. The only state meaning _help knows_.                                              |
-| `RESOLVING`           | User indicated safety; winding down.                                                                                     |
-| `CLOSED`              | Terminal. Timeline sealed and exportable.                                                                                |
-| `CANCELLED`           | Cancelled within the countdown, or by duress-aware cancel.                                                               |
+| State                 | Meaning                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CREATED`             | Incident exists. Trigger type and idempotency key recorded.                                                                                                   |
+| `LOCATING`            | Acquiring the best available fix. **Time-boxed; never blocks dispatch.**                                                                                      |
+| `DISPATCHING`         | Recipients and channels resolved.                                                                                                                             |
+| `NOTIFYING`           | Attempts in flight.                                                                                                                                           |
+| `PARTIALLY_NOTIFIED`  | At least one channel reached its maximum truthful state; at least one failed. **Rendered as partial, never as success.**                                      |
+| `NOTIFIED`            | Every attempt reached its channel's maximum truthful state.                                                                                                   |
+| `ALL_CHANNELS_FAILED` | Nothing got out. **Must be shown prominently with the next action for the user.**                                                                             |
+| `ACKNOWLEDGED`        | A human confirmed they are responding. The only state meaning _help knows_.                                                                                   |
+| `RESOLVING`           | User indicated safety; winding down.                                                                                                                          |
+| `CLOSED`              | Terminal. Timeline sealed and exportable.                                                                                                                     |
+| `CANCELLED`           | Cancelled within the countdown. A duress cancel is **not** this state: `DURESS_CANCEL` goes to `LOCATING` (§6a) and only the _device_ renders a cancellation. |
 
 ### Invariants
 
@@ -211,8 +211,9 @@ idempotencyKey = sha256(userId + triggerType + floor(triggerAtMs / 60000) + sess
 
 - Minted **on the device** before the first attempt, so all retries share it.
 - A repeat key returns the **existing** incident with HTTP `200`, not a new one.
-- `NotificationAttempt` is also keyed on `(incidentId, recipientId, channel)` so a
-  queue redelivery cannot double-send.
+- `NotificationAttempt` is also keyed on `(incidentId, recipientId, channel, attemptNumber)`
+  so a queue redelivery cannot double-send, while a fallback — a new `attemptNumber` —
+  is still a new row and never an overwrite.
 - The one-minute bucket is deliberate: two genuinely separate activations within
   60 seconds collapse into one incident. That is the correct trade — a duplicate
   alert storm is worse than a merged incident.

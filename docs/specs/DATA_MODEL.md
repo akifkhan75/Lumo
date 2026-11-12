@@ -314,6 +314,8 @@ model AuditLog {                             // append-only
 `EvidenceAsset` (incidentId, storageKey, contentType, bytes, sha256, capturedAt,
 uploadState, verifiedAt, gaps Json) · `EvidenceAccessLog` (append-only) ·
 `DuressCredential` (userId, pinHash — never distinguishable in any API response) ·
+`FeatureFlag` · `FeatureFlagOverride` · `RolloutCohort` (PLAT-6) · device heartbeat fields
+(`lastSeenAt`, battery) for the go-dark watchdog (RES-15) ·
 `SafetySignal` + `ModelVersion` (Phase 3) · `SafetyPlace`,
 `Organization`, `OrganizationMembership`, `Responder` (Phase 4) · `Subscription`,
 `Entitlement` (Phase 5).
