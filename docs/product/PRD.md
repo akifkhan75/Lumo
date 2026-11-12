@@ -229,22 +229,22 @@ Acceptance criteria are testable; "the screen looks right" is never sufficient.
 
 ### Platform
 
-| ID      | Requirement              | Acceptance criteria                                                                                                                        | Ph  | Tier |
-| ------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | --- | ---- |
-| PLAT-1  | Region profiles          | No market-specific value is hard-coded. A market cannot be enabled until its profile is complete and legally reviewed — enforced in code   | 1   | —    |
-| PLAT-2  | Accessibility floor      | Every safety-critical control has a label and role, ≥4.5:1 contrast, a ≥44pt target, and is operable one-handed and with a screen reader   | 1   | —    |
-| PLAT-3  | Full accessibility       | WCAG 2.2 AA across the app; audited externally                                                                                             | 6   | —    |
-| PLAT-4  | SOS never blocks on auth | A pre-authorised emergency token lets an SOS dispatch with an expired session or skewed clock                                              | 1   | —    |
-| PLAT-5  | Spend cap                | Hard per-user and per-tenant notification ceilings, enforced server-side                                                                   | 1   | —    |
-| PLAT-6  | Remote kill switch       | Any feature can be disabled server-side without a release; staged rollout for all releases                                                 | 2   | —    |
-| PLAT-7  | Shared safety domain     | The three state machines and escalation rules are one pure, 100%-branch-covered implementation used by both client and server              | 1   | —    |
-| PLAT-8  | Observability            | Dashboards for delivery, acknowledgement, false activation, upload failure and battery, with **no coordinates or contact details in logs** | 1   | —    |
-| PLAT-9  | No fake success          | No success state may render without a corresponding verified record. Enforced by lint rule and test                                        | 0   | —    |
-| PLAT-10 | Billing and entitlements | Tier gating per [`MONETIZATION.md`](MONETIZATION.md); basic emergency help is never gated                                                  | 5   | —    |
-| PLAT-11 | Localisation             | UI and alert copy localisable including RTL; contact guidance localised per region profile                                                 | 6   | —    |
-| PLAT-12 | Wearables                | Trigger from a watch; standalone LTE SOS with no phone present                                                                             | 6   | P    |
+| ID      | Requirement              | Acceptance criteria                                                                                                                                                                                                           | Ph  | Tier |
+| ------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ---- |
+| PLAT-1  | Region profiles          | No market-specific value is hard-coded. A market cannot be enabled until its profile is complete and legally reviewed — enforced in code                                                                                      | 1   | —    |
+| PLAT-2  | Accessibility floor      | Every safety-critical control has a label and role, ≥4.5:1 contrast, a ≥44pt target, and is operable one-handed and with a screen reader; safety-critical screens lay out correctly under RTL, because Urdu is the PK default | 1   | —    |
+| PLAT-3  | Full accessibility       | WCAG 2.2 AA across the app; audited externally                                                                                                                                                                                | 6   | —    |
+| PLAT-4  | SOS never blocks on auth | A pre-authorised emergency token lets an SOS dispatch with an expired session or skewed clock                                                                                                                                 | 1   | —    |
+| PLAT-5  | Spend cap                | Hard per-user and per-tenant notification ceilings, enforced server-side                                                                                                                                                      | 1   | —    |
+| PLAT-6  | Remote kill switch       | Any feature can be disabled server-side without a release; staged rollout for all releases                                                                                                                                    | 2   | —    |
+| PLAT-7  | Shared safety domain     | The three state machines and escalation rules are one pure, 100%-branch-covered implementation used by both client and server                                                                                                 | 1   | —    |
+| PLAT-8  | Observability            | Dashboards for delivery, acknowledgement, false activation, upload failure and battery, with **no coordinates or contact details in logs**                                                                                    | 1   | —    |
+| PLAT-9  | No fake success          | No success state may render without a corresponding verified record. Enforced by lint rule and test                                                                                                                           | 0   | —    |
+| PLAT-10 | Billing and entitlements | Tier gating per [`MONETIZATION.md`](MONETIZATION.md); basic emergency help is never gated                                                                                                                                     | 5   | —    |
+| PLAT-11 | Localisation             | UI and alert copy in a message catalogue with further languages; contact guidance localised per region profile. RTL layout of safety-critical screens is PLAT-2, not this                                                     | 6   | —    |
+| PLAT-12 | Wearables                | Trigger from a watch; standalone LTE SOS with no phone present                                                                                                                                                                | 6   | P    |
 
-**100 requirements.** Traceability to the original requirements document is in
+**60 requirements** across six pillars (`PREV` 6 · `DET` 9 · `RES` 20 · `PRO` 9 · `REC` 4 · `PLAT` 12). Traceability to the original requirements document is in
 [`../audit/REQUIREMENTS_AUDIT.md`](../audit/REQUIREMENTS_AUDIT.md).
 
 ---

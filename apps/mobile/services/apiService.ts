@@ -1,6 +1,7 @@
 import { NativeModules } from 'react-native';
 import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo } from '@lumo/types';
 import { ApiClient } from '@lumo/api-client';
+import * as tokenStorage from './tokenStorage';
 
 const DEFAULT_API_PORT = '3005';
 
@@ -45,6 +46,30 @@ export const setAuthToken = (token: string | null) => {
 
 export const getAuthToken = () => currentToken;
 
+/**
+ * Bring back the session from the previous launch, if there was one. Resolves
+ * false on no session, on a storage fault and on a stalled read alike: all of
+ * them mean "signed out", and none of them may throw.
+ *
+ * Restoring does not prove the token is still valid. The first authenticated
+ * request does that, and only a 401 from it ends the session (see App.tsx).
+ */
+export const restoreSession = async (): Promise<boolean> => {
+    const stored = await tokenStorage.loadToken();
+    if (!stored) return false;
+    setAuthToken(stored);
+    return true;
+};
+
+/**
+ * End the session: the in-memory token first (so no further request carries
+ * it), then the stored copy. Logout used to do neither.
+ */
+export const signOut = async (): Promise<void> => {
+    setAuthToken(null);
+    await tokenStorage.clearToken();
+};
+
 // Auth
 export const login = async (email: string, password: string): Promise<{user: PersonalInfo; token: string}> => {
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
@@ -56,6 +81,7 @@ export const login = async (email: string, password: string): Promise<{user: Per
     const data = await response.json();
     if (data.token) {
         setAuthToken(data.token);
+        await tokenStorage.saveToken(data.token);
     }
     return data;
 };
@@ -70,6 +96,7 @@ export const signup = async (name: string, email: string, password: string): Pro
     const data = await response.json();
     if (data.token) {
         setAuthToken(data.token);
+        await tokenStorage.saveToken(data.token);
     }
     return data;
 };

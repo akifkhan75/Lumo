@@ -37,3 +37,17 @@ jest.mock('@react-native-voice/voice', () => ({
   default: mockVoice,
   ...mockVoice,
 }));
+
+// Mock expo-secure-store with an in-memory keystore. It is a native module, so
+// without this the suite fails to boot. The map is exposed so a test can seed or
+// inspect what is "stored"; the functions are jest.fn so a test can make one fail.
+jest.mock('expo-secure-store', () => {
+  const store = new Map();
+  return {
+    AFTER_FIRST_UNLOCK: 'AFTER_FIRST_UNLOCK',
+    getItemAsync: jest.fn(async (key) => (store.has(key) ? store.get(key) : null)),
+    setItemAsync: jest.fn(async (key, value) => { store.set(key, value); }),
+    deleteItemAsync: jest.fn(async (key) => { store.delete(key); }),
+    __store: store,
+  };
+});

@@ -204,3 +204,42 @@ export const DemoMapNotice = styled.View`
   left: 16px;
   right: 16px;
 `;
+
+
+// Sits between the map and the bottom bar, in the thumb's reach, so a retry is
+// one-handed. It is in normal flow rather than overlaid so it can never cover
+// the SOS button.
+export const SettingsStatusStrip = styled(View)`
+    background-color: #fef3c7;
+    border-top-width: 1px;
+    border-top-color: #d97706;
+    padding: 12px 16px;
+    gap: 8px;
+`;
+
+export const SettingsStatusText = styled(Text)`
+    color: #78350f;
+    font-size: 14px;
+`;
+
+export const SettingsStatusRow = styled(View)`
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+`;
+
+export const RetryButton = styled(TouchableOpacity)`
+    min-height: 44px;
+    min-width: 44px;
+    align-self: flex-start;
+    justify-content: center;
+    padding: 8px 16px;
+    border-radius: 9999px;
+    background-color: #78350f;
+`;
+
+export const RetryButtonText = styled(Text)`
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: bold;
+`;

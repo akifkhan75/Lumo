@@ -167,7 +167,7 @@ describe('Auth Components', () => {
       const onLoginSuccess = jest.fn();
       let testRenderer: any;
       await act(async () => {
-        testRenderer = renderer.create(<AuthScreen onLoginSuccess={onLoginSuccess} />);
+        testRenderer = renderer.create(<AuthScreen onLoginSuccess={onLoginSuccess} onEmergency={jest.fn()} />);
       });
 
       // Initially on onboarding

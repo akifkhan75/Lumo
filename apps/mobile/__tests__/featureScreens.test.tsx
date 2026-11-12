@@ -1,4 +1,5 @@
 import React from 'react';
+import { Linking } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import EmergencyScreen from '../components/EmergencyModal';
 import FakeCallScreen from '../components/FakeCallScreen';
@@ -93,6 +94,85 @@ describe('Feature and Modal Screens', () => {
 
       act(() => {
         testRenderer.unmount();
+      });
+    });
+
+    // The emergency screen is reachable signed out and before settings load, so
+    // it must open with nothing at all in its route params.
+    describe.each([
+      ['no params at all', undefined],
+      ['params without settings', {}],
+      ['settings with no personal info', { settings: {} }],
+    ])('opens with %s', (_name, params) => {
+      it('renders instead of throwing', async () => {
+        mockRouteParams = params;
+        let testRenderer: any;
+        await act(async () => {
+          testRenderer = renderer.create(<EmergencyScreen />);
+          await Promise.resolve();
+        });
+
+        expect(JSON.stringify(testRenderer.toJSON())).toContain('Nothing has been sent');
+        expect(JSON.stringify(testRenderer.toJSON())).not.toContain('blood type');
+        act(() => { testRenderer.unmount(); });
+      });
+    });
+
+    describe('the phone dialler', () => {
+      const dialler = (root: any) =>
+        root.findAll(
+          (n: any) =>
+            n.props.accessibilityLabel === 'Open the phone dialler to call your local emergency number' &&
+            typeof n.props.onPress === 'function',
+        )[0];
+
+      it('opens the dialler, and shows no error when it works', async () => {
+        const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
+        mockRouteParams = {};
+        let testRenderer: any;
+        await act(async () => { testRenderer = renderer.create(<EmergencyScreen />); });
+
+        await act(async () => { dialler(testRenderer.root).props.onPress(); });
+
+        expect(openURL).toHaveBeenCalledWith('tel:');
+        expect(JSON.stringify(testRenderer.toJSON())).not.toContain('Could not open the phone dialler');
+        openURL.mockRestore();
+        act(() => { testRenderer.unmount(); });
+      });
+
+      // Someone who taps this and sees nothing happen will assume help was
+      // reached. A refused dialler has to say so, in words.
+      it('tells the user when the dialler cannot be opened', async () => {
+        const openURL = jest.spyOn(Linking, 'openURL').mockRejectedValue(new Error('no telephony'));
+        mockRouteParams = {};
+        let testRenderer: any;
+        await act(async () => { testRenderer = renderer.create(<EmergencyScreen />); });
+
+        await act(async () => { dialler(testRenderer.root).props.onPress(); });
+
+        const out = JSON.stringify(testRenderer.toJSON());
+        expect(out).toContain('Could not open the phone dialler');
+        expect(out).toContain('dial your');
+        openURL.mockRestore();
+        act(() => { testRenderer.unmount(); });
+      });
+
+      it('clears the error on the next attempt', async () => {
+        const openURL = jest
+          .spyOn(Linking, 'openURL')
+          .mockRejectedValueOnce(new Error('no telephony'))
+          .mockResolvedValueOnce(true as never);
+        mockRouteParams = {};
+        let testRenderer: any;
+        await act(async () => { testRenderer = renderer.create(<EmergencyScreen />); });
+
+        await act(async () => { dialler(testRenderer.root).props.onPress(); });
+        expect(JSON.stringify(testRenderer.toJSON())).toContain('Could not open the phone dialler');
+        await act(async () => { dialler(testRenderer.root).props.onPress(); });
+        expect(JSON.stringify(testRenderer.toJSON())).not.toContain('Could not open the phone dialler');
+
+        openURL.mockRestore();
+        act(() => { testRenderer.unmount(); });
       });
     });
   });

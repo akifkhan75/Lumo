@@ -112,6 +112,19 @@ const CallButton = styled(TouchableOpacity)`
     align-items: center;
 `;
 
+// White on the slate screen background is about 7.6:1, and the message is bold
+// and bordered, so it does not rely on colour to read as a problem.
+const DialErrorText = styled(Text)`
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    margin: 12px 0;
+    padding: 12px;
+    border: 2px solid white;
+    border-radius: 12px;
+`;
+
 // --- Components --- //
 
 import Feather from '@expo/vector-icons/Feather';
@@ -179,16 +192,28 @@ const DefenseGuide = ({ onFinish }: { onFinish: () => void }) => {
 const EmergencyScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { settings } = route.params as { settings: UserSettings };
+  // Settings are optional. This screen is reachable signed out and before the
+  // settings fetch has finished, and it is the one screen that must never fail
+  // to open because something else has not loaded yet.
+  const settings = (route.params as { settings?: UserSettings } | undefined)?.settings;
 
   const [showDefenseGuide, setShowDefenseGuide] = useState(false);
+  const [dialError, setDialError] = useState(false);
   const onClose = () => navigation.goBack();
+
+  // Opening the dialler can be refused (a device with no telephony, a locked-
+  // down profile). That must be visible: someone who taps this and sees nothing
+  // happen will assume help was reached.
+  const openDialler = () => {
+    setDialError(false);
+    Linking.openURL('tel:').catch(() => setDialError(true));
+  };
 
   return (
     <Container>
       {showDefenseGuide && <DefenseGuide onFinish={() => setShowDefenseGuide(false)}/>}
       <Header>
-        <BackButton onPress={onClose}>
+        <BackButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close the emergency screen">
           <IconArrowLeft size={24} color="white"/>
         </BackButton>
         <TitleContainer>
@@ -199,7 +224,7 @@ const EmergencyScreen = () => {
                 contacts, no emergency service has been called, and your
                 location has not been shared. If you need help now, call your
                 local emergency number.
-                {settings.personalInfo.bloodType && ` Your saved blood type is ${settings.personalInfo.bloodType}.`}
+                {settings?.personalInfo?.bloodType ? ` Your saved blood type is ${settings.personalInfo.bloodType}.` : null}
             </Description>
         </TitleContainer>
         <BannerSpacer>
@@ -245,10 +270,20 @@ const EmergencyScreen = () => {
           on where the user physically is, and the region profile that resolves
           that is Phase 1.
         */}
-        <CallButton onPress={() => Linking.openURL('tel:')} accessibilityRole="button">
+        <CallButton
+          onPress={openDialler}
+          accessibilityRole="button"
+          accessibilityLabel="Open the phone dialler to call your local emergency number"
+        >
           <ButtonText>Open phone dialler</ButtonText>
         </CallButton>
-        <BottomButton onPress={onClose}>
+        {dialError ? (
+          <DialErrorText accessibilityRole="alert" accessibilityLiveRegion="assertive">
+            Could not open the phone dialler. Open your phone app and dial your
+            local emergency number.
+          </DialErrorText>
+        ) : null}
+        <BottomButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close the emergency screen">
           <ButtonText>Close</ButtonText>
         </BottomButton>
       </Footer>

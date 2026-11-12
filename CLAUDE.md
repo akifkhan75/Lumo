@@ -117,10 +117,16 @@ source.
    read**. This is still the biggest gap between the demo and a safety product —
    [KI-3](docs/audit/KNOWN_ISSUES.md).
 
-5. **Auth does not survive a restart.** The JWT lives in a module-level variable
-   in `apiService.ts` and `isAuthenticated` is `useState` in `App.tsx`. No
-   AsyncStorage, no SecureStore, no refresh token, and logout never clears the
-   token — [KI-4](docs/audit/KNOWN_ISSUES.md).
+5. **The session survives a restart, but there is no refresh token.** The JWT is kept
+   in `expo-secure-store` (`services/tokenStorage.ts`) and restored on launch; logout
+   clears it. Only an HTTP `401` ends a session — a timeout, a dropped connection or a
+   5xx does not (`ApiError.isUnauthorized`). A 7-day token still expires into a login
+   screen ([KI-4](docs/audit/KNOWN_ISSUES.md)).
+
+6. **The emergency screen depends on nothing.** `Emergency` is registered outside the
+   auth conditional, opens with no route params, and is reachable from the login
+   screens and the boot screen. Do not gate it, or the SOS control, on auth, settings
+   or any fetch (KI-27).
 
 Read [`docs/KNOWN_ISSUES.md`](docs/audit/KNOWN_ISSUES.md) before planning any feature.
 It separates _mock_ from _real_ and is kept prioritized.

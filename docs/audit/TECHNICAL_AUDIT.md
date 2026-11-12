@@ -34,14 +34,14 @@ is prototype-grade infrastructure under well-organised application code.
 
 ## Database
 
-| ID   | Sev | Finding                                                                                                                                                             |
-| ---- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DB-0 | 🔴  | `top`/`left` as CSS-percentage strings; no lat/lng; **the server fabricates every position**. Blocks the entire prevention half of the product (ADR-0006, ADR-0010) |
-| DB-1 | 🟡  | **No explicit indexes at all** — not even on `reportedAt`, the sole sort key                                                                                        |
-| DB-2 | 🟡  | No soft delete, audit trail or retention policy. For a safety app an incident record **is evidence**                                                                |
-| DB-3 | 🟡  | All PII plaintext: email, name, blood type, allergies, contact phones                                                                                               |
-| DB-4 | 🟠  | **No migrations have ever existed.** Schema applied with `db push`; the archived audit's claim is false                                                             |
-| DB-5 | 🟠  | Contact save = `deleteMany` + `createMany`, **not transactional**. A failure between them leaves the user with **zero emergency contacts**                          |
+| ID   | Sev | Finding                                                                                                                                                                                                                         |
+| ---- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DB-0 | 🔴  | `top`/`left` as CSS-percentage strings; no lat/lng; **the server fabricates every position**. Blocks the entire prevention half of the product (ADR-0006, ADR-0010). **Resolved 2026-10-27** — real coordinates, `HazardReport` |
+| DB-1 | 🟡  | **No explicit indexes at all** — not even on `reportedAt`, the sole sort key                                                                                                                                                    |
+| DB-2 | 🟡  | No soft delete, audit trail or retention policy. For a safety app an incident record **is evidence**                                                                                                                            |
+| DB-3 | 🟡  | All PII plaintext: email, name, blood type, allergies, contact phones                                                                                                                                                           |
+| DB-4 | 🟠  | **No migrations have ever existed.** Schema applied with `db push`; the archived audit's claim is false                                                                                                                         |
+| DB-5 | 🟠  | Contact save = `deleteMany` + `createMany`, **not transactional**. A failure between them leaves the user with **zero emergency contacts**                                                                                      |
 
 ## Performance
 

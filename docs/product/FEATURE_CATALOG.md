@@ -8,28 +8,28 @@
 
 ## Prevent
 
-| Feature                          | ID     | Ph  | Tier | Now                                |
-| -------------------------------- | ------ | --- | ---- | ---------------------------------- |
-| Hazard reports (condition-based) | PREV-1 | 4   | F    | 🟨 real data, fabricated positions |
-| Hazard map + nearby query        | PREV-2 | 4   | F    | 🟨                                 |
-| Proximity awareness              | PREV-3 | 4   | P    | ❌                                 |
-| Verified Safety Places           | PREV-4 | 4   | F    | ❌                                 |
-| Route awareness                  | PREV-5 | 4   | P    | ❌                                 |
-| Moderation + anti-abuse          | PREV-6 | 4   | F    | ❌                                 |
+| Feature                          | ID     | Ph  | Tier | Now                                                    |
+| -------------------------------- | ------ | --- | ---- | ------------------------------------------------------ |
+| Hazard reports (condition-based) | PREV-1 | 4   | F    | 🟨 feed real, real coordinates; submission unavailable |
+| Hazard map + nearby query        | PREV-2 | 4   | F    | 🟨                                                     |
+| Proximity awareness              | PREV-3 | 4   | P    | ❌                                                     |
+| Verified Safety Places           | PREV-4 | 4   | F    | ❌                                                     |
+| Route awareness                  | PREV-5 | 4   | P    | ❌                                                     |
+| Moderation + anti-abuse          | PREV-6 | 4   | F    | ❌                                                     |
 
 ## Detect
 
-| Feature                      | ID    | Ph  | Tier | Now                            |
-| ---------------------------- | ----- | --- | ---- | ------------------------------ |
-| Manual SOS                   | DET-1 | 1   | F    | 🟨 button exists, does nothing |
-| Cancellable countdown        | DET-2 | 1   | F    | ❌                             |
-| Shake trigger                | DET-3 | 1   | F    | ✅                             |
-| Crash / fall detection       | DET-4 | 3   | F    | 🟨 single 6 G threshold        |
-| Wake word                    | DET-5 | 3   | F    | ✅ variant matching            |
-| Distress phrases / safeword  | DET-6 | 3   | F    | ❌                             |
-| Audio event classification   | DET-7 | 3   | P    | ❌                             |
-| Duress code                  | DET-8 | 2   | F    | ❌                             |
-| Manual path always reachable | DET-9 | 1   | F    | ❌                             |
+| Feature                      | ID    | Ph  | Tier | Now                                          |
+| ---------------------------- | ----- | --- | ---- | -------------------------------------------- |
+| Manual SOS                   | DET-1 | 1   | F    | 🟨 opens a screen that says nothing was sent |
+| Cancellable countdown        | DET-2 | 1   | F    | ❌                                           |
+| Shake trigger                | DET-3 | 1   | F    | ✅                                           |
+| Crash / fall detection       | DET-4 | 3   | F    | 🟨 single 6 G threshold                      |
+| Wake word                    | DET-5 | 3   | F    | ✅ variant matching                          |
+| Distress phrases / safeword  | DET-6 | 3   | F    | ❌                                           |
+| Audio event classification   | DET-7 | 3   | P    | ❌                                           |
+| Duress code                  | DET-8 | 2   | F    | ❌                                           |
+| Manual path always reachable | DET-9 | 1   | F    | ❌                                           |
 
 ## Respond
 
@@ -81,24 +81,24 @@
 
 ## Platform
 
-| Feature                      | ID      | Ph  | Now                          |
-| ---------------------------- | ------- | --- | ---------------------------- |
-| Region profiles (PK + US)    | PLAT-1  | 1   | ❌                           |
-| Accessibility floor          | PLAT-2  | 1   | ❌ **zero attributes today** |
-| Full WCAG 2.2 AA             | PLAT-3  | 6   | ❌                           |
-| SOS never blocks on auth     | PLAT-4  | 1   | ❌                           |
-| Spend cap                    | PLAT-5  | 1   | ❌                           |
-| Kill switch + staged rollout | PLAT-6  | 2   | ❌                           |
-| Shared safety domain         | PLAT-7  | 1   | ❌                           |
-| Observability                | PLAT-8  | 1   | ❌                           |
-| No fake success              | PLAT-9  | 0   | ❌ **actively violated**     |
-| Billing + entitlements       | PLAT-10 | 5   | ❌                           |
-| Localisation incl. RTL       | PLAT-11 | 6   | ❌                           |
-| Wearables                    | PLAT-12 | 6   | ❌                           |
+| Feature                      | ID      | Ph  | Now                                            |
+| ---------------------------- | ------- | --- | ---------------------------------------------- |
+| Region profiles (PK + US)    | PLAT-1  | 1   | ❌                                             |
+| Accessibility floor          | PLAT-2  | 1   | ❌ near-zero: 2 labels, none on the SOS button |
+| Full WCAG 2.2 AA             | PLAT-3  | 6   | ❌                                             |
+| SOS never blocks on auth     | PLAT-4  | 1   | ❌                                             |
+| Spend cap                    | PLAT-5  | 1   | ❌                                             |
+| Kill switch + staged rollout | PLAT-6  | 2   | ❌                                             |
+| Shared safety domain         | PLAT-7  | 1   | ❌                                             |
+| Observability                | PLAT-8  | 1   | ❌                                             |
+| No fake success              | PLAT-9  | 0   | 🟨 CI-enforced for `apps/mobile` only          |
+| Billing + entitlements       | PLAT-10 | 5   | ❌                                             |
+| Localisation (catalogue)     | PLAT-11 | 6   | ❌                                             |
+| Wearables                    | PLAT-12 | 6   | ❌                                             |
 
 ## Summary
 
-**100 requirements · 4 fully real · 8 partial · 88 absent or mock.**
+**60 requirements · 3 real · 8 partial · 6 mock · 43 absent.**
 
 Every real feature is a **trigger** or an **escape tool**. The entire **response**
 chain is absent. Phase 1 exists to close exactly that gap.

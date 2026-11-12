@@ -127,6 +127,13 @@ The JWT lives in a module-level `let currentToken` and `isAuthenticated` is
 session on boot, clear-on-logout, a refresh token, and a 401 interceptor in
 `ApiClient`.
 
+> **Partially resolved — 2026-11-12 (Phase 1, milestone 1.0).** The token is kept in
+> `expo-secure-store` and restored on launch; logout clears both the in-memory and the
+> stored copy; `ApiClient` throws a typed `ApiError` carrying the HTTP status, and only
+> a real `401` ends a session — a timeout, a dropped connection or a 5xx does not.
+> **Still open:** no refresh token (a 7-day token still expires into a login screen), and
+> the prefilled `josim@example.com` / `password` in `AuthScreen.tsx`.
+
 ---
 
 ## 🟠 KI-5 — No Prisma migrations exist
@@ -417,6 +424,16 @@ non-blocking staleness notice instead of an error screen. Settings should never 
 on the critical path for a trigger. Pairs with PLAT-4 (the pre-authorised emergency
 token) and the Phase 1 local safety engine.
 
+> **Resolved for reachability — 2026-11-12 (Phase 1, milestone 1.0).** The dashboard,
+> the SOS control and the phone dialler render from the first frame and no longer
+> depend on the settings fetch; a failed or hung fetch shows a non-blocking strip with
+> a user-initiated retry, and `ApiClient` now has a 10 s timeout so a hung request ends.
+> The emergency screen is also reachable **signed out** (an "Emergency help" control on
+> the login screens and the boot screen) and opens with no route params at all.
+> **What was deliberately not done:** the cached-settings approach above. It would store
+> PII (blood type, contacts' numbers) on the device, which is its own decision. See KI-33
+> for the consequence.
+
 ---
 
 ## Phase 0 status — 2026-10-27
@@ -458,9 +475,84 @@ Two defects found while doing it, both fixed:
 ### Next
 
 Phase 1 of [`../product/ROADMAP.md`](../product/ROADMAP.md): **device location**
-(`expo-location`) and a real map, which together finish KI-2 and unblock
+(`expo-location`) and a real map surface, which together finish KI-2 and unblock
 **KI-3** (a real SOS, behind the Verified Delivery Ledger) — the product's reason
-to exist.
+to exist. Note the split: the map _surface_ is Phase 1, but hazard pins on it
+(`PREV-1`, `PREV-2`) are Phase 4, so the map initially shows the user's own position
+only.
+
+## Spec gaps found while planning — 2026-11-12
+
+Found while turning the specification suite into an implementation plan. None is a code
+defect; each is a place where a spec contradicts another spec, the code, or itself, and
+something will later be built on it.
+
+### 🔴 KI-28 — Duress cancel and the recording notice cannot both hold
+
+`PRO-1` and both region profiles set `requiresOnScreenNotice: true`, so a recording must
+announce itself. [`EMERGENCY_WORKFLOWS.md`](../specs/EMERGENCY_WORKFLOWS.md) §3 forbids
+any recording indicator on the device under duress. Either capture happens without the
+legally required notice, or there is no capture during a duress incident. **Needs
+counsel.** Default until answered: **no capture during a duress incident.** Gates Phase 2.
+
+### 🟠 KI-29 — `HazardReport.description` is required free text
+
+`PREV-6` prohibits free-text naming of individuals and businesses. The DTO rejects contact
+details but not a business name, and the column is a required `String`. Constrain to
+structured fields plus a bounded note, with a backfill. Phase 4.
+
+### 🟠 KI-30 — `EscalationPolicy` has no Prisma model
+
+`SafetySession.escalationPolicyId` references it and
+[`ESCALATION_POLICY.md`](../specs/ESCALATION_POLICY.md) defines the shape, but
+[`DATA_MODEL.md`](../specs/DATA_MODEL.md) never declares the model. Add both together in
+the Phase 1 schema milestone.
+
+### 🟠 KI-31 — Background push cannot prove device arrival
+
+The ledger, ADR-0012's context, the `delivery-ledger` skill and the platform matrix all
+claimed a provider receipt reaches `DELIVERED`. It does not: a receipt means FCM or APNs
+_accepted_ the message. **Corrected 2026-11-12** — provider-side ceiling is `SENT`;
+`DELIVERED` needs a device-side receipt. The code does not exist yet, so nothing was
+ever recorded wrongly, but the spec would have led to it.
+
+### 🟡 KI-32 — Requirement IDs missing, and orphaned from any spec
+
+Twelve ROADMAP items carry no requirement ID (circles; discreet triggers; explainable
+notifications; accelerometer consolidation; organisation portals; referral loop; trust
+page; admin console; professional monitoring; dispatch under agreement; public-alert
+feeds; biometric lock and stealth mode). Separately, `RES-10` (live location) has no
+owning spec, and 25 further IDs appear in no spec's `Implements` header. IDs are assigned
+in the PRD and never minted elsewhere ([`lumo-docs`](../../.claude/skills/lumo-docs/SKILL.md)).
+
+## Found while building milestone 1.0 — 2026-11-12
+
+### 🟠 KI-33 — Hands-free triggers are inert until settings load
+
+With the SOS control no longer gated on the settings fetch (KI-27), the _automatic_
+triggers still are: shake, voice and crash detection read `shakeToSosEnabled`,
+`voiceActivationEnabled` and `accidentDetectionEnabled` from the fetched settings and
+default to off until they arrive. A user who relies on shake-to-SOS and launches the app
+with no connection has no hands-free trigger until the fetch succeeds. The dashboard
+says so ("Shake, voice and crash triggers are off until your settings load"), so it is
+honest, but it is a gap. **To fix:** persist the three trigger flags — not the whole
+profile — in the keystore, so the triggers arm from the last known preference. Pairs
+with the Phase 1 local safety engine.
+
+### 🟡 KI-34 — `tel:` opening the dialler is unverified on a device
+
+The emergency screen opens the dialler with `Linking.openURL('tel:')`. A bare `tel:`
+with no number is assumed to open the dialler on both platforms; that has not been
+confirmed on real hardware, and iOS may require a number. The failure is now visible
+(a message tells the user to dial their local emergency number) rather than silent, but
+whether the success path works is untested. The region-correct number belongs to
+Phase 1 milestone 1.8. **To verify:** one Android and one iOS device.
+
+### 🟡 KI-35 — A failed token delete restores an ended session
+
+`tokenStorage.clearToken` reports whether the stored token was removed, and logout does
+not act on a `false`. If the keystore refuses the delete, the next launch restores the
+session the user just ended. Rare, but it is a logout that silently did not log out.
 
 ## Found while building milestone 1.1 — 2026-11-12
 
@@ -525,9 +617,9 @@ must not be able to stall dispatch. The 5 s time box is exported as `LOCATING_TI
 ### 🟡 KI-44 — The confirmation floor is still declared twice
 
 `@lumo/safety-domain` now owns `HAZARD_CONFIRMATION_FLOOR` and the API uses it. `@lumo/types`
-still exports its own copy, which `apps/mobile` imports. It is left until the mobile milestone-1.0
-PR (#9) lands, to avoid a lockfile conflict. **To fix:** point mobile at the shared constant and
-delete the copy in `@lumo/types`.
+still exports its own copy, which `apps/mobile` imports. It was left until the mobile milestone-1.0
+work (#9) landed, to avoid a lockfile conflict; that has now happened, so it can be done.
+**To fix:** point mobile at the shared constant and delete the copy in `@lumo/types`.
 
 ## Found while building milestone 1.2 — 2026-11-13
 
