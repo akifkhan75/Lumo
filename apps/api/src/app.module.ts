@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { RegionsModule } from './regions/regions.module';
+import { LocationModule } from './location/location.module';
 import { SettingsModule } from './settings/settings.module';
 import { HazardReportsModule } from './hazard-reports/hazard-reports.module';
 import { AuthModule } from './auth/auth.module';
@@ -27,6 +28,7 @@ import { AiModule } from './ai/ai.module';
     PrismaModule,
     CryptoModule,
     RegionsModule,
+    LocationModule,
     SettingsModule,
     HazardReportsModule,
     AuthModule,

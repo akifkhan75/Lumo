@@ -378,22 +378,36 @@ describe('CHECK constraints and uniqueness', () => {
   });
 
   describe('location', () => {
+    // A snapshot must have an owner (a session or an incident), so every case here has a
+    // valid one. Without it the owner CHECK would reject first and each assertion below
+    // would pass for the wrong reason. Each test also names the constraint it expects.
+    let sessionId: string;
+    let tick = 0;
+    beforeAll(async () => { sessionId = (await history(userId)).session.id; });
     const snap = (data: object) =>
-      prisma.locationSnapshot.create({ data: { latitude: 1, longitude: 1, accuracyM: 5, capturedAt: new Date(), source: 'gps', expiresAt: new Date(Date.now() + 1e6), ...data } as any });
+      prisma.locationSnapshot.create({
+        data: { sessionId, latitude: 1, longitude: 1, accuracyM: 5, capturedAt: new Date(Date.now() - 100_000 + tick++), source: 'gps', expiresAt: new Date(Date.now() + 1e6), ...data } as any,
+      });
+    const violates = (p: Promise<unknown>, constraint: string) => expect(p).rejects.toThrow(new RegExp(constraint));
+
     it('refuses coordinates that are not on Earth', async () => {
-      await expect(snap({ latitude: 91 })).rejects.toThrow();
-      await expect(snap({ latitude: -91 })).rejects.toThrow();
-      await expect(snap({ longitude: 181 })).rejects.toThrow();
+      await violates(snap({ latitude: 91 }), 'LocationSnapshot_latitude_range');
+      await violates(snap({ latitude: -91 }), 'LocationSnapshot_latitude_range');
+      await violates(snap({ longitude: 181 }), 'LocationSnapshot_longitude_range');
     });
     it('refuses a negative accuracy and an impossible battery level', async () => {
-      await expect(snap({ accuracyM: -1 })).rejects.toThrow();
-      await expect(snap({ batteryPct: 101 })).rejects.toThrow();
+      await violates(snap({ accuracyM: -1 }), 'LocationSnapshot_accuracy_nonnegative');
+      await violates(snap({ batteryPct: 101 }), 'LocationSnapshot_battery_range');
     });
     it('accepts a valid fix', async () => {
       await expect(snap({ latitude: 33.68, longitude: 73.04, batteryPct: 80 })).resolves.toBeTruthy();
     });
     it('cannot be stored without an expiry — decay is mandatory', async () => {
-      await expect(prisma.$executeRaw`INSERT INTO "LocationSnapshot"(id,latitude,longitude,"accuracyM","capturedAt",source) VALUES (${randomUUID()},1,1,5,now(),'gps')`).rejects.toThrow();
+      await expect(
+        prisma.$executeRaw`INSERT INTO "LocationSnapshot"(id,"sessionId",latitude,longitude,"accuracyM","capturedAt",source) VALUES (${randomUUID()},${sessionId},1,1,5,now(),'gps')`,
+      // 23502 = not_null_violation. (Prisma's raw error carries the SQLSTATE and the failing row —
+      // coordinates included — but not the column name; see location.e2e-spec.ts.)
+      ).rejects.toThrow(/23502/);
     });
   });
 
