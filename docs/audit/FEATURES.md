@@ -37,7 +37,7 @@ Verified by reading the code on 2026-10-26.
 | SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                                                     |
 | Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                                                  |
 | Voice activation               | `DET-5`     | ✅ Real    | `useVoiceActivation` (dev build only)                               |
-| Crash detection                | `DET-4`     | ✅ Real    | `useAccidentDetector`                                               |
+| Crash detection                | `DET-4`     | 🟨 Partial | single 6 G threshold, no sequence analysis                          |
 | Fake call                      | `RES-17`    | ✅ Real    | AI-generated script                                                 |
 | AI safety assistant            | `REC-4`     | 🟨 Partial | works; no conversation memory                                       |
 | Self-defense tips              | `REC-4`     | ✅ Real    | AI with fallback                                                    |

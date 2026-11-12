@@ -76,7 +76,9 @@ This repo has already shipped three empty packages; that will not repeat.
 | 2     | `evidence`                                                                                                                                                                                      |
 | 3     | `ai-safety` `accident-detection`                                                                                                                                                                |
 | 4     | `safety-places` `community` `organizations`                                                                                                                                                     |
-| 5     | `wearables` `subscriptions` `admin`                                                                                                                                                             |
+| 5     | `subscriptions` `admin`                                                                                                                                                                         |
+
+| 6 | `wearables` _(`PLAT-12` is Phase 6; Phase 5 defines only its entitlement key)_ |
 
 `settings` folds into `users`. The empty `config`, `validation` and `eslint-config`
 packages are deleted in Phase 0.
@@ -391,15 +393,15 @@ client has no floor to recompute and no way to promote a lone report.
 
 Summarized here, detailed in [KNOWN_ISSUES.md](../audit/KNOWN_ISSUES.md):
 
-| Gap                                                | Impact                                          |
-| -------------------------------------------------- | ----------------------------------------------- |
-| No real geospatial model (percentages over a JPEG) | Blocks maps, proximity alerts, nearby-help      |
-| SOS performs no outbound notification              | The core promise is unimplemented               |
-| No session persistence                             | Logged out on every cold start                  |
-| Hardcoded LAN IP as the API base                   | Not shippable                                   |
-| No migrations, no CI, no API container             | Not deployable                                  |
-| No real-time transport (no WebSocket/push)         | Follow Me and community features cannot be real |
-| No offline queue                                   | An emergency in a dead zone is lost             |
+| Gap                                                                     | Impact                                          |
+| ----------------------------------------------------------------------- | ----------------------------------------------- |
+| No map SDK and no device location (coordinates are real since ADR-0010) | Blocks maps, proximity alerts, nearby-help      |
+| SOS performs no outbound notification                                   | The core promise is unimplemented               |
+| No session persistence                                                  | Logged out on every cold start                  |
+| Hardcoded LAN IP as the API base                                        | Not shippable                                   |
+| No migrations, no CI, no API container                                  | Not deployable                                  |
+| No real-time transport (no WebSocket/push)                              | Follow Me and community features cannot be real |
+| No offline queue                                                        | An emergency in a dead zone is lost             |
 
 The last two are the architectural work that the roadmap's Phase 2 depends on —
 see [ROADMAP.md](../product/ROADMAP.md).

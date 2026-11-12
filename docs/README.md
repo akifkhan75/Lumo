@@ -76,13 +76,15 @@ Lumo — Your Light in the Dark.
 
 ## The three things to know before touching anything
 
-1. **The SOS screen contacts nobody.** It says "Emergency Calling…", renders a
-   _hardcoded_ contact ring and "Notifying Nearby Volunteers…", and performs no call,
-   SMS, push or location upload.
-2. **There are no real coordinates.** Hazard reports are CSS percentages over a JPEG,
-   and the server _invents_ the position of every report.
-3. **`pnpm typecheck` is a silent no-op** — all 8 turbo tasks resolve to
-   `<NONEXISTENT>`, so it exits 0 having checked nothing.
+1. **The SOS screen still contacts nobody — and now says so.** It leads with
+   "Nothing has been sent" and offers the phone dialler. No call, SMS, push or location
+   upload exists (KI-3). It is also unreachable if the settings fetch fails (KI-27).
+2. **Hazard reports have real coordinates, but there is no map and the device cannot
+   read its own position.** Reports are listed, not pinned, and submitting one is
+   unavailable rather than guessing a point (KI-2, ADR-0010).
+3. **There is no refresh token.** The session survives a restart (the JWT is kept in the
+   keystore), but a 7-day token still expires into a login screen (KI-4). Only an HTTP 401
+   ends a session; a dropped connection does not.
 
 The parts that _are_ real — sensor hooks, module boundaries, shared types, AI
 fallbacks, test suites — are well built. The gap is that the response half of the
