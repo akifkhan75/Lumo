@@ -30,6 +30,7 @@ Lumo — Your Light in the Dark.
 ★ [Delivery Ledger](specs/DELIVERY_LEDGER.md) ·
 ★ [AI Safety](specs/AI_SAFETY_SPEC.md) ·
 ★ [Region Profiles](specs/REGION_PROFILES.md) ·
+[Escalation Policy](specs/ESCALATION_POLICY.md) ·
 [Journey Guardian](specs/JOURNEY_GUARDIAN.md) · [Safety Check](specs/SAFETY_CHECK.md) ·
 [Evidence Pipeline](specs/EVIDENCE_PIPELINE.md) · [Offline](specs/OFFLINE_ARCHITECTURE.md) ·
 [Practice Mode](specs/PRACTICE_MODE.md) · [Data Model](specs/DATA_MODEL.md) ·

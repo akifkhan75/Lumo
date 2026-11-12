@@ -263,6 +263,140 @@ notification, and never reads a clock — time is injected. That is what makes i
 
 ---
 
+## 6a. Transition tables — the normative definition
+
+These tables are the specification of `safety-domain/transitions.ts`. **There is no
+default-allow:** any (state × event) pair absent from a table is an explicit
+rejection, returning a typed error and logging an `ILLEGAL_TRANSITION` event.
+
+`Actor` — who may cause it: `user` · `system` · `policy` · `contact`.
+`Effects` are **declared, not executed** — the caller performs them (ADR-0009).
+
+### SafetySession
+
+| From           | Event                       | To             | Actor        | Guard                                                        | Effects                                                         |
+| -------------- | --------------------------- | -------------- | ------------ | ------------------------------------------------------------ | --------------------------------------------------------------- |
+| `CREATED`      | `START`                     | `ACTIVE`       | user         | has ≥1 consented contact                                     | `startTimers`, `notifyContactsSessionStarted`                   |
+| `CREATED`      | `CANCEL`                    | `CANCELLED`    | user         | —                                                            | —                                                               |
+| `ACTIVE`       | `CHECK_IN_DEADLINE_REACHED` | `CHECK_IN_DUE` | system       | —                                                            | `promptUser`                                                    |
+| `ACTIVE`       | `ARRIVAL_DETECTED`          | `ARRIVED`      | system       | within destination geofence                                  | `stopTimers`                                                    |
+| `ACTIVE`       | `ARRIVAL_CONFIRMED`         | `ARRIVED`      | user         | —                                                            | `stopTimers`                                                    |
+| `ACTIVE`       | `DEVIATION_DETECTED`        | `ACTIVE`       | system       | persists > `deviationGraceSeconds` **and** outside GPS error | `promptUserDiscreetly`                                          |
+| `ACTIVE`       | `SOS_RAISED`                | `ALERTED`      | user         | —                                                            | `raiseIncident(trigger)`                                        |
+| `ACTIVE`       | `CONNECTIVITY_LOST`         | `SUSPENDED`    | system       | —                                                            | `recordPriorState`, `showOfflineNotice`                         |
+| `ACTIVE`       | `CANCEL`                    | `CANCELLED`    | user         | —                                                            | `notifyContactsEnded`                                           |
+| `ACTIVE`       | `EXPIRE`                    | `EXPIRED`      | system       | no resolution possible (e.g. permission revoked)             | `notifyContactsExpired`                                         |
+| `CHECK_IN_DUE` | `USER_RESPONDED`            | `ACTIVE`       | user         | —                                                            | `rescheduleDeadline`                                            |
+| `CHECK_IN_DUE` | `NO_RESPONSE`               | `GRACE`        | system       | prompt unanswered                                            | `startGraceTimer`                                               |
+| `CHECK_IN_DUE` | `ARRIVAL_CONFIRMED`         | `ARRIVED`      | user         | —                                                            | `stopTimers`                                                    |
+| `CHECK_IN_DUE` | `CONNECTIVITY_LOST`         | `SUSPENDED`    | system       | —                                                            | `recordPriorState`                                              |
+| `CHECK_IN_DUE` | `CANCEL`                    | `CANCELLED`    | user         | —                                                            | `notifyContactsEnded`                                           |
+| `GRACE`        | `USER_RESPONDED`            | `ACTIVE`       | user         | —                                                            | `rescheduleDeadline`                                            |
+| `GRACE`        | `GRACE_EXPIRED`             | `ESCALATING`   | system       | `graceSeconds` elapsed                                       | `beginEscalation(policy)`                                       |
+| `GRACE`        | `ARRIVAL_CONFIRMED`         | `ARRIVED`      | user         | —                                                            | `stopTimers`                                                    |
+| `GRACE`        | `CONNECTIVITY_LOST`         | `SUSPENDED`    | system       | —                                                            | `recordPriorState`                                              |
+| `GRACE`        | `CANCEL`                    | `CANCELLED`    | user         | —                                                            | `notifyContactsEnded`                                           |
+| `ESCALATING`   | `USER_RESPONDED`            | `ACTIVE`       | user         | no incident raised yet                                       | `haltEscalation`, `rescheduleDeadline`                          |
+| `ESCALATING`   | `ARRIVAL_CONFIRMED`         | `ARRIVED`      | user         | no incident raised yet                                       | `haltEscalation`                                                |
+| `ESCALATING`   | `INCIDENT_RAISED`           | `ALERTED`      | system       | —                                                            | —                                                               |
+| `ALERTED`      | `INCIDENT_RESOLVED`         | `CLOSED`       | user, system | incident is terminal                                         | `notifyContactsResolved`                                        |
+| `ALERTED`      | `ARRIVAL_CONFIRMED`         | `CLOSED`       | user         | —                                                            | `resolveIncident`, `notifyContactsResolved`                     |
+| `ARRIVED`      | `CLOSE`                     | `CLOSED`       | system       | —                                                            | `notifyContactsArrived`                                         |
+| `SUSPENDED`    | `CONNECTIVITY_RESTORED`     | _`priorState`_ | system       | —                                                            | `reconcileQueue`                                                |
+| `SUSPENDED`    | `ARRIVAL_CONFIRMED`         | `ARRIVED`      | user         | —                                                            | `queueArrivalNotice`                                            |
+| `SUSPENDED`    | `CANCEL`                    | `CANCELLED`    | user         | —                                                            | `queueEndNotice`                                                |
+| `SUSPENDED`    | `GRACE_EXPIRED`             | `ESCALATING`   | system       | —                                                            | `queueEscalation` — dispatched on reconnect, **marked delayed** |
+
+Terminal: `CLOSED` · `CANCELLED` · `EXPIRED`.
+`SUSPENDED` stores `priorState`; `CONNECTIVITY_RESTORED` returns to it, except where a
+queued event has since advanced the machine.
+
+**Deliberate rejections** — each is a safety decision, not an omission:
+
+| Rejected                                  | Why                                                                                             |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `ARRIVED → *` (anything but `CLOSE`)      | Arrival is final; a new journey is a new session                                                |
+| `CLOSED`/`CANCELLED`/`EXPIRED` → anything | Terminal. Reopening would corrupt the audit record                                              |
+| `CREATED → CHECK_IN_DUE`                  | A session that never started has no deadline                                                    |
+| `ACTIVE → ESCALATING`                     | Must pass through `CHECK_IN_DUE` and `GRACE`. Skipping grace is how an app escalates a late bus |
+| `SUSPENDED → SUSPENDED`                   | Idempotent no-op, not a transition                                                              |
+
+### EmergencyIncident
+
+| From                                                                                 | Event                 | To                    | Actor   | Guard                               | Effects                                    |
+| ------------------------------------------------------------------------------------ | --------------------- | --------------------- | ------- | ----------------------------------- | ------------------------------------------ |
+| `CREATED`                                                                            | `CANCEL`              | `CANCELLED`           | user    | within countdown **and** not duress | `stopCountdown`                            |
+| `CREATED`                                                                            | `DURESS_CANCEL`       | `LOCATING`            | user    | duress code matched                 | `markDuress`, `suppressAllDeviceUi`        |
+| `CREATED`                                                                            | `COUNTDOWN_ELAPSED`   | `LOCATING`            | system  | —                                   | `startLocationFix(timeout)`                |
+| `CREATED`                                                                            | `COUNTDOWN_SKIPPED`   | `LOCATING`            | user    | manual SOS or safeword              | —                                          |
+| `LOCATING`                                                                           | `LOCATION_ACQUIRED`   | `DISPATCHING`         | system  | —                                   | `attachLocation`                           |
+| `LOCATING`                                                                           | `LOCATION_TIMEOUT`    | `DISPATCHING`         | system  | ≤5s elapsed                         | `markLocationUnavailable`                  |
+| `DISPATCHING`                                                                        | `RECIPIENTS_RESOLVED` | `NOTIFYING`           | system  | ≥1 consented recipient              | `createAttempts`                           |
+| `DISPATCHING`                                                                        | `NO_RECIPIENTS`       | `ALL_CHANNELS_FAILED` | system  | zero consented recipients           | `promptUserToDial`                         |
+| `NOTIFYING`                                                                          | `ATTEMPT_SETTLED`     | `NOTIFYING`           | system  | attempts still pending              | `updateLedger`                             |
+| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `NOTIFIED`            | system  | every attempt at its channel max    | `updateLedger`                             |
+| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `PARTIALLY_NOTIFIED`  | system  | some at max, some failed/expired    | `updateLedger`                             |
+| `NOTIFYING`                                                                          | `ALL_SETTLED`         | `ALL_CHANNELS_FAILED` | system  | none succeeded                      | `pageOnCall`, `promptUserToDial`           |
+| `NOTIFYING`                                                                          | `STEP_TIMEOUT`        | `NOTIFYING`           | policy  | more steps remain                   | `advanceEscalationStep`                    |
+| `NOTIFYING`, `PARTIALLY_NOTIFIED`, `NOTIFIED`, `ALL_CHANNELS_FAILED`                 | `ACK_RECEIVED`        | `ACKNOWLEDGED`        | contact | —                                   | `haltEscalation`, `notifyUserOfAck`        |
+| `ACKNOWLEDGED`                                                                       | `UNACK_RECEIVED`      | _`priorState`_        | contact | —                                   | `resumeEscalation`                         |
+| `NOTIFYING`, `PARTIALLY_NOTIFIED`, `NOTIFIED`, `ALL_CHANNELS_FAILED`, `ACKNOWLEDGED` | `RESOLVE`             | `RESOLVING`           | user    | —                                   | `haltEscalation`, `notifyContactsResolved` |
+| `RESOLVING`                                                                          | `CLOSE`               | `CLOSED`              | system  | —                                   | `sealTimeline`                             |
+
+Terminal: `CLOSED` · `CANCELLED`.
+
+**Deliberate rejections:**
+
+| Rejected                                | Why                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `CANCEL` from any state after `CREATED` | **After dispatch there is no cancel.** Contacts have the alert; the honest action is `RESOLVE`, which tells them it ended |
+| `LOCATING → CANCELLED`                  | Dispatch has begun                                                                                                        |
+| Any state → `LOCATING` (re-entry)       | Location refreshes update the snapshot, they do not re-enter the machine                                                  |
+| `ALL_CHANNELS_FAILED → NOTIFIED`        | A later success creates a _new_ attempt; the incident re-evaluates via `ATTEMPT_SETTLED`                                  |
+| `CLOSED → *`                            | Terminal; the timeline is sealed evidence                                                                                 |
+
+### NotificationAttempt
+
+The guards here are what make the Delivery Ledger structurally honest: a transition to
+a state **above the channel's `maxState` is rejected**, so a channel that cannot report
+delivery can never be recorded as delivered.
+
+| From        | Event                   | To             | Guard                                                             |
+| ----------- | ----------------------- | -------------- | ----------------------------------------------------------------- |
+| `QUEUED`    | `PROVIDER_ACCEPTED`     | `SENT`         | —                                                                 |
+| `QUEUED`    | `PROVIDER_REJECTED`     | `FAILED`       | — · triggers fallback                                             |
+| `QUEUED`    | `TTL_ELAPSED`           | `EXPIRED`      | —                                                                 |
+| `QUEUED`    | `SPEND_CAP_REACHED`     | `FAILED`       | reason `SPEND_CAP`; surfaced to the user                          |
+| `SENT`      | `RECEIPT_DELIVERED`     | `DELIVERED`    | **`channel.maxState ≥ DELIVERED`**                                |
+| `SENT`      | `ACK`                   | `ACKNOWLEDGED` | **`channel.maxState = ACKNOWLEDGED`** · ack may precede a receipt |
+| `SENT`      | `CHANNEL_CANNOT_REPORT` | `UNKNOWN`      | `channel.maxState = SENT`                                         |
+| `SENT`      | `TTL_ELAPSED`           | `EXPIRED`      | `channel.maxState > SENT` — otherwise `UNKNOWN`                   |
+| `DELIVERED` | `ACK`                   | `ACKNOWLEDGED` | **`channel.maxState = ACKNOWLEDGED`**                             |
+
+Terminal: `ACKNOWLEDGED` · `FAILED` · `EXPIRED` · `UNKNOWN` · `DELIVERED` (when the
+channel cannot reach `ACKNOWLEDGED`).
+
+**Deliberate rejections:**
+
+| Rejected                                | Why                                                                                                                                |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Any transition above `channel.maxState` | The structural guarantee behind [`DELIVERY_LEDGER.md`](DELIVERY_LEDGER.md). The UI cannot lie because the data cannot hold the lie |
+| `FAILED → SENT`                         | A retry is a **new attempt** with a new `attemptNumber`, never a mutation. The history is evidence                                 |
+| `UNKNOWN → DELIVERED`                   | Once the channel has said it cannot report, a later claim is not trustworthy                                                       |
+| `ACKNOWLEDGED → DELIVERED`              | Acknowledgement supersedes delivery                                                                                                |
+
+### Cross-machine effects
+
+| Trigger                                  | Consequence                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| `SafetySession → ESCALATING`             | Creates an `EmergencyIncident` with the session's idempotency context |
+| `EmergencyIncident → CLOSED`/`CANCELLED` | Emits `INCIDENT_RESOLVED` to the owning session, if any               |
+| `NotificationAttempt` settles            | Emits `ATTEMPT_SETTLED` to its incident                               |
+| First `ACKNOWLEDGED` attempt             | Emits `ACK_RECEIVED` to its incident, halting the ladder              |
+
+Cross-machine effects are **declared and dispatched by the caller**, never by a machine
+reaching into another. That keeps each machine independently testable.
+
 ## 7. Required tests
 
 Beyond full branch coverage of `transitions.ts`:
