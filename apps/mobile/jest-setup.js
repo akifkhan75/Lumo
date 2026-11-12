@@ -51,3 +51,14 @@ jest.mock('expo-secure-store', () => {
     __store: store,
   };
 });
+
+// Mock expo-location. A native module, so without this the suite fails to boot. The
+// defaults are "never asked" and "no fix": a test that needs a position drives the
+// watch callback itself.
+jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3 },
+  getForegroundPermissionsAsync: jest.fn(async () => ({ status: 'undetermined', granted: false, canAskAgain: true })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'denied', granted: false, canAskAgain: false })),
+  watchPositionAsync: jest.fn(async () => ({ remove: jest.fn() })),
+  reverseGeocodeAsync: jest.fn(async () => []),
+}));

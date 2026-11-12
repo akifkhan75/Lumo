@@ -17,12 +17,12 @@ data a stalker wants. So this spec is mostly about what location may **not** cla
 
 ## The four-part contract
 
-| Part                           | Statement                                                                                                                                                                                                      |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Owner**                      | Capture, display and place-resolution: `apps/mobile` (`hooks/useLocation`, `services/locationFormat`). Storage and ownership checks: `apps/api/src/location` (`LocationService`).                              |
-| **Supported platform**         | Foreground capture on Android and iOS, with the app open. **Not supported in this milestone:** background capture, and any capture while the app is closed (see _Limits_).                                      |
-| **Failure path**               | Permission denied or permanently denied → the dashboard says location is off and links to Settings. No fix → says so. A fix with unknown accuracy → treated as no fix. Geocoder fails → position kept, place unresolved and **said** to be unresolved. |
-| **Testable completion** | See _Required tests_. Each rule below is an assertion, not a description.                                                                                                                                      |
+| Part                    | Statement                                                                                                                                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Owner**               | Capture, display and place-resolution: `apps/mobile` (`hooks/useLocation`, `services/locationFormat`). Storage and ownership checks: `apps/api/src/location` (`LocationService`).                                                                      |
+| **Supported platform**  | Foreground capture on Android and iOS, with the app open. **Not supported in this milestone:** background capture, and any capture while the app is closed (see _Limits_).                                                                             |
+| **Failure path**        | Permission denied or permanently denied → the dashboard says location is off and links to Settings. No fix → says so. A fix with unknown accuracy → treated as no fix. Geocoder fails → position kept, place unresolved and **said** to be unresolved. |
+| **Testable completion** | See _Required tests_. Each rule below is an assertion, not a description.                                                                                                                                                                              |
 
 ## The behaviour
 
@@ -115,20 +115,20 @@ belongs to a session or an incident and neither can be created over HTTP until t
 
 ## Required tests
 
-| Rule                                                   | Proven by                                                                          |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| A fix is never shown without age and accuracy          | `locationFormat` tests                                                             |
-| A stale fix is never presented as current              | `locationFormat` tests (boundary at exactly the limit, and one millisecond past)   |
-| Unknown accuracy is not a usable fix and is not zero   | `useLocation` and `LocationService` tests                                          |
-| Permission denied / permanently denied degrade honestly | `useLocation` and dashboard tests                                                 |
-| No background permission                               | generated manifest checked in this milestone; asserted in `app.json` config         |
-| Watching stops on blur, on background, on cleanup      | `useLocation` tests (subscription `remove` called)                                 |
-| A geocode belongs to its fix                           | `useLocation` tests                                                                |
-| Unmapped region name → unknown, never guessed         | `@lumo/region-profiles` place tests                                                |
-| Ownership, terminal owners, validation                 | `LocationService` unit tests and the database suite                                |
-| A retried batch does not duplicate                     | database suite (unique index)                                                      |
-| A CHECK-rejected write logs no coordinates             | database suite with captured log output                                            |
-| `expiresAt` follows the region retention               | `LocationService` tests                                                            |
+| Rule                                                    | Proven by                                                                        |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| A fix is never shown without age and accuracy           | `locationFormat` tests                                                           |
+| A stale fix is never presented as current               | `locationFormat` tests (boundary at exactly the limit, and one millisecond past) |
+| Unknown accuracy is not a usable fix and is not zero    | `useLocation` and `LocationService` tests                                        |
+| Permission denied / permanently denied degrade honestly | `useLocation` and dashboard tests                                                |
+| No background permission                                | generated manifest checked in this milestone; asserted in `app.json` config      |
+| Watching stops on blur, on background, on cleanup       | `useLocation` tests (subscription `remove` called)                               |
+| A geocode belongs to its fix                            | `useLocation` tests                                                              |
+| Unmapped region name → unknown, never guessed           | `@lumo/region-profiles` place tests                                              |
+| Ownership, terminal owners, validation                  | `LocationService` unit tests and the database suite                              |
+| A retried batch does not duplicate                      | database suite (unique index)                                                    |
+| A CHECK-rejected write logs no coordinates              | database suite with captured log output                                          |
+| `expiresAt` follows the region retention                | `LocationService` tests                                                          |
 
 ## Observability
 

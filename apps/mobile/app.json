@@ -28,7 +28,16 @@
           "speechRecognitionPermission": "Allow Lumo to recognize your voice to trigger emergency alerts hands-free."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Lumo reads your position while the app is open, to show where you are. Nothing is shared with anyone unless you start sharing.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ]
     ]
   }
 }

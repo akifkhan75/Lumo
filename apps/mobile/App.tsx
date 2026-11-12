@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing } from 'react-native';
-import { NavigationContainer, createNavigationContainerRef, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing } from 'react-native';
+import { NavigationContainer, createNavigationContainerRef, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ActionButton, BottomNavContainer, Container, DemoMapNotice, Header, HeaderActions, HeaderTextContainer, HelloText, LocationText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, RetryButton, RetryButtonText, SafetyAssistantButton, SettingsStatusRow, SettingsStatusStrip, SettingsStatusText, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
+import { ActionButton, BottomNavContainer, Container, DemoMapNotice, Header, HeaderActions, HeaderTextContainer, HelloText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, RetryButton, RetryButtonText, SafetyAssistantButton, SettingsStatusRow, SettingsStatusStrip, SettingsStatusText, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
 import { useShakeDetector } from './hooks/useShakeDetector';
 import { useVoiceActivation } from './hooks/useVoiceActivation';
 import { useAccidentDetector } from './hooks/useAccidentDetector';
@@ -27,6 +27,8 @@ import CommunitySafetyScreen from './components/CommunitySafetyModal';
 import ReportHazardScreen from './components/ReportHazardModal';
 import SafetyAssistantScreen from './components/SafetyAssistantModal';
 import DemoBanner from './components/common/DemoBanner';
+import LocationStatus from './components/LocationStatus';
+import { useLocation } from './hooks/useLocation';
 
 
 const DashboardScreen = () => {
@@ -125,6 +127,16 @@ const DashboardScreen = () => {
       clearVoiceError();
   }, [voiceError, handleSaveSettings, clearVoiceError]);
 
+  // Position is read only while this screen is focused AND the app is in the
+  // foreground (docs/specs/LOCATION.md). Nothing is uploaded or shared.
+  const focused = useIsFocused();
+  const [appActive, setAppActive] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => setAppActive(s === 'active'));
+    return () => sub.remove();
+  }, []);
+  const location = useLocation(focused && appActive);
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
       Animated.loop(
@@ -146,7 +158,7 @@ const DashboardScreen = () => {
          <Header>
             <HeaderTextContainer>
                 <HelloText>{userSettings ? `Hello ${userSettings.personalInfo.fullName},` : 'Hello,'}</HelloText>
-<LocationText>Location unavailable — Lumo does not read your position yet</LocationText>
+<LocationStatus location={location} />
                 {isListening && <VoiceGuardText><IconMic size={12} color="#16a34a" /> Voice Guard Active</VoiceGuardText>}
             </HeaderTextContainer>
             <HeaderActions>

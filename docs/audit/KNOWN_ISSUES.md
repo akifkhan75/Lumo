@@ -657,7 +657,11 @@ no job re-encrypts under a new key yet beyond re-running `db:encrypt-pii` on pla
 
 ## Found while building milestone 1.3 — 2026-11-13
 
-### 🔴 KI-50 — Nothing turns coordinates into a country and subdivision
+### 🟠 KI-50 — Country and subdivision rely on the platform geocoder (partly fixed in 1.4)
+
+_Update, milestone 1.4:_ the device now reverse-geocodes each fix and `placeFromGeocode` maps it to a country and subdivision; see KI-56. The original problem follows.
+
+#### Original
 
 `@lumo/region-profiles` resolves from a country and subdivision that something else has already
 worked out. That something does not exist: the app cannot yet read its position (milestone 1.4),
@@ -700,3 +704,36 @@ geocoder exists (KI-50).
 The uncertainty notes ("Showing Pakistan emergency numbers; we couldn't confirm your location.") are
 returned as English text. They need translating — Urdu for PK — under the localisation work
 (milestones 1.14 / 6.1), and a native-speaker review like every other safety string.
+
+## Found while building milestone 1.4 — 2026-11-13
+
+### 🟠 KI-56 — The place of a fix depends on an undocumented geocoder
+
+`reverseGeocodeAsync` is documented to return `isoCountryCode` and `region`, but not the _format_ of
+`region` (name, abbreviation or code), and it needs the network (assumed, undocumented). Subdivisions
+come from an exact-match table for US states and PK provinces; anything else is unknown, which
+costs only a "possible" label on a regional number. Unverified on real devices in either country,
+and a geocode is reused for a newer fix only within 100 m and 2 minutes (arbitrary, see
+`placeTracking.ts`). The region resolver is **not yet wired to the dashboard**, so emergency numbers
+still do not use this (milestone 1.8).
+
+### 🔴 KI-57 — A position reaches nobody
+
+Capture and display only. Uploading, the sharing control and the sharing indicator ship together with
+sessions (1.10), incidents (1.8) and the recipient page (1.11), so a share can never exist without its
+indicator (invariant 4). Until then nothing is stored across a restart either; the durable queue is
+1.13. The plan's 1.4 exit ("two devices, one sharing") moved to 1.10/1.11.
+
+### 🟠 KI-58 — The fix is the device's claim
+
+Mock-location settings, indoor or urban-canyon error, and an Android "approximate" grant can all give
+a wrong position. Lumo shows the accuracy the device reports and treats a fix with unknown accuracy as
+none, but it cannot detect a lying but plausible reading. The "approximate" grant is not distinguished
+from a precise one except through the larger accuracy radius.
+
+### 🟡 KI-59 — Permission and watch behaviour is verified in Jest only
+
+Foreground permission flows, `watchPositionAsync` stop-on-blur/background, and the settings deep link
+were tested against a mock. Not run on iOS or Android hardware; `expo prebuild` was checked for the
+absence of background permissions on Android only. The native project must be rebuilt for the new
+plugin.
