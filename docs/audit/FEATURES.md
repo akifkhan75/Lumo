@@ -25,29 +25,29 @@ Verified by reading the code on 2026-10-26.
 
 ## Summary
 
-| Feature                        | ID          | Status     | Where                                  |
-| ------------------------------ | ----------- | ---------- | -------------------------------------- |
-| Email + password auth          | `—`         | ✅ Real    | `AuthModule`, `AuthScreen`             |
-| Session persistence            | `KI-4`      | ⛔ Mock    | in-memory only                         |
-| Settings & profile             | `PRO-6`     | ✅ Real    | `SettingsModule`, `settings/*`         |
-| Trusted contacts               | `RES-2/7`   | 🟨 Partial | stored; never used by any alert        |
-| Hazard report feed             | `PREV-2`    | 🟨 Partial | real data, real coordinates, not drawn |
-| Report a hazard                | `PREV-1`    | ⛔ Blocked | needs the device's location            |
-| Map                            | `PREV-2`    | ⛔ Mock    | static JPEG, no map SDK                |
-| SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                        |
-| Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                     |
-| Voice activation               | `DET-5`     | ✅ Real    | `useVoiceActivation` (dev build only)  |
-| Crash detection                | `DET-4`     | ✅ Real    | `useAccidentDetector`                  |
-| Fake call                      | `RES-17`    | ✅ Real    | AI-generated script                    |
-| AI safety assistant            | `REC-4`     | 🟨 Partial | works; no conversation memory          |
-| Self-defense tips              | `REC-4`     | ✅ Real    | AI with fallback                       |
-| Check-in timer                 | `RES-13`    | 🟨 Partial | fires, but in-process only             |
-| Follow Me                      | `RES-11/12` | ⛔ Mock    | hardcoded share link                   |
-| Community / Safe Walk          | `RES-20`    | ⛔ Mock    | local state                            |
-| Nearby volunteers              | `RES-20`    | ⛔ Mock    | a text label                           |
-| Audio/video evidence recording | `PRO-1`     | ⛔ Mock    | `const isRecording = false`            |
-| Push notifications             | `RES-5`     | ❌ Absent  | not implemented at all                 |
-| Offline support                | `RES-16`    | ❌ Absent  | —                                      |
+| Feature                        | ID          | Status     | Where                                      |
+| ------------------------------ | ----------- | ---------- | ------------------------------------------ |
+| Email + password auth          | `—`         | ✅ Real    | `AuthModule`, `AuthScreen`                 |
+| Session persistence            | `KI-4`      | ⛔ Mock    | in-memory only                             |
+| Settings & profile             | `PRO-6`     | ✅ Real    | `SettingsModule`, `settings/*`             |
+| Trusted contacts               | `RES-2/7`   | 🟨 Partial | stored; never used by any alert            |
+| Hazard report feed             | `PREV-2`    | 🟨 Partial | real data, real coordinates, not drawn     |
+| Report a hazard                | `PREV-1`    | ⛔ Blocked | needs the device's location                |
+| Map                            | `PREV-2`    | ⛔ Mock    | static JPEG, no map SDK                    |
+| SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                            |
+| Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                         |
+| Voice activation               | `DET-5`     | ✅ Real    | `useVoiceActivation` (dev build only)      |
+| Crash detection                | `DET-4`     | 🟨 Partial | single 6 G threshold, no sequence analysis |
+| Fake call                      | `RES-17`    | ✅ Real    | AI-generated script                        |
+| AI safety assistant            | `REC-4`     | 🟨 Partial | works; no conversation memory              |
+| Self-defense tips              | `REC-4`     | ✅ Real    | AI with fallback                           |
+| Check-in timer                 | `RES-13`    | 🟨 Partial | fires, but in-process only                 |
+| Follow Me                      | `RES-11/12` | ⛔ Mock    | hardcoded share link                       |
+| Community / Safe Walk          | `RES-20`    | ⛔ Mock    | local state                                |
+| Nearby volunteers              | `RES-20`    | ⛔ Mock    | a text label                               |
+| Audio/video evidence recording | `PRO-1`     | ⛔ Mock    | `const isRecording = false`                |
+| Push notifications             | `RES-5`     | ❌ Absent  | not implemented at all                     |
+| Offline support                | `RES-16`    | ❌ Absent  | —                                          |
 
 ---
 

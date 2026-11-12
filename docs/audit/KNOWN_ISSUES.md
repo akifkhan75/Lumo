@@ -451,6 +451,52 @@ Two defects found while doing it, both fixed:
 ### Next
 
 Phase 1 of [`../product/ROADMAP.md`](../product/ROADMAP.md): **device location**
-(`expo-location`) and a real map, which together finish KI-2 and unblock
+(`expo-location`) and a real map surface, which together finish KI-2 and unblock
 **KI-3** (a real SOS, behind the Verified Delivery Ledger) — the product's reason
-to exist.
+to exist. Note the split: the map _surface_ is Phase 1, but hazard pins on it
+(`PREV-1`, `PREV-2`) are Phase 4, so the map initially shows the user's own position
+only.
+
+## Spec gaps found while planning — 2026-11-12
+
+Found while turning the specification suite into an implementation plan. None is a code
+defect; each is a place where a spec contradicts another spec, the code, or itself, and
+something will later be built on it.
+
+### 🔴 KI-28 — Duress cancel and the recording notice cannot both hold
+
+`PRO-1` and both region profiles set `requiresOnScreenNotice: true`, so a recording must
+announce itself. [`EMERGENCY_WORKFLOWS.md`](../specs/EMERGENCY_WORKFLOWS.md) §3 forbids
+any recording indicator on the device under duress. Either capture happens without the
+legally required notice, or there is no capture during a duress incident. **Needs
+counsel.** Default until answered: **no capture during a duress incident.** Gates Phase 2.
+
+### 🟠 KI-29 — `HazardReport.description` is required free text
+
+`PREV-6` prohibits free-text naming of individuals and businesses. The DTO rejects contact
+details but not a business name, and the column is a required `String`. Constrain to
+structured fields plus a bounded note, with a backfill. Phase 4.
+
+### 🟠 KI-30 — `EscalationPolicy` has no Prisma model
+
+`SafetySession.escalationPolicyId` references it and
+[`ESCALATION_POLICY.md`](../specs/ESCALATION_POLICY.md) defines the shape, but
+[`DATA_MODEL.md`](../specs/DATA_MODEL.md) never declares the model. Add both together in
+the Phase 1 schema milestone.
+
+### 🟠 KI-31 — Background push cannot prove device arrival
+
+The ledger, ADR-0012's context, the `delivery-ledger` skill and the platform matrix all
+claimed a provider receipt reaches `DELIVERED`. It does not: a receipt means FCM or APNs
+_accepted_ the message. **Corrected 2026-11-12** — provider-side ceiling is `SENT`;
+`DELIVERED` needs a device-side receipt. The code does not exist yet, so nothing was
+ever recorded wrongly, but the spec would have led to it.
+
+### 🟡 KI-32 — Requirement IDs missing, and orphaned from any spec
+
+Twelve ROADMAP items carry no requirement ID (circles; discreet triggers; explainable
+notifications; accelerometer consolidation; organisation portals; referral loop; trust
+page; admin console; professional monitoring; dispatch under agreement; public-alert
+feeds; biometric lock and stealth mode). Separately, `RES-10` (live location) has no
+owning spec, and 25 further IDs appear in no spec's `Implements` header. IDs are assigned
+in the PRD and never minted elsewhere ([`lumo-docs`](../../.claude/skills/lumo-docs/SKILL.md)).
