@@ -5,8 +5,9 @@
 > acceptance criteria see [`../product/PRD.md`](../product/PRD.md). IDs below cross-reference
 > the PRD so the three documents cannot drift.
 >
-> "Danger zone" is the **current** name; it is being renamed to **hazard report**
-> ([ADR-0010](../adr/0010-hazard-reports-replace-danger-zones.md)).
+> "Hazard report" replaced "danger zone"
+> ([ADR-0010](../adr/0010-hazard-reports-replace-danger-zones.md)). `severity` is
+> gone and will not come back.
 
 **The most important table in this repo.** Half the UI is a convincing prototype.
 Nobody — human or agent — should plan work, demo the app, or describe it to a user
@@ -24,29 +25,29 @@ Verified by reading the code on 2026-10-26.
 
 ## Summary
 
-| Feature                        | ID          | Status     | Where                                 |
-| ------------------------------ | ----------- | ---------- | ------------------------------------- |
-| Email + password auth          | `—`         | ✅ Real    | `AuthModule`, `AuthScreen`            |
-| Session persistence            | `KI-4`      | ⛔ Mock    | in-memory only                        |
-| Settings & profile             | `PRO-6`     | ✅ Real    | `SettingsModule`, `settings/*`        |
-| Trusted contacts               | `RES-2/7`   | 🟨 Partial | stored; never used by any alert       |
-| Danger zone feed               | `PREV-2`    | 🟨 Partial | real data, fake positions             |
-| Report a danger zone           | `PREV-1`    | 🟨 Partial | server invents the location           |
-| Map                            | `PREV-2`    | ⛔ Mock    | static JPEG, no map SDK               |
-| SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                       |
-| Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                    |
-| Voice activation               | `DET-5`     | ✅ Real    | `useVoiceActivation` (dev build only) |
-| Crash detection                | `DET-4`     | ✅ Real    | `useAccidentDetector`                 |
-| Fake call                      | `RES-17`    | ✅ Real    | AI-generated script                   |
-| AI safety assistant            | `REC-4`     | 🟨 Partial | works; no conversation memory         |
-| Self-defense tips              | `REC-4`     | ✅ Real    | AI with fallback                      |
-| Check-in timer                 | `RES-13`    | 🟨 Partial | fires, but in-process only            |
-| Follow Me                      | `RES-11/12` | ⛔ Mock    | hardcoded share link                  |
-| Community / Safe Walk          | `RES-20`    | ⛔ Mock    | local state                           |
-| Nearby volunteers              | `RES-20`    | ⛔ Mock    | a text label                          |
-| Audio/video evidence recording | `PRO-1`     | ⛔ Mock    | `const isRecording = false`           |
-| Push notifications             | `RES-5`     | ❌ Absent  | not implemented at all                |
-| Offline support                | `RES-16`    | ❌ Absent  | —                                     |
+| Feature                        | ID          | Status     | Where                                  |
+| ------------------------------ | ----------- | ---------- | -------------------------------------- |
+| Email + password auth          | `—`         | ✅ Real    | `AuthModule`, `AuthScreen`             |
+| Session persistence            | `KI-4`      | ⛔ Mock    | in-memory only                         |
+| Settings & profile             | `PRO-6`     | ✅ Real    | `SettingsModule`, `settings/*`         |
+| Trusted contacts               | `RES-2/7`   | 🟨 Partial | stored; never used by any alert        |
+| Hazard report feed             | `PREV-2`    | 🟨 Partial | real data, real coordinates, not drawn |
+| Report a hazard                | `PREV-1`    | ⛔ Blocked | needs the device's location            |
+| Map                            | `PREV-2`    | ⛔ Mock    | static JPEG, no map SDK                |
+| SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                        |
+| Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                     |
+| Voice activation               | `DET-5`     | ✅ Real    | `useVoiceActivation` (dev build only)  |
+| Crash detection                | `DET-4`     | ✅ Real    | `useAccidentDetector`                  |
+| Fake call                      | `RES-17`    | ✅ Real    | AI-generated script                    |
+| AI safety assistant            | `REC-4`     | 🟨 Partial | works; no conversation memory          |
+| Self-defense tips              | `REC-4`     | ✅ Real    | AI with fallback                       |
+| Check-in timer                 | `RES-13`    | 🟨 Partial | fires, but in-process only             |
+| Follow Me                      | `RES-11/12` | ⛔ Mock    | hardcoded share link                   |
+| Community / Safe Walk          | `RES-20`    | ⛔ Mock    | local state                            |
+| Nearby volunteers              | `RES-20`    | ⛔ Mock    | a text label                           |
+| Audio/video evidence recording | `PRO-1`     | ⛔ Mock    | `const isRecording = false`            |
+| Push notifications             | `RES-5`     | ❌ Absent  | not implemented at all                 |
+| Offline support                | `RES-16`    | ❌ Absent  | —                                      |
 
 ---
 
@@ -98,19 +99,25 @@ overlay. Real network call, real fallback.
 
 ## 🟨 Partial
 
-### Danger zones
+### Hazard reports
 
-Real persistence, real community feed, **fake geography**. Positions are CSS
-percentages over `map_bg.jpg`, and the server generates them:
+Real persistence, real community feed, **real coordinates** — and nothing that
+draws them. The model now stores `latitude`/`longitude` with an optional accuracy,
+expires on a per-type TTL, and counts confirmations one-per-person with a floor
+below which a report influences nothing.
 
-```ts
-const top = `${48 + Math.random() * 4}%`;
-const left = `${48 + Math.random() * 4}%`;
-```
+Two things are still missing, and both are honest in the UI rather than papered
+over:
 
-A report therefore has no connection to where the user was. `GET` also returns
-every zone ever created with no pagination or distance filter.
-([KI-2](KNOWN_ISSUES.md))
+- **No map SDK.** The dashboard is still `map_bg.jpg`, and there is no projection
+  from a coordinate to a pixel on it, so reports are listed in the Community Hub
+  rather than pinned. A pin on that image would be decoration.
+- **No device location**, so reporting is unavailable. The screen says Lumo cannot
+  read the user's position and offers no submit, instead of the predecessor's
+  `` `${48 + Math.random() * 4}%` `` on the server.
+
+`GET` is bounded (`take` ≤ 200) but is still not a proximity query, because that
+also needs the device's own position. ([KI-2](KNOWN_ISSUES.md))
 
 ### Trusted contacts
 

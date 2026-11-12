@@ -1,4 +1,4 @@
-import { UserSettings, DangerZone, DangerZoneType, DangerZoneSeverity, FakeCallScript, PersonalInfo } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo } from '@lumo/types';
 
 export interface AuthResponse {
   user: PersonalInfo;
@@ -82,19 +82,28 @@ export class ApiClient {
     return this.handleResponse(response);
   }
 
-  // Danger Zones
-  async getDangerZones(): Promise<DangerZone[]> {
-    const response = await fetch(`${this.baseUrl}/api/v1/danger-zones`, {
+  // Hazard reports
+  async getHazardReports(take?: number): Promise<HazardReport[]> {
+    const query = take === undefined ? '' : `?take=${take}`;
+    const response = await fetch(`${this.baseUrl}/api/v1/hazard-reports${query}`, {
       headers: this.getHeaders(),
     });
     return this.handleResponse(response);
   }
 
-  async reportDangerZone(details: { type: DangerZoneType; severity: DangerZoneSeverity; description: string }): Promise<DangerZone> {
-    const response = await fetch(`${this.baseUrl}/api/v1/danger-zones`, {
+  async reportHazard(details: CreateHazardReportInput): Promise<HazardReport> {
+    const response = await fetch(`${this.baseUrl}/api/v1/hazard-reports`, {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(details),
+    });
+    return this.handleResponse(response);
+  }
+
+  async confirmHazardReport(id: string): Promise<HazardReport> {
+    const response = await fetch(`${this.baseUrl}/api/v1/hazard-reports/${id}/confirm`, {
+      method: 'POST',
+      headers: this.getHeaders(),
     });
     return this.handleResponse(response);
   }

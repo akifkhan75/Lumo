@@ -1,4 +1,4 @@
-import { PrismaClient, DangerZoneType, DangerZoneSeverity } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -6,7 +6,7 @@ async function main() {
   console.log('Seeding database...');
 
   // Create mock user
-  const user = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'josim@example.com' },
     update: {
       passwordHash: '$argon2id$v=19$m=65536,p=4,t=3$ngZIWfC2Tyc0e1Dn/UeMig$TIXvSP83BtSlABfoPTVk70Dz8nBewXlin8VT5l90IT8',
@@ -32,39 +32,15 @@ async function main() {
     },
   });
 
-  // Create initial danger zones
-  const dangerZones = [
-    {
-      top: '45%',
-      left: '60%',
-      severity: DangerZoneSeverity.high,
-      type: DangerZoneType.Assault,
-      description: 'A physical assault was reported here last night.',
-      userId: user.id,
-    },
-    {
-      top: '70%',
-      left: '30%',
-      severity: DangerZoneSeverity.medium,
-      type: DangerZoneType.Theft,
-      description: 'Multiple reports of pickpocketing in this area.',
-      userId: user.id,
-    },
-    {
-      top: '30%',
-      left: '25%',
-      severity: DangerZoneSeverity.low,
-      type: DangerZoneType.Poor_Lighting,
-      description: 'Streetlight is out, making the area very dark at night.',
-      userId: user.id,
-    },
-  ];
-
-  for (const zone of dangerZones) {
-    await prisma.dangerZone.create({
-      data: zone,
-    });
-  }
+  // Deliberately no hazard reports.
+  //
+  // The seed used to create three of them — "a physical assault was reported
+  // here last night" among them — at positions it invented, attributed to the
+  // demo user. That is fabricated community testimony about a place, and a
+  // screenshot of it is indistinguishable from real data.
+  //
+  // A development database starts with an empty map. The empty state is part
+  // of the product and needs to be seen.
 
   console.log('Seeding finished.');
 }

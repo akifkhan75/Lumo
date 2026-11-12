@@ -8,7 +8,7 @@
 // lists — are declared here.
 export * from '@lumo/types';
 
-import type { UserSettings, DangerZoneSeverity, DangerZoneType } from '@lumo/types';
+import type { UserSettings } from '@lumo/types';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -18,7 +18,9 @@ export type RootStackParamList = {
   FollowMe: undefined;
   CheckIn: { onEmergency: () => void; };
   FakeCall: undefined;
-  ReportDangerZone: { onReport: (details: { type: DangerZoneType; severity: DangerZoneSeverity; description: string; }) => Promise<void>; };
+  // Takes no callback: reporting a hazard needs a real position and Lumo
+  // cannot read one yet, so the screen explains that instead of submitting.
+  ReportHazard: undefined;
   SafetyAssistant: undefined;
   Emergency: { settings: UserSettings; };
 };

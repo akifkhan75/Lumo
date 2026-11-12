@@ -132,46 +132,84 @@ describe('ApiClient', () => {
     });
   });
 
-  it('fetches danger zones', async () => {
+  it('fetches hazard reports', async () => {
     client.setToken('auth-token');
-    const mockZones = [
-      { id: '1', location: { top: '50%', left: '50%' }, severity: 'high', type: 'Theft' },
+    const mockReports = [
+      {
+        id: '1',
+        type: 'POOR_LIGHTING',
+        source: 'COMMUNITY',
+        coordinates: { latitude: 51.5074, longitude: -0.1278, accuracyMetres: 12 },
+        confirmationCount: 0,
+        influencesRouting: false,
+      },
     ];
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => mockZones,
+      json: async () => mockReports,
     } as any);
 
-    const zones = await client.getDangerZones();
-    expect(zones).toEqual(mockZones);
+    const reports = await client.getHazardReports();
+    expect(reports).toEqual(mockReports);
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/hazard-reports`, {
+      headers: { Authorization: 'Bearer auth-token' },
+    });
   });
 
-  it('reports a danger zone', async () => {
+  it('passes a page size through when fetching hazard reports', async () => {
     client.setToken('auth-token');
-    const newZone = {
-      type: 'Suspicious Activity' as const,
-      severity: 'medium' as const,
-      description: 'Suspicious individual observed near park',
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as any);
+
+    await client.getHazardReports(10);
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${baseUrl}/api/v1/hazard-reports?take=10`,
+      { headers: { Authorization: 'Bearer auth-token' } },
+    );
+  });
+
+  it('reports a hazard with its coordinates', async () => {
+    client.setToken('auth-token');
+    const newReport = {
+      type: 'POOR_LIGHTING' as const,
+      description: 'Streetlight out on the footbridge',
+      latitude: 51.5074,
+      longitude: -0.1278,
+      accuracyMetres: 12,
     };
 
-    const mockCreated = { id: '2', ...newZone, location: { top: '49%', left: '50%' } };
+    const mockCreated = { id: '2', ...newReport, confirmationCount: 0 };
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => mockCreated,
     } as any);
 
-    const result = await client.reportDangerZone(newZone);
+    const result = await client.reportHazard(newReport);
     expect(result).toEqual(mockCreated);
-    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/danger-zones`, {
+    expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/hazard-reports`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer auth-token',
       },
-      body: JSON.stringify(newZone),
+      body: JSON.stringify(newReport),
     });
+  });
+
+  it('confirms a hazard report', async () => {
+    client.setToken('auth-token');
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: '2', confirmationCount: 1 }),
+    } as any);
+
+    const result = await client.confirmHazardReport('2');
+    expect(result).toEqual({ id: '2', confirmationCount: 1 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${baseUrl}/api/v1/hazard-reports/2/confirm`,
+      { method: 'POST', headers: { Authorization: 'Bearer auth-token' } },
+    );
   });
 
   it('fetches fake call script from AI endpoint', async () => {

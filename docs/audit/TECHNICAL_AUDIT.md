@@ -24,13 +24,13 @@ is prototype-grade infrastructure under well-organised application code.
 
 ## API
 
-| ID    | Sev | Finding                                                                                                                                                |
-| ----- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| API-1 | 🟠  | No `helmet`, no `compression`, no throttler. `/auth/login` is openly brute-forceable; `/ai/*` is an uncapped cost vector                               |
-| API-2 | 🟠  | No global exception filter. Validation returns `message` as an **array**, plain exceptions as a **string** — arrays reach the UI stringified           |
-| API-3 | 🟡  | **No pagination anywhere.** `GET /danger-zones` is an unbounded `findMany` over every row ever created                                                 |
-| API-4 | 🟡  | No request logging, correlation ID, or real health endpoint (`GET /` returns a hello string)                                                           |
-| API-5 | 🟡  | `mapInputType` has no error branch — an unrecognised `type` silently becomes `Suspicious_Activity`, so a client typo becomes bad data instead of a 400 |
+| ID    | Sev | Finding                                                                                                                                                                                                 |
+| ----- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API-1 | 🟠  | No `helmet`, no `compression`, no throttler. `/auth/login` is openly brute-forceable; `/ai/*` is an uncapped cost vector                                                                                |
+| API-2 | 🟠  | No global exception filter. Validation returns `message` as an **array**, plain exceptions as a **string** — arrays reach the UI stringified                                                            |
+| API-3 | ✅  | ~~**No pagination anywhere.** `GET /danger-zones` is an unbounded `findMany` over every row ever created~~ — `GET /hazard-reports` takes `take`, default 50, capped at 200 (2026-10-27)                 |
+| API-4 | 🟡  | No request logging, correlation ID, or real health endpoint (`GET /` returns a hello string)                                                                                                            |
+| API-5 | ✅  | ~~`mapInputType` has no error branch — an unrecognised `type` silently becomes `Suspicious_Activity`~~ — the mappers are gone; one enum spelling everywhere and `@IsEnum` rejects the rest (2026-10-27) |
 
 ## Database
 
@@ -76,7 +76,7 @@ is prototype-grade infrastructure under well-organised application code.
 | STD-6 | 🟡  | `apps/mobile/types.ts` duplicates `packages/types` verbatim — guaranteed drift, no test would catch it                                                                                           |
 | STD-7 | 🟡  | `gemini-1.5-flash` pinned in three places; dated and duplicated rather than configured                                                                                                           |
 | STD-8 | ⚪  | iOS has **never been built or tested**                                                                                                                                                           |
-| STD-9 | ⚪  | Dead paths: three empty packages, `docker/`, a stray root `/android/`, `metadata.json`, `data/dangerZones.ts`                                                                                    |
+| STD-9 | 🟡  | Dead paths: `docker/`, a stray root `/android/`, `metadata.json`. The three empty packages and `data/dangerZones.ts` are deleted (2026-10-27)                                                    |
 
 ## Fix order
 

@@ -196,34 +196,6 @@ export const SafetyAssistantButton = styled(TouchableOpacity)`
     z-index: 20;
 `;
 
-export const DangerZonePinContainer = styled(TouchableOpacity)`
-    position: absolute;
-    width: 32px;
-    height: 32px;
-    align-items: center;
-    justify-content: center;
-`;
-
-export const PinCircleBase = styled(View)<{ bgColor: string; borderColor: string; }>`
-    width: 24px;
-    height: 24px;
-    border-radius: 12px;
-    border-width: 2px;
-    align-items: center;
-    justify-content: center;
-    position: absolute;
-    background-color: ${props => props.bgColor};
-    border-color: ${props => props.borderColor};
-`;
-
-export const PinPulseCircle = styled(Animated.View)<{ pulseColor: string }>`
-    position: absolute;
-    width: 32px;
-    height: 32px;
-    border-radius: 16px;
-    background-color: ${props => props.pulseColor};
-`;
-
 // Sits under the dashboard header, over the placeholder map. Removed with the
 // placeholder map.
 export const DemoMapNotice = styled.View`

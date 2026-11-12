@@ -68,6 +68,14 @@ immediately. Followed optionally by `POST .../unack` ("I can't help after all"),
 (coordinates **from the client**, rate-limited) · `POST /hazard-reports/:id/confirm`.
 No `severity` field exists. The server no longer invents positions (ADR-0006).
 
+**Built:** `GET /hazard-reports?take` (bounded, live reports only),
+`POST /hazard-reports` with required validated coordinates, and
+`POST /hazard-reports/:id/confirm` (one per person per report; the reporter
+cannot confirm their own). **Not built:** `/nearby` — a radius query needs a
+`geohash` or PostGIS index _and_ the device's own location, neither of which
+exists yet. See [`../engineering/API.md`](../engineering/API.md) for the shipped
+shapes.
+
 ### Other
 
 `GET /me` · settings (`UpdateSettingsDto`, transactional contact upsert — KI-7) ·

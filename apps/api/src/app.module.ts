@@ -5,7 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { SettingsModule } from './settings/settings.module';
-import { DangerZonesModule } from './danger-zones/danger-zones.module';
+import { HazardReportsModule } from './hazard-reports/hazard-reports.module';
 import { AuthModule } from './auth/auth.module';
 import { AiModule } from './ai/ai.module';
 
@@ -24,7 +24,7 @@ import { AiModule } from './ai/ai.module';
     ]),
     PrismaModule,
     SettingsModule,
-    DangerZonesModule,
+    HazardReportsModule,
     AuthModule,
     AiModule,
   ],

@@ -71,7 +71,7 @@ This repo has already shipped three empty packages; that will not repeat.
 
 | Phase | Modules added                                                                                                                                                                                   |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | _(no new modules — fixes, specs, `danger-zones` → `hazard-reports`)_                                                                                                                            |
+| 0     | _(no new modules — fixes, specs; `danger-zones` → `hazard-reports` landed straight after)_                                                                                                      |
 | 1     | `trusted-contacts` `safety-circles` `safety-sessions` `journeys` `emergency-incidents` `escalation` `location` `notifications` `audit` · packages `safety-domain` `region-profiles` · app `web` |
 | 2     | `evidence`                                                                                                                                                                                      |
 | 3     | `ai-safety` `accident-detection`                                                                                                                                                                |
@@ -130,7 +130,7 @@ A three-tier system in a single Turborepo monorepo:
 │  AppModule                                       │           │
 │   ├── AuthModule        /api/v1/auth    ──────────┘          │
 │   ├── SettingsModule    /api/v1/settings      (JwtAuthGuard) │
-│   ├── DangerZonesModule /api/v1/danger-zones  (JwtAuthGuard) │
+│   ├── HazardReportsModule /api/v1/hazard-reports (JwtAuthGuard)│
 │   ├── AiModule          /api/v1/ai            (JwtAuthGuard) │
 │   └── PrismaModule      PrismaService (global)               │
 └─────────────────────┬───────────────────────────────────────┘
@@ -149,7 +149,7 @@ call has a local fallback, so the app works with no API key.
 ## 2. Why a monorepo
 
 The mobile app and the API share a domain vocabulary (`UserSettings`,
-`DangerZone`, `FakeCallScript`) and a wire contract. Keeping them in one repo with
+`HazardReport`, `FakeCallScript`) and a wire contract. Keeping them in one repo with
 shared packages means a type change breaks the build at compile time instead of at
 runtime on a user's phone.
 
@@ -194,13 +194,13 @@ Phase 0 (KI-13). New packages are created when something goes in them.
 Domain-sliced, one folder each. Every module gets `*.module.ts`,
 `*.controller.ts`, `*.service.ts`, and co-located `*.spec.ts`.
 
-| Module              | Routes                                                                          | Guarded         | Notes                                                                |
-| ------------------- | ------------------------------------------------------------------------------- | --------------- | -------------------------------------------------------------------- |
-| `AuthModule`        | `POST /api/v1/auth/login`, `/signup`                                            | No (public)     | argon2 + `@nestjs/jwt`, 7-day expiry                                 |
-| `SettingsModule`    | `GET`/`PUT /api/v1/settings`                                                    | Yes             | Assembles a composite settings object from `User` + `TrustedContact` |
-| `DangerZonesModule` | `GET`/`POST /api/v1/danger-zones`                                               | Yes             | Maps enum ↔ display strings, synthesises coordinates                 |
-| `AiModule`          | `GET /ai/fake-call-script`, `GET /ai/self-defense-tips`, `POST /ai/safety-chat` | Yes (per-route) | Gemini with local fallbacks                                          |
-| `PrismaModule`      | —                                                                               | —               | Exports a `@Global()` `PrismaService`                                |
+| Module                | Routes                                                                          | Guarded         | Notes                                                                |
+| --------------------- | ------------------------------------------------------------------------------- | --------------- | -------------------------------------------------------------------- |
+| `AuthModule`          | `POST /api/v1/auth/login`, `/signup`                                            | No (public)     | argon2 + `@nestjs/jwt`, 7-day expiry                                 |
+| `SettingsModule`      | `GET`/`PUT /api/v1/settings`                                                    | Yes             | Assembles a composite settings object from `User` + `TrustedContact` |
+| `HazardReportsModule` | `GET`/`POST /api/v1/hazard-reports`, `POST /:id/confirm`                        | Yes             | Per-type expiry, confirmation floor, derived confirmation count      |
+| `AiModule`            | `GET /ai/fake-call-script`, `GET /ai/self-defense-tips`, `POST /ai/safety-chat` | Yes (per-route) | Gemini with local fallbacks                                          |
+| `PrismaModule`        | —                                                                               | —               | Exports a `@Global()` `PrismaService`                                |
 
 `AppController` serves `GET /` as a health/hello string.
 
@@ -240,7 +240,7 @@ There are no roles and no per-resource authorization beyond that.
 
 ### Design decisions worth knowing
 
-- **Services return API shapes, not Prisma rows.** `DangerZonesService.findAll`
+- **Services return API shapes, not Prisma rows.** `HazardReportsService.findAll`
   folds `top`/`left` into `{ location: { top, left } }` and converts the enum to
   its display string. `SettingsService.getSettings` composes
   `{ personalInfo, trustedContacts, security }` out of one flat `User` row. The
@@ -278,7 +278,7 @@ NavigationContainer
         │   ├── FollowMe
         │   ├── CheckIn
         │   ├── FakeCall
-        │   ├── ReportDangerZone
+        │   ├── ReportHazard
         │   └── SafetyAssistant
         └── Group { presentation: 'fullScreenModal' }
             └── Emergency            the SOS screen
@@ -287,8 +287,8 @@ NavigationContainer
 ### State model
 
 **There is no state manager.** `DashboardScreen` is the single owner of
-`userSettings` and `dangerZones`; it fetches both in parallel on mount and passes
-state _and mutators_ down through route params:
+`userSettings`; it fetches on mount and passes state _and mutators_ down through
+route params:
 
 ```ts
 navigation.navigate("Settings", {
@@ -296,7 +296,7 @@ navigation.navigate("Settings", {
   currentSettings: userSettings,
   onSave: handleSaveSettings,
 });
-navigation.navigate("ReportDangerZone", { onReport: handleAddDangerZone });
+navigation.navigate("ReportHazard");
 navigation.navigate("CheckIn", { onEmergency: handleActivateEmergency });
 ```
 
@@ -338,26 +338,52 @@ place.
 
 ---
 
-## 6. Data flow: reporting a danger zone
+## 6. Data flow: hazard reports
 
-Traced end to end, because it shows every layer and every quirk:
+Reporting one is **unavailable**, and that is the interesting part. Traced end to
+end, because it shows every layer:
 
 ```
 1. User taps the alert icon in the dashboard header
-2. navigate('ReportDangerZone', { onReport: handleAddDangerZone })
-3. ReportDangerZoneModal collects { type, severity, description }
-4. onReport(details) → apiService.reportDangerZone
-5. ApiClient.reportDangerZone → POST /api/v1/danger-zones, Bearer JWT
-6. JwtAuthGuard → req.user = { id, email }
-7. Controller INVENTS coordinates:  top = `${48 + Math.random()*4}%`
-8. Service mapInputType('Suspicious Activity') → enum Suspicious_Activity
-9. Prisma INSERT; Postgres stores the @map'd value "Suspicious Activity"
-10. Service maps back out to { id, location: { top, left }, type: 'Suspicious Activity', … }
-11. Dashboard appends to dangerZones; a DangerZonePin renders at that %
-12. navigation.goBack(), then a thank-you Alert after 300 ms
+2. navigate('ReportHazard')            ← no params; nothing to submit
+3. ReportHazardModal states that Lumo cannot read the device's location,
+   and offers no form and no submit control
 ```
 
-Step 7 is [KI-2](../audit/KNOWN_ISSUES.md) — the report is not placed where the user is.
+A hazard report is an observation anchored to real coordinates
+([ADR-0010](../adr/0010-hazard-reports-replace-danger-zones.md)), and the device
+has no location provider yet. The two options were to keep inventing a position or
+to stop accepting reports, so the form is gone rather than lying about where
+something is.
+
+The predecessor did invent one. The flow was:
+
+```
+7. Controller INVENTED coordinates:  top = `${48 + Math.random()*4}%`
+8. Service mapInputType('Suspicious Activity') → enum Suspicious_Activity
+9. Prisma INSERT; Postgres stored the @map'd value "Suspicious Activity"
+11. Dashboard appended to dangerZones; a pin rendered at that %
+```
+
+Every step of that is now gone: coordinates are required and validated, the enum
+has one spelling everywhere, and the dashboard draws no pins.
+
+Reading them still works, and is real:
+
+```
+1. Community Hub → "View reports"
+2. apiService.getHazardReports() → ApiClient → GET /api/v1/hazard-reports
+3. JwtAuthGuard → req.user = { id, email }
+4. Service: where expiresAt > now(), order reportedAt desc, take ≤ 200,
+   include _count of confirmations
+5. toApi() derives confirmationCount and influencesRouting from the floor
+6. The hub lists each report with its age, its confirmations, its source,
+   and — below the floor — that Lumo does not act on it
+7. An empty result renders as "No reports.", not as example rows
+```
+
+Step 5 is the honest part: `influencesRouting` is the server's verdict, so the
+client has no floor to recompute and no way to promote a lone report.
 
 ---
 

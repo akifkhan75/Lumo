@@ -145,56 +145,101 @@ are skipped by Prisma). Returns the full re-read settings object.
 
 ---
 
-## Danger Zones — `/api/v1/danger-zones`
+## Hazard Reports — `/api/v1/hazard-reports`
 
-`@UseGuards(JwtAuthGuard)` at the controller level.
+`@UseGuards(JwtAuthGuard)` at the controller level. Replaces
+`/api/v1/danger-zones`, which is **gone, not deprecated** — the shape is
+incompatible and there is no transitional alias ([ADR-0010](../adr/0010-hazard-reports-replace-danger-zones.md)).
 
-### `GET /api/v1/danger-zones` → `200 OK`
+A hazard report is an observation about a **condition**, with a source, an age,
+an expiry and a confirmation count. There is no `severity`, and adding one back
+is rejected on sight.
 
-**All** zones, from all users, newest first (`reportedAt desc`). No pagination, no
-distance filter, no `userId` in the response.
+### `GET /api/v1/hazard-reports` → `200 OK`
+
+Live reports from all users, newest first (`reportedAt desc`). Expired reports are
+never returned.
+
+| Query  | Default | Max   |
+| ------ | ------- | ----- |
+| `take` | `50`    | `200` |
 
 ```json
 [
   {
     "id": "uuid",
-    "location": { "top": "45%", "left": "60%" },
-    "severity": "high",
-    "type": "Assault",
-    "description": "A physical assault was reported here last night.",
-    "reportedAt": "2026-10-26T12:00:00.000Z"
+    "type": "POOR_LIGHTING",
+    "source": "COMMUNITY",
+    "description": "Streetlight out on the footbridge",
+    "coordinates": {
+      "latitude": 51.5074,
+      "longitude": -0.1278,
+      "accuracyMetres": 12.5
+    },
+    "reportedAt": "2026-10-26T12:00:00.000Z",
+    "expiresAt": "2026-11-25T12:00:00.000Z",
+    "confirmationCount": 4,
+    "influencesRouting": true
   }
 ]
 ```
 
-`location.top` / `.left` are **CSS percentages over a static map image**, not
-coordinates. ([KI-2](../audit/KNOWN_ISSUES.md))
+- `coordinates` are **real latitude and longitude**. `accuracyMetres` is `null`
+  when the reporting device did not know — render that as unknown, never as a
+  precise point.
+- `confirmationCount` is derived from `HazardConfirmation` rows, not a stored
+  counter, so it cannot drift.
+- `influencesRouting` is the server's verdict: a `COMMUNITY` report needs
+  `HAZARD_CONFIRMATION_FLOOR` (3) confirmations; a verified source needs none.
+  **Clients must not recompute it** — the floor is policy and lives in one place.
+- Still no distance filter. A proximity query needs the device's own location,
+  which does not exist yet.
 
-### `POST /api/v1/danger-zones` → `201 Created`
+### `POST /api/v1/hazard-reports` → `201 Created`
 
 ```json
 {
-  "severity": "medium",
-  "type": "Suspicious Activity",
-  "description": "Someone following me"
+  "type": "POOR_LIGHTING",
+  "description": "Streetlight out on the footbridge",
+  "latitude": 51.5074,
+  "longitude": -0.1278,
+  "accuracyMetres": 12.5
 }
 ```
 
-| Field         | Values                                                                           |
-| ------------- | -------------------------------------------------------------------------------- |
-| `severity`    | `low` \| `medium` \| `high`                                                      |
-| `type`        | `Theft` \| `Assault` \| `Harassment` \| `Poor Lighting` \| `Suspicious Activity` |
-| `description` | string                                                                           |
+| Field            | Values                                                                                                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`           | `POOR_LIGHTING` \| `OBSTRUCTED_PATH` \| `BROKEN_INFRASTRUCTURE` \| `UNSAFE_CROSSING` \| `THEFT_REPORTED` \| `HARASSMENT_REPORTED` \| `AGGRESSION_REPORTED` \| `OTHER` |
+| `description`    | string, 1–280 chars, **no links, email addresses or phone numbers**                                                                                                   |
+| `latitude`       | required, valid latitude                                                                                                                                              |
+| `longitude`      | required, valid longitude                                                                                                                                             |
+| `accuracyMetres` | optional, 0–10000                                                                                                                                                     |
 
-> **The client cannot set the location.** The controller generates it:
-> `` top = `${48 + Math.random() * 4}%` ``, same for `left`. Every report lands in
-> a random spot near the centre of the image. There is no DTO on this endpoint
-> either, so `type` is coerced: `mapInputType` falls through to
-> `Suspicious_Activity` for anything it does not recognise, rather than erroring.
+> **The client sets the location, and must.** The predecessor generated it on the
+> server — `` top = `${48 + Math.random() * 4}%` `` — so every report described a
+> place nobody had been to. Coordinates are now required and validated; a request
+> without them is a `400`, and `severity` is a `400` because the DTO has no such
+> field and the pipe uses `forbidNonWhitelisted`.
 
-`userId` is taken from the JWT. Response shape matches a `GET` element.
+`userId` comes from the JWT. `source` defaults to `COMMUNITY`; it cannot be set by
+a client. `expiresAt` is derived from a per-type TTL (`HAZARD_TTL_DAYS`).
 
-Not implemented: update, delete, vote/confirm, expiry of stale reports.
+### `POST /api/v1/hazard-reports/:id/confirm` → `201 Created`
+
+Records that a second person has observed the same condition, and re-arms
+`expiresAt` from now. Returns the updated report.
+
+| Status | When                                     |
+| ------ | ---------------------------------------- |
+| `404`  | No such report                           |
+| `409`  | The reporter confirming their own report |
+| `409`  | This user has already confirmed it       |
+| `400`  | `:id` is not a UUID                      |
+
+One row per `(reportId, userId)`, enforced by a unique constraint, so repeated
+presses cannot inflate a count.
+
+Not implemented: update, delete, dispute, moderation, proximity query.
 
 ---
 
@@ -236,9 +281,18 @@ unwraps it. Fallback: `["Yell for help!", "Run away if possible!", "Aim for vuln
 
 Response: `{ "response": "…" }`
 
+| Field     | Values                                                                     |
+| --------- | -------------------------------------------------------------------------- |
+| `message` | required, 1–2000 chars                                                     |
+| `history` | optional, ≤20 turns, each `{ role: 'user' \| 'model', parts: [{ text }] }` |
+
 > `history` is accepted by both the client and the service and then **never used**
 > — the prompt is built from `message` only, so the assistant has no memory within
 > a conversation. ([KI-14](../audit/KNOWN_ISSUES.md))
+
+> The body had no DTO until now, so the global pipe skipped it entirely and an
+> unbounded `message` went straight into a metered Gemini call. The length and
+> history limits above are the spend bound.
 
 The user message is interpolated directly into the prompt string, which is a
 prompt-injection surface; it is low-impact today (the output is only displayed)
@@ -283,7 +337,7 @@ Tracked in [ROADMAP.md](../product/ROADMAP.md); listed here so nobody looks for 
 | `POST /api/v1/sos`                                            | Record an incident, fan out to contacts — the real SOS ([KI-3](../audit/KNOWN_ISSUES.md)) |
 | `POST /api/v1/journeys`, `PATCH /…/location`, `GET /j/:token` | Real Follow Me with a public tracking link                                                |
 | `POST /api/v1/check-ins`                                      | Server-side timer so a dead phone still escalates                                         |
-| `GET /api/v1/danger-zones/nearby?lat&lng&radius`              | Proximity query (needs the geo model)                                                     |
+| `GET /api/v1/hazard-reports/nearby?lat&lng&radius`            | Proximity query (needs the device's own location)                                         |
 | `POST /api/v1/devices`                                        | Push token registration                                                                   |
 | `POST /api/v1/auth/refresh`, `/forgot-password`               | Session and account recovery                                                              |
 | `GET /api/v1/me`                                              | Identity without the whole settings payload                                               |

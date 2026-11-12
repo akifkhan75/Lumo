@@ -23,7 +23,8 @@ model User {
   accidentDetectionEnabled Boolean @default(false)
 
   trustedContacts  TrustedContact[]
-  dangerZones      DangerZone[]      // Danger zones reported by the user
+  hazardReports      HazardReport[]       // conditions this user has reported
+  hazardConfirmations HazardConfirmation[] // reports this user has confirmed
 
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -45,36 +46,78 @@ model TrustedContact {
   @@index([userId])
 }
 
-enum DangerZoneSeverity {
-  low
-  medium
-  high
+// A hazard report describes a CONDITION at a place, not a verdict about a
+// place. There is deliberately no severity, no score and no demographic
+// field of any kind — see docs/adr/0010-hazard-reports-replace-danger-zones.md.
+// A severity attached to an area is the redlining primitive, and no amount of
+// moderation policy undoes a schema that invites it.
+enum HazardType {
+  POOR_LIGHTING
+  OBSTRUCTED_PATH
+  BROKEN_INFRASTRUCTURE
+  UNSAFE_CROSSING
+  THEFT_REPORTED
+  HARASSMENT_REPORTED
+  AGGRESSION_REPORTED
+  OTHER
 }
 
-enum DangerZoneType {
-  Theft
-  Assault
-  Harassment
-  Poor_Lighting       @map("Poor Lighting")
-  Suspicious_Activity @map("Suspicious Activity")
+// Where the observation came from. Community reports and verified advisories
+// must never render identically, so the distinction is data, not a UI choice.
+enum HazardReportSource {
+  COMMUNITY
+  VERIFIED_PARTNER
+  OFFICIAL_FEED
 }
 
-model DangerZone {
+model HazardReport {
   id          String             @id @default(uuid())
-  top         String             // Storing as string to match existing frontend implementation e.g. "45%"
-  left        String             // Storing as string
-  severity    DangerZoneSeverity
-  type        DangerZoneType
+  type        HazardType
+  source      HazardReportSource @default(COMMUNITY)
   description String
-  reportedAt  DateTime           @default(now())
+
+  // Real geography. The predecessor stored CSS percentages ("45%") over a
+  // JPEG and the server invented them on create; that model could not express
+  // where anything was. Accuracy is nullable because an unknown accuracy must
+  // be renderable as unknown rather than as a confident pin.
+  latitude       Float
+  longitude      Float
+  accuracyMetres Float?
+
+  reportedAt  DateTime @default(now())
+
+  // Decay is mandatory, not a cleanup job. A condition reported months ago is
+  // not evidence about today, and findMany filters on this column.
+  expiresAt   DateTime
+
+  confirmations HazardConfirmation[]
 
   userId      String?
-  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([userId])
-  // findAll orders by reportedAt desc and has no bound on table size.
+  // The list query filters on expiry and orders by recency.
+  @@index([expiresAt])
   @@index([reportedAt])
+}
+
+// One row per person per report, so a confirmation count cannot be inflated by
+// one account tapping repeatedly. The count is derived from these rows rather
+// than denormalised onto HazardReport — a counter column drifts, and a drifted
+// count here would promote an unconfirmed report into routing.
+model HazardConfirmation {
+  id        String   @id @default(uuid())
+  reportId  String
+  report    HazardReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([reportId, userId])
+  @@index([userId])
 }

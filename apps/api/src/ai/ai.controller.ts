@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
 import { AiService } from './ai.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SafetyChatDto } from './dto/safety-chat.dto';
 
 @Controller('api/v1/ai')
 export class AiController {
@@ -20,7 +21,7 @@ export class AiController {
 
   @UseGuards(JwtAuthGuard)
   @Post('safety-chat')
-  async safetyChat(@Body() body: { message: string; history?: any[] }) {
+  async safetyChat(@Body() body: SafetyChatDto) {
     return this.aiService.safetyChat(body.message, body.history);
   }
 }

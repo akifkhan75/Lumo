@@ -1,5 +1,5 @@
 import { NativeModules } from 'react-native';
-import { UserSettings, DangerZone, DangerZoneType, DangerZoneSeverity, FakeCallScript, PersonalInfo } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo } from '@lumo/types';
 import { ApiClient } from '@lumo/api-client';
 
 const DEFAULT_API_PORT = '3005';
@@ -83,13 +83,17 @@ export const updateSettings = async (settings: UserSettings): Promise<UserSettin
     return apiClient.updateSettings(settings);
 };
 
-// Danger Zones
-export const getDangerZones = async (): Promise<DangerZone[]> => {
-    return apiClient.getDangerZones();
+// Hazard reports
+export const getHazardReports = async (take?: number): Promise<HazardReport[]> => {
+    return apiClient.getHazardReports(take);
 };
 
-export const reportDangerZone = async (details: { type: DangerZoneType; severity: DangerZoneSeverity; description: string; }): Promise<DangerZone> => {
-    return apiClient.reportDangerZone(details);
+export const reportHazard = async (details: CreateHazardReportInput): Promise<HazardReport> => {
+    return apiClient.reportHazard(details);
+};
+
+export const confirmHazardReport = async (id: string): Promise<HazardReport> => {
+    return apiClient.confirmHazardReport(id);
 };
 
 // AI Services

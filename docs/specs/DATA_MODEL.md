@@ -2,7 +2,7 @@
 
 > Field-level target schema. Current schema and its defects:
 > [`../engineering/DATABASE.md`](../engineering/DATABASE.md).
-> Prisma 5 / PostgreSQL 15. **Migrations required from Phase 0** — none exist today.
+> Prisma 5 / PostgreSQL 15. Migrations are the source of truth (`apps/api/prisma/migrations/`); CI fails on drift.
 
 ## Conventions
 
@@ -39,27 +39,53 @@ model User {
 }
 
 model HazardReport {                     // replaces DangerZone — ADR-0010
-  id          String   @id @default(uuid())
-  type        HazardType
-  latitude    Float
-  longitude   Float
-  accuracyM   Float
-  geohash     String                      // prefix match for cheap radius queries
-  description String?                     // structured types preferred; no naming of people/businesses
-  source      HazardSource @default(community)
-  confirmationCount Int @default(0)
-  reportedAt  DateTime @default(now())
-  expiresAt   DateTime                    // mandatory decay — T7
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id             String             @id @default(uuid())
+  type           HazardType
+  source         HazardReportSource @default(COMMUNITY)
+  description    String                      // see PREV-6: free text to be constrained in Phase 4
+  latitude       Float
+  longitude      Float
+  accuracyMetres Float?                      // nullable on purpose — unknown must travel as unknown
+  reportedAt     DateTime           @default(now())
+  expiresAt      DateTime                    // mandatory decay — T7
+  confirmations  HazardConfirmation[]        // count is DERIVED, never stored
+  userId         String?
+  user           User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
-  @@index([geohash])
+  @@index([userId])
   @@index([expiresAt])
   @@index([reportedAt])
+  // @@index([geohash]) — NOT BUILT. No radius query exists until the device can read
+  // its own position (Phase 1, milestone 1.4); the column and index arrive with it.
 }
 
-enum HazardType   { poor_lighting obstruction harassment_reported theft_reported unsafe_crossing other }
-enum HazardSource { community verified_partner official_advisory }
+model HazardConfirmation {                 // one row per person per report
+  id        String       @id @default(uuid())
+  reportId  String
+  report    HazardReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([reportId, userId])
+  @@index([userId])
+}
+
+// SCREAMING_SNAKE everywhere — Prisma, Postgres and the wire. No @map, no hand-written
+// mappers (CLAUDE.md §7). The human label lives in HAZARD_TYPE_LABELS in @lumo/types.
+enum HazardType {
+  POOR_LIGHTING
+  OBSTRUCTED_PATH
+  BROKEN_INFRASTRUCTURE
+  UNSAFE_CROSSING
+  THEFT_REPORTED
+  HARASSMENT_REPORTED
+  AGGRESSION_REPORTED
+  OTHER
+}
+enum HazardReportSource { COMMUNITY VERIFIED_PARTNER OFFICIAL_FEED }
 ```
 
 **No `severity` field, and no demographic field of any kind** — not optional, absent.
@@ -288,13 +314,32 @@ model AuditLog {                             // append-only
 `EvidenceAsset` (incidentId, storageKey, contentType, bytes, sha256, capturedAt,
 uploadState, verifiedAt, gaps Json) · `EvidenceAccessLog` (append-only) ·
 `DuressCredential` (userId, pinHash — never distinguishable in any API response) ·
-`SafetySignal` + `ModelVersion` (Phase 3) · `SafetyPlace`, `HazardConfirmation`,
+`SafetySignal` + `ModelVersion` (Phase 3) · `SafetyPlace`,
 `Organization`, `OrganizationMembership`, `Responder` (Phase 4) · `Subscription`,
 `Entitlement` (Phase 5).
 
 ---
 
 ## Rules
+
+**Geo.** `HazardReport` and `LocationSnapshot` carry `latitude`/`longitude` as `Float`
+plus an accuracy. The `top`/`left` CSS percentages are **deleted** — they carried no real
+location (ADR-0006).
+
+**Every location is a snapshot.** `capturedAt` + `accuracyM` are **non-nullable** on
+`LocationSnapshot`, so the UI cannot render a fix without its age and precision (RES-10).
+`HazardReport.accuracyMetres` is deliberately **nullable**: a reporting device genuinely
+may not know, and an unknown accuracy must travel as unknown rather than defaulting to a
+confident number.
+
+**Idempotency.** `EmergencyIncident.idempotencyKey` unique. `NotificationAttempt`
+unique on `(incidentId, recipientId, channel, attemptNumber)`.
+
+**Consent is a record, not a flag.** `ConsentRecord` has subject, scope, grantedAt,
+revokedAt, region profile and version — because PRO-8 requires periodic
+re-confirmation and the history must be provable.
+
+**No demographic fields.** Not optional — **absent** from the schema. T7/C8.
 
 **Tenancy.** Every org-scoped table carries `organizationId`, enforced in application
 authorization **and** with a database-level policy. Zero tolerance (F14).
@@ -312,3 +357,16 @@ layer. They are the incident export (REC-1) and therefore evidence.
 **Practice isolation.** `EmergencyIncident.mode = practice` is checked at the
 notification boundary: a practice incident **cannot** acquire a real
 `NotificationAttempt`. Enforced in code and unit-tested, not by convention.
+
+**Indexes.** `HazardReport(geohash)`, `(reportedAt)`, `(expiresAt)` · `LocationSnapshot(sessionId, capturedAt)`
+· `EmergencyIncident(userId, createdAt)`, `(idempotencyKey)` unique
+· `NotificationAttempt(incidentId)`, `(state)` · `AuditLog(actorId, at)`.
+
+DB-1 is closed: the schema now indexes `TrustedContact(userId)`,
+`HazardReport(userId)`, `(expiresAt)`, `(reportedAt)`,
+`HazardConfirmation(userId)` and a unique `(reportId, userId)`. Only
+`HazardReport(geohash)` is outstanding, and it waits on the radius query.
+
+**Confirmation counts are derived**, not stored: `HazardConfirmation` is one
+uniquely-constrained row per person per report, so a count cannot be inflated by
+one account and cannot drift from a denormalised column.

@@ -1,8 +1,15 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation } from '@react-navigation/native';
 import { IconShield, IconUsers, IconWalk, IconCar, IconRoute, IconArrowLeft } from '../constants';
+import {
+  HAZARD_CONFIRMATION_FLOOR,
+  HAZARD_SOURCE_LABELS,
+  HAZARD_TYPE_LABELS,
+  HazardReport,
+} from '../types';
+import * as apiService from '../services/apiService';
 import DemoBanner from './common/DemoBanner';
 
 const Container = styled(View)`
@@ -92,6 +99,57 @@ const Subtitle = styled(Text)`
     margin-bottom: 16px;
 `;
 
+const ReportCard = styled(View)`
+    background-color: white;
+    padding: 12px;
+    border-radius: 8px;
+    gap: 4px;
+`;
+
+const ReportHeaderRow = styled(View)`
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+`;
+
+const ReportType = styled(Text)`
+    font-weight: 700;
+    color: #1f2937;
+    flex: 1;
+`;
+
+const SourceTag = styled(Text)<{ verified: boolean }>`
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: ${props => (props.verified ? '#065f46' : '#475569')};
+    background-color: ${props => (props.verified ? '#d1fae5' : '#f1f5f9')};
+    padding: 2px 6px;
+    border-radius: 4px;
+    overflow: hidden;
+`;
+
+const ReportBody = styled(Text)`
+    color: #374151;
+`;
+
+const ReportMeta = styled(Text)`
+    color: #6b7280;
+    font-size: 12px;
+`;
+
+const UnconfirmedNote = styled(Text)`
+    color: #92400e;
+    font-size: 12px;
+    line-height: 17px;
+`;
+
+const PlainNote = styled(Text)`
+    color: #4b5563;
+    line-height: 20px;
+`;
+
 // --- Components --- //
 
 const FeatureInfo: React.FC<{
@@ -140,33 +198,132 @@ const SafeWalkView = () => {
   )
 };
 
-const DangerZoneView = () => (
-    <ViewContainer>
-       <Subtitle>Community-Reported Zones</Subtitle>
-       <DemoBanner>Sample text. These are not real reports from anyone.</DemoBanner>
-       <View style={{gap: 8}}>
-            <View style={{backgroundColor: 'white', padding: 12, borderRadius: 8}}><Text style={{fontWeight: '600'}}>Elm Street Park:</Text><Text>"Poor lighting after 9 PM."</Text></View>
-            <View style={{backgroundColor: 'white', padding: 12, borderRadius: 8}}><Text style={{fontWeight: '600'}}>Downtown Station:</Text><Text>"Suspicious individuals reported."</Text></View>
-       </View>
-    </ViewContainer>
-);
+/** "2 days ago" — an observation's age is as important as its content. */
+const describeAge = (iso: string): string => {
+    const ms = Date.now() - new Date(iso).getTime();
+    if (Number.isNaN(ms)) return 'reported at an unknown time';
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return 'reported just now';
+    if (minutes < 60) return `reported ${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `reported ${hours} hour${hours === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hours / 24);
+    return `reported ${days} day${days === 1 ? '' : 's'} ago`;
+};
+
+const HazardReportCard = ({ report }: { report: HazardReport }) => {
+    const verified = report.source !== 'COMMUNITY';
+    return (
+        <ReportCard>
+            <ReportHeaderRow>
+                <ReportType>{HAZARD_TYPE_LABELS[report.type] ?? report.type}</ReportType>
+                <SourceTag verified={verified}>
+                    {HAZARD_SOURCE_LABELS[report.source] ?? report.source}
+                </SourceTag>
+            </ReportHeaderRow>
+            <ReportBody>{report.description}</ReportBody>
+            <ReportMeta>
+                {describeAge(report.reportedAt)} ·{' '}
+                {report.confirmationCount === 0
+                    ? 'no confirmations'
+                    : `${report.confirmationCount} confirmation${report.confirmationCount === 1 ? '' : 's'}`}
+            </ReportMeta>
+            {/* The floor is the server's decision and arrives as
+                influencesRouting; this only renders it. A single report is one
+                person's observation, and saying so is the whole point of
+                replacing severity with confirmations. */}
+            {!report.influencesRouting && (
+                <UnconfirmedNote>
+                    Unconfirmed — fewer than {HAZARD_CONFIRMATION_FLOOR} people have
+                    reported this condition, so Lumo does not act on it.
+                </UnconfirmedNote>
+            )}
+        </ReportCard>
+    );
+};
+
+/**
+ * Real data. These rows come from the API, and if nothing is there the screen
+ * says nothing is there — it used to show two invented reports ("Elm Street
+ * Park", "Downtown Station") styled exactly as real ones would be.
+ *
+ * There is no Confirm button yet on purpose. Confirming a condition means
+ * standing in front of it, and Lumo cannot tell where you are, so a confirm
+ * control here would just be a way to inflate a count remotely. The endpoint
+ * exists; the control arrives with location and moderation.
+ */
+const HazardReportsView = () => {
+    const [reports, setReports] = useState<HazardReport[] | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const load = useCallback(async () => {
+        setError(null);
+        try {
+            const data = await apiService.getHazardReports();
+            // An empty list and a malformed response both render as "no
+            // reports", never as a crash on a screen someone opened because
+            // they wanted to know what was out there.
+            setReports(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error(err);
+            setError('Could not load reports.');
+        }
+    }, []);
+
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    return (
+        <ViewContainer>
+            <Subtitle>Reported conditions</Subtitle>
+            {error !== null && (
+                <ReportCard>
+                    <ReportBody>{error}</ReportBody>
+                    <TouchableOpacity onPress={load} accessibilityRole="button">
+                        <FeatureActionText>Try again &rarr;</FeatureActionText>
+                    </TouchableOpacity>
+                </ReportCard>
+            )}
+            {error === null && reports === null && <ActivityIndicator />}
+            {error === null && reports !== null && reports.length === 0 && (
+                <ReportCard>
+                    <ReportBody>No reports.</ReportBody>
+                    <PlainNote>
+                        Nobody has reported a condition that is still current. Lumo
+                        cannot read your location yet, so it also cannot tell you
+                        what has been reported near you — only what has been
+                        reported.
+                    </PlainNote>
+                </ReportCard>
+            )}
+            {error === null && reports !== null && reports.length > 0 && (
+                <View style={{ gap: 8 }}>
+                    {reports.map(report => (
+                        <HazardReportCard key={report.id} report={report} />
+                    ))}
+                </View>
+            )}
+        </ViewContainer>
+    );
+};
 
 
 const CommunitySafetyScreen = () => {
   const navigation = useNavigation();
-  const [view, setView] = useState<'main' | 'safeWalk' | 'dangerZones'>('main');
+  const [view, setView] = useState<'main' | 'safeWalk' | 'hazardReports'>('main');
   const onClose = () => navigation.goBack();
 
   const renderContent = () => {
     switch(view) {
       case 'safeWalk': return <SafeWalkView />;
-      case 'dangerZones': return <DangerZoneView />;
+      case 'hazardReports': return <HazardReportsView />;
       default:
         return (
           <>
             <FeatureInfo icon={<IconWalk size={32} color="#0891b2" />} title="Safe Walk" description="Planned: request a volunteer to virtually accompany you." actionText="Preview" onAction={() => setView('safeWalk')} />
             <FeatureInfo icon={<IconRoute size={32} color="#0891b2" />} title="Path Deviation Alerts" description="Planned. Lumo does not track a route or notice a deviation yet." />
-            <FeatureInfo icon={<IconShield size={32} color="#0891b2" />} title="Danger Zones" description="View and report unsafe areas." actionText="View & Report Zones" onAction={() => setView('dangerZones')} />
+            <FeatureInfo icon={<IconShield size={32} color="#0891b2" />} title="Hazard reports" description="Conditions people have reported — lighting out, a path blocked. Reports expire on their own. Submitting one needs your location, which Lumo cannot read yet." actionText="View reports" onAction={() => setView('hazardReports')} />
             <FeatureInfo icon={<IconUsers size={32} color="#0891b2" />} title="Nearby Volunteers" description="Planned. No volunteer network exists and nobody is notified." />
             <FeatureInfo icon={<IconCar size={32} color="#0891b2" />} title="Impact Detection" description="Detects a large impact and opens the SOS screen. It cannot tell a crash from a dropped phone, and it alerts nobody. Enable in Settings." />
           </>
@@ -185,8 +342,10 @@ const CommunitySafetyScreen = () => {
       
       <ScrollContainer>
         <DemoBanner>
-          Nothing in the Community Hub is connected to a real community. Every
-          entry below describes what is planned, not what works.
+          Safe Walk and Nearby Volunteers are not connected to anybody — no
+          volunteer network exists. Hazard reports are real data from the
+          server, but submitting one needs your location, which Lumo cannot
+          read yet.
         </DemoBanner>
         {renderContent()}
       </ScrollContainer>

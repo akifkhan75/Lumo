@@ -34,99 +34,150 @@ DATABASE_URL="postgresql://lumo:lumo_password@localhost:5434/lumo_db?schema=publ
 └──────┬──────────────────┬──────┘
        │ 1:N              │ 1:N
        │ onDelete:Cascade │ onDelete:SetNull
-┌──────▼──────────┐  ┌────▼──────────────────────────┐
-│ TrustedContact  │  │ DangerZone                    │
-│  id    uuid     │  │  id          uuid             │
-│  name  String   │  │  top         String  "45%"    │ ← CSS %, not geo
-│  phone String   │  │  left        String  "60%"    │ ← CSS %, not geo
-│  userId FK      │  │  severity    enum             │
-└─────────────────┘  │  type        enum             │
-                     │  description String           │
-                     │  reportedAt  @default(now())  │
-                     │  userId      FK?  nullable    │
-                     └───────────────────────────────┘
+┌──────▼──────────┐  ┌────▼──────────────────────────────┐
+│ TrustedContact  │  │ HazardReport                      │
+│  id    uuid     │  │  id             uuid              │
+│  name  String   │  │  type           enum HazardType   │
+│  phone String   │  │  source         enum  @default()  │
+│  userId FK      │  │  description    String             │
+└─────────────────┘  │  latitude       Float              │ ← real geo
+                     │  longitude      Float              │ ← real geo
+                     │  accuracyMetres Float?  nullable   │
+                     │  reportedAt     @default(now())    │
+                     │  expiresAt      DateTime           │ ← mandatory decay
+                     │  userId         FK?  nullable      │
+                     └────┬──────────────────────────────┘
+                          │ 1:N  onDelete:Cascade
+                     ┌────▼──────────────────────────────┐
+                     │ HazardConfirmation                │
+                     │  id        uuid                    │
+                     │  reportId  FK                      │
+                     │  userId    FK                      │
+                     │  createdAt @default(now())         │
+                     │  @@unique([reportId, userId])      │
+                     └───────────────────────────────────┘
 ```
+
+**There is no `severity` column, and there must not be.** A danger grade attached
+to a place is the redlining primitive; reports carry a type, an age and a
+confirmation count instead ([ADR-0010](../adr/0010-hazard-reports-replace-danger-zones.md)).
+There is also **no demographic field of any kind** — not optional, absent.
+
+`confirmationCount` is **not stored.** It is a relation count over
+`HazardConfirmation`, because a denormalised counter drifts, and a drifted count
+here would promote an unconfirmed report into routing.
 
 ### Delete semantics
 
 - `User` → `TrustedContact`: **Cascade.** Deleting a user removes their contacts.
-- `User` → `DangerZone`: **SetNull.** Reports survive the reporter, becoming
+- `User` → `HazardReport`: **SetNull.** Reports survive the reporter, becoming
   anonymous community data. That is the right call for the product, and it is why
-  `DangerZone.userId` is optional.
+  `HazardReport.userId` is optional.
+- `User` → `HazardConfirmation`: **Cascade.** A confirmation is meaningless
+  without the person who gave it, and leaving orphans would inflate counts.
+- `HazardReport` → `HazardConfirmation`: **Cascade.**
 
 ---
 
 ## Enums
 
 ```prisma
-enum DangerZoneSeverity { low  medium  high }
-
-enum DangerZoneType {
-  Theft
-  Assault
-  Harassment
-  Poor_Lighting       @map("Poor Lighting")
-  Suspicious_Activity @map("Suspicious Activity")
+enum HazardType {
+  POOR_LIGHTING
+  OBSTRUCTED_PATH
+  BROKEN_INFRASTRUCTURE
+  UNSAFE_CROSSING
+  THEFT_REPORTED
+  HARASSMENT_REPORTED
+  AGGRESSION_REPORTED
+  OTHER
 }
+
+enum HazardReportSource { COMMUNITY  VERIFIED_PARTNER  OFFICIAL_FEED }
 ```
 
-### The enum mapping, in three representations
+### One spelling, everywhere
 
-This is the single most error-prone thing in the data layer. One value has
-**three** spellings:
+`HazardType` members are identical in Prisma, in Postgres and on the wire. **No
+`@map`, no hand-written mappers.** The human label lives in exactly one place,
+`HAZARD_TYPE_LABELS` in `packages/types`, and is a presentation concern.
 
-| Layer                         | Value                                  |
-| ----------------------------- | -------------------------------------- |
-| Prisma client / TypeScript    | `DangerZoneType.Suspicious_Activity`   |
-| Postgres column value         | `"Suspicious Activity"` (via `@map`)   |
-| API / mobile `DangerZoneType` | `'Suspicious Activity'` (string union) |
+Adding a type means editing `schema.prisma`, `packages/types/src/index.ts` (the
+union _and_ the label map — the compiler enforces the latter via `Record`), and
+`HAZARD_TTL_DAYS` in the service, which is also compiler-enforced.
 
-`DangerZonesService` translates by hand in both directions:
+This is a deliberate correction. `DangerZoneType` had **three** spellings of one
+value — `Suspicious_Activity` in Prisma, `"Suspicious Activity"` in Postgres via
+`@map`, and the space-separated string on the wire — translated by hand in
+`mapInputType`/`mapOutputType`. `mapInputType` had **no error branch**, so any
+unrecognised string silently became `Suspicious_Activity`: a client typo became
+bad data rather than a `400`. An unknown value is now rejected by `@IsEnum`.
 
-```ts
-mapInputType('Suspicious Activity')  → DangerZoneType.Suspicious_Activity
-mapOutputType(DangerZoneType.Poor_Lighting) → 'Poor Lighting'
-```
+### Expiry
 
-Two consequences:
+`expiresAt` is set on create from `HAZARD_TTL_DAYS[type]` in
+`HazardReportsService`, and list queries filter `expiresAt > now()`. A report
+therefore stops being served without any cleanup job, and expired rows are kept
+for audit rather than deleted. A confirmation re-arms the expiry from the moment
+it is given, and never shortens one that is already further out.
 
-- `mapInputType` has **no error branch** — any unrecognised string silently
-  becomes `Suspicious_Activity`. A typo in a client becomes bad data, not a 400.
-- Adding a type means editing **four** places: `schema.prisma`, both mappers,
-  `packages/types/src/index.ts`, and `apps/mobile/types.ts`.
+| Type                    | TTL     |
+| ----------------------- | ------- |
+| `UNSAFE_CROSSING`       | 90 days |
+| `BROKEN_INFRASTRUCTURE` | 60 days |
+| `POOR_LIGHTING`         | 30 days |
+| `THEFT_REPORTED`        | 14 days |
+| `HARASSMENT_REPORTED`   | 14 days |
+| `AGGRESSION_REPORTED`   | 14 days |
+| `OBSTRUCTED_PATH`       | 7 days  |
+| `OTHER`                 | 7 days  |
+
+The values differ by physics, not by how alarming the type sounds: a kerb stays
+broken for weeks, a blocked path is usually cleared in days. The table is policy
+and moves to `packages/safety-domain` in Phase 1 so the device and the server
+cannot disagree about whether a report is live.
 
 ---
 
-## Migrations — none exist yet
+## Migrations
 
-**`apps/api/prisma/migrations/` is absent.** The schema has only ever been applied
-with `prisma db push`. There is no migration history, so there is no reviewable
-schema diff and no safe production deploy.
+`apps/api/prisma/migrations/` is the source of truth. Two migrations exist: the
+baseline, and the one that replaced `DangerZone` with `HazardReport`. CI applies
+them against a clean `postgres:15` and then fails the build if `schema.prisma`
+and the history disagree, so drift cannot reach `main`.
 
-`archive/PRODUCTION_AUDIT.md` claims migrations are tracked. That claim is false
-([KI-5](../audit/KNOWN_ISSUES.md)).
+`db push` is no longer part of any workflow. `archive/PRODUCTION_AUDIT.md` claimed
+migrations were tracked long before they were; that claim was false then and is
+true now ([KI-5](../audit/KNOWN_ISSUES.md), resolved).
 
-### Current (dev) workflow
+### Workflow
 
 ```bash
 docker compose up -d postgres
-pnpm --filter api exec prisma generate     # regenerate the client after schema edits
-pnpm --filter api exec prisma db push      # apply the schema, no history
-pnpm --filter api exec prisma studio       # browse the data
+pnpm --filter api exec prisma generate         # regenerate the client after schema edits
+pnpm --filter api exec prisma migrate dev --name <change>   # author a migration
+pnpm --filter api exec prisma migrate deploy   # apply in CI / production
+pnpm --filter api exec prisma studio           # browse the data
 ```
 
-### Adopting migrations (do this before any deploy)
+Generating a migration offline, without a dev database, is also supported and is
+how both existing migrations were produced:
 
 ```bash
-# against a clean/dev database, create the baseline
-pnpm --filter api exec prisma migrate dev --name init
-# from then on
-pnpm --filter api exec prisma migrate dev --name add_geo_columns
-# in CI / production
-pnpm --filter api exec prisma migrate deploy
+pnpm --filter api exec prisma migrate diff \
+  --from-migrations prisma/migrations \
+  --to-schema-datamodel prisma/schema.prisma \
+  --shadow-database-url "$SHADOW_DATABASE_URL" --script
 ```
 
-Commit `prisma/migrations/` from that point on and stop using `db push`.
+The same command with no `--script` is the drift check: it must print
+`No difference detected.`
+
+> The HazardReport migration **drops `DangerZone` and every row in it**, with no
+> backfill. That is deliberate and irreversible: the old table stored CSS
+> percentages the server generated with `Math.random()`, so no row recorded where
+> anything actually was, and there is no function from a fabricated percentage to
+> a coordinate.
 
 ---
 
@@ -136,18 +187,23 @@ Commit `prisma/migrations/` from that point on and stop using `db push`.
 pnpm --filter api exec prisma db seed
 ```
 
-Configured as `node --loader ts-node/esm prisma/seed.ts`. It is **idempotent for
-the user** (`upsert` on email, which also resets the password hash) but
-**additive for danger zones** — each run inserts three more. Re-seeding repeatedly
-will pile up duplicates.
+Configured as `node --loader ts-node/esm prisma/seed.ts`. It is **idempotent** —
+`upsert` on email, which also resets the password hash — and re-running it does
+not pile up duplicates.
 
 Seed data:
 
-|          |                                                                                  |
-| -------- | -------------------------------------------------------------------------------- |
-| User     | `josim@example.com` / password **`password`**, blood type `O+`                   |
-| Contacts | `Mom` `111-222-3333`, `Emergency Services` `911`                                 |
-| Zones    | high/Assault at 45%,60% · medium/Theft at 70%,30% · low/Poor_Lighting at 30%,25% |
+|          |                                                                |
+| -------- | -------------------------------------------------------------- |
+| User     | `josim@example.com` / password **`password`**, blood type `O+` |
+| Contacts | `Mom` `111-222-3333`, `Emergency Services` `911`               |
+| Reports  | **none, deliberately**                                         |
+
+The seed used to create three hazard reports — _"a physical assault was reported
+here last night"_ among them — at invented positions, attributed to the demo user.
+That is fabricated community testimony about a place, and a screenshot of it is
+indistinguishable from real data. A development database starts with an empty map,
+because the empty state is part of the product and needs to be seen.
 
 `AuthScreen.tsx` ships with these credentials prefilled, which is convenient in
 development and must be removed before any public build.
@@ -156,48 +212,41 @@ development and must be removed before any public build.
 
 ## Indexes and performance
 
-Only what Prisma creates implicitly: primary keys, the unique index on
-`User.email`, and foreign-key indexes. That is adequate at current scale.
+Beyond the implicit ones (primary keys, the unique index on `User.email`,
+foreign-key indexes):
 
-It stops being adequate as soon as `GET /danger-zones` has real volume — the query
-is an unbounded `findMany` ordered by `reportedAt desc` over every row ever
-created, with no pagination. The fix arrives with the geo model below.
+| Index                                    | Why                                      |
+| ---------------------------------------- | ---------------------------------------- |
+| `TrustedContact(userId)`                 | On the path that resolves who to alert   |
+| `HazardReport(userId)`                   | A reporter's own history                 |
+| `HazardReport(expiresAt)`                | Every list query filters on it           |
+| `HazardReport(reportedAt)`               | Every list query orders by it            |
+| `HazardConfirmation(userId)`             | A confirmer's history                    |
+| `HazardConfirmation(reportId, userId)` ✱ | **Unique** — one confirmation per person |
+
+`GET /hazard-reports` is bounded: `take` defaults to 50 and is capped at 200, so
+the endpoint cannot return the whole table. It is still not a proximity query —
+that needs the device's own location, which does not exist yet.
 
 ---
 
-## The schema change this project needs most
+## What the data model still needs
 
-Replacing the percentage positions with real coordinates ([KI-2](../audit/KNOWN_ISSUES.md))
-unblocks maps, proximity alerts and nearby-help. Sketch:
+Real coordinates have landed ([KI-2](../audit/KNOWN_ISSUES.md), ADR-0010), so the
+remaining gaps are new entities rather than a correction:
 
-```prisma
-model DangerZone {
-  id          String             @id @default(uuid())
-  latitude    Float
-  longitude   Float
-  geohash     String                              // prefix-match for cheap radius queries
-  accuracyM   Float?
-  severity    DangerZoneSeverity
-  type        DangerZoneType
-  description String
-  reportedAt  DateTime           @default(now())
-  expiresAt   DateTime?                           // stale reports should decay
-  confirmCount Int               @default(0)      // community corroboration
-  userId      String?
-  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+- **Geospatial querying.** `latitude`/`longitude` are plain `Float` columns with
+  no spatial index, so there is no radius query yet. The options are a `geohash`
+  column with prefix matching, or PostGIS. Neither is needed before the device can
+  report its own position.
+- **Moderation.** A report is visible as soon as it is written. Nothing reviews
+  it, and `HAZARD_CONFIRMATION_FLOOR` only gates whether it influences routing.
+- **Dispute and removal.** There is no way to contest or withdraw a report.
 
-  @@index([geohash])
-  @@index([reportedAt])
-}
-```
-
-Migration path: add the new columns as nullable, backfill nothing (the percentages
-carry no real location and should be discarded), ship the client that sends
-coordinates, then drop `top`/`left` and make the new columns required.
-
-Other models the roadmap needs: `SosIncident`, `Journey` + `JourneyPing`,
-`CheckIn`, `Device` (push tokens), `ZoneConfirmation`. See
-[ROADMAP.md](../product/ROADMAP.md).
+Other models the roadmap needs: `SafetySession`, `EmergencyIncident`,
+`NotificationAttempt` (the delivery ledger), `Journey` + `JourneyPing`, `CheckIn`,
+`Device` (push tokens). See [ROADMAP.md](../product/ROADMAP.md) and
+[DATA_MODEL.md](../specs/DATA_MODEL.md).
 
 ---
 

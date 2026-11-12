@@ -6,7 +6,7 @@
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "lint": "eslint . --max-warnings 46",
+    "lint": "eslint . --max-warnings 41",
     "start": "expo start",
     "test": "jest",
     "typecheck": "tsc --noEmit"

@@ -122,32 +122,53 @@ describe('apiService', () => {
       expect(updated).toEqual(newSettings);
     });
 
-    it('fetches danger zones', async () => {
-      const mockZones = [
-        { id: '1', severity: 'high', type: 'Theft', location: { top: '50%', left: '50%' } },
+    it('fetches hazard reports', async () => {
+      const mockReports = [
+        {
+          id: '1',
+          type: 'POOR_LIGHTING',
+          source: 'COMMUNITY',
+          description: 'Streetlight out',
+          coordinates: { latitude: 51.5074, longitude: -0.1278, accuracyMetres: 12 },
+          confirmationCount: 0,
+          influencesRouting: false,
+        },
       ];
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => mockZones,
+        json: async () => mockReports,
       });
 
-      const zones = await apiService.getDangerZones();
-      expect(zones).toEqual(mockZones);
+      const reports = await apiService.getHazardReports();
+      expect(reports).toEqual(mockReports);
     });
 
-    it('reports a danger zone', async () => {
-      const zonePayload: any = {
-        type: 'Theft',
-        severity: 'high',
-        description: 'Bag snatching incident',
+    it('reports a hazard with its coordinates', async () => {
+      const payload = {
+        type: 'POOR_LIGHTING' as const,
+        description: 'Streetlight out on the footbridge',
+        latitude: 51.5074,
+        longitude: -0.1278,
       };
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ id: 'new-id', ...zonePayload }),
+        json: async () => ({ id: 'new-id', ...payload }),
       });
 
-      const result = await apiService.reportDangerZone(zonePayload);
+      const result = await apiService.reportHazard(payload);
       expect(result).toHaveProperty('id', 'new-id');
+      const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+      expect(JSON.parse(init.body)).toEqual(payload);
+    });
+
+    it('confirms a hazard report', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'report-1', confirmationCount: 2 }),
+      });
+
+      const result = await apiService.confirmHazardReport('report-1');
+      expect(result).toHaveProperty('confirmationCount', 2);
     });
 
     it('fetches fake call script', async () => {

@@ -5,7 +5,7 @@ import FakeCallScreen from '../components/FakeCallScreen';
 import FollowMeScreen from '../components/FollowMeModal';
 import CheckInScreen from '../components/CheckInModal';
 import CommunitySafetyScreen from '../components/CommunitySafetyModal';
-import ReportDangerZoneScreen from '../components/ReportDangerZoneModal';
+import ReportHazardScreen from '../components/ReportHazardModal';
 import SafetyAssistantScreen from '../components/SafetyAssistantModal';
 import * as apiService from '../services/apiService';
 
@@ -271,48 +271,157 @@ describe('Feature and Modal Screens', () => {
     });
   });
 
-  describe('ReportDangerZoneScreen', () => {
-    it('submits a danger zone report', async () => {
-      const onReport = jest.fn();
-      mockRouteParams = { onReport };
+  describe('CommunitySafetyScreen hazard reports', () => {
+    const openHazardReports = async () => {
+      let testRenderer: any;
+      await act(async () => {
+        testRenderer = renderer.create(<CommunitySafetyScreen />);
+      });
+      // "View reports" on the hazard-reports feature card. The label renders
+      // as ['View reports', ' \u2192'], so match either shape and walk up to
+      // the nearest pressable ancestor.
+      const [label] = testRenderer.root.findAll((node: any) => {
+        const children = node.props.children;
+        return Array.isArray(children)
+          ? children.includes('View reports')
+          : children === 'View reports';
+      });
+      let pressable = label;
+      while (pressable && typeof pressable.props.onPress !== 'function') {
+        pressable = pressable.parent;
+      }
+      await act(async () => {
+        pressable.props.onPress();
+        await Promise.resolve();
+      });
+      return testRenderer;
+    };
+
+    it('says there are no reports rather than inventing examples', async () => {
+      (apiService.getHazardReports as jest.Mock).mockResolvedValue([]);
+
+      const testRenderer = await openHazardReports();
+      const text = JSON.stringify(testRenderer.toJSON());
+
+      expect(text).toContain('No reports.');
+      // The two fabricated rows this view used to ship with.
+      expect(text).not.toContain('Elm Street Park');
+      expect(text).not.toContain('Downtown Station');
+
+      act(() => {
+        testRenderer.unmount();
+      });
+    });
+
+    it('renders a report with its age and confirmation count, and no severity', async () => {
+      (apiService.getHazardReports as jest.Mock).mockResolvedValue([
+        {
+          id: 'report-1',
+          type: 'POOR_LIGHTING',
+          source: 'COMMUNITY',
+          description: 'Streetlight out on the footbridge',
+          coordinates: { latitude: 51.5074, longitude: -0.1278, accuracyMetres: 12 },
+          reportedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+          confirmationCount: 1,
+          influencesRouting: false,
+        },
+      ]);
+
+      const testRenderer = await openHazardReports();
+      const text = JSON.stringify(testRenderer.toJSON());
+
+      expect(text).toContain('Lighting out');
+      expect(text).toContain('reported 2 days ago');
+      expect(text).toContain('1 confirmation');
+      expect(text).toContain('Unconfirmed');
+      expect(text.toLowerCase()).not.toContain('severity');
+
+      act(() => {
+        testRenderer.unmount();
+      });
+    });
+
+    it('does not mark an unconfirmed report as acted upon', async () => {
+      (apiService.getHazardReports as jest.Mock).mockResolvedValue([
+        {
+          id: 'report-2',
+          type: 'OBSTRUCTED_PATH',
+          source: 'COMMUNITY',
+          description: 'Scaffolding across the pavement',
+          coordinates: { latitude: 51.5, longitude: -0.1, accuracyMetres: null },
+          reportedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          confirmationCount: 5,
+          influencesRouting: true,
+        },
+      ]);
+
+      const testRenderer = await openHazardReports();
+      const text = JSON.stringify(testRenderer.toJSON());
+
+      expect(text).toContain('5 confirmations');
+      expect(text).not.toContain('Unconfirmed');
+
+      act(() => {
+        testRenderer.unmount();
+      });
+    });
+
+    it('surfaces a load failure instead of an empty list', async () => {
+      (apiService.getHazardReports as jest.Mock).mockRejectedValue(new Error('offline'));
+
+      const testRenderer = await openHazardReports();
+      const text = JSON.stringify(testRenderer.toJSON());
+
+      expect(text).toContain('Could not load reports.');
+      expect(text).not.toContain('No reports.');
+
+      act(() => {
+        testRenderer.unmount();
+      });
+    });
+  });
+
+  describe('ReportHazardScreen', () => {
+    it('offers no way to submit a report, because Lumo has no position to attach', () => {
+      mockRouteParams = {};
 
       let testRenderer: any;
       act(() => {
-        testRenderer = renderer.create(<ReportDangerZoneScreen />);
+        testRenderer = renderer.create(<ReportHazardScreen />);
       });
 
-      let buttons = getPressableButtons(testRenderer.root);
-      // Click a severity or type option
-      if (buttons[2]) {
-        act(() => {
-          buttons[2].props.onPress();
-        });
-      }
+      // No text entry and no severity picker: the form is gone, not disabled.
+      expect(getInputs(testRenderer.root)).toHaveLength(0);
 
-      const inputs = getInputs(testRenderer.root);
-      act(() => {
-        inputs[0].props.onChangeText('Dark road with poor street lighting');
-      });
+      // Only navigation remains. Back and Close share the one onClose handler,
+      // so the de-duplicating helper sees a single distinct press target:
+      // nothing on this screen can create a report.
+      const buttons = getPressableButtons(testRenderer.root);
+      expect(buttons).toHaveLength(1);
 
-      // Submit report button (last button)
-      buttons = getPressableButtons(testRenderer.root);
-      const submitBtn = buttons[buttons.length - 1];
-      await act(async () => {
-        submitBtn.props.onPress();
-        await Promise.resolve();
-      });
-
-      expect(onReport).toHaveBeenCalledWith(
-        expect.objectContaining({
-          description: 'Dark road with poor street lighting',
-        })
-      );
-
-      // Back button closes screen
       act(() => {
         buttons[0].props.onPress();
       });
       expect(mockGoBack).toHaveBeenCalled();
+
+      act(() => {
+        testRenderer.unmount();
+      });
+    });
+
+    it('states plainly that the feature is unavailable', () => {
+      mockRouteParams = {};
+
+      let testRenderer: any;
+      act(() => {
+        testRenderer = renderer.create(<ReportHazardScreen />);
+      });
+
+      const text = JSON.stringify(testRenderer.toJSON());
+      expect(text).toContain('NOT AVAILABLE YET');
+      expect(text).toContain('Lumo cannot read your location');
 
       act(() => {
         testRenderer.unmount();

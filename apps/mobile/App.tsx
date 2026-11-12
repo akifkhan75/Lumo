@@ -2,13 +2,13 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing } from 'react-native';
 import { NavigationContainer, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ActionButton, BottomNavContainer, Container, DangerZonePinContainer, DemoMapNotice, ErrorContainer, ErrorText, Header, HeaderActions, HeaderTextContainer, HelloText, LoadingContainer, LocationText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, PinCircleBase, PinPulseCircle, SafetyAssistantButton, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
+import { ActionButton, BottomNavContainer, Container, DemoMapNotice, ErrorContainer, ErrorText, Header, HeaderActions, HeaderTextContainer, HelloText, LoadingContainer, LocationText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, SafetyAssistantButton, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
 import { useShakeDetector } from './hooks/useShakeDetector';
 import { useVoiceActivation } from './hooks/useVoiceActivation';
 import { useAccidentDetector } from './hooks/useAccidentDetector';
 import * as apiService from './services/apiService';
 import { IconSettings, IconShield, IconWalk, IconTimer, IconFakeCall, IconSOS, IconAlert, IconMic, IconBot } from './constants';
-import { UserSettings, DangerZone, DangerZoneType, DangerZoneSeverity, RootStackParamList, SettingsStackParamList } from './types';
+import { UserSettings, RootStackParamList, SettingsStackParamList } from './types';
 
 
 // Screen Imports
@@ -22,49 +22,9 @@ import AlertSettingsScreen from './components/settings/AlertSettings';
 import FollowMeScreen from './components/FollowMeModal';
 import CheckInScreen from './components/CheckInModal';
 import CommunitySafetyScreen from './components/CommunitySafetyModal';
-import ReportDangerZoneScreen from './components/ReportDangerZoneModal';
+import ReportHazardScreen from './components/ReportHazardModal';
 import SafetyAssistantScreen from './components/SafetyAssistantModal';
 import DemoBanner from './components/common/DemoBanner';
-
-
-const DangerZonePin = ({ zone }: { zone: DangerZone }) => {
-    const severityStyles = {
-        low: { color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.3)' },
-        medium: { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.3)' },
-        high: { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.3)' },
-    };
-    const { color, bgColor } = severityStyles[zone.severity];
-    const pulseAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        Animated.loop(
-            Animated.sequence([
-                Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
-                Animated.timing(pulseAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
-            ])
-        ).start();
-    }, [pulseAnim]);
-
-    const pulseStyle = {
-        transform: [{ scale: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.4] }) }],
-        opacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 0] }),
-    };
-
-    const top = zone?.location?.top ?? (zone as any)?.top ?? '50%';
-    const left = zone?.location?.left ?? (zone as any)?.left ?? '50%';
-
-    return (
-        <DangerZonePinContainer
-            style={{ top: top as any, left: left as any }}
-            onPress={() => Alert.alert(`Severity: ${zone.severity.toUpperCase()}`, `${zone.type}: ${zone.description}`)}
-        >
-            <PinPulseCircle style={pulseStyle} pulseColor={color} />
-            <PinCircleBase bgColor={bgColor} borderColor={color}>
-                <IconAlert color={color} size={14}/>
-            </PinCircleBase>
-        </DangerZonePinContainer>
-    );
-};
 
 
 const DashboardScreen = () => {
@@ -73,7 +33,6 @@ const DashboardScreen = () => {
   const { onLogout } = route.params;
 
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
-  const [dangerZones, setDangerZones] = useState<DangerZone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,12 +40,8 @@ const DashboardScreen = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [settings, zones] = await Promise.all([
-        apiService.getSettings(),
-        apiService.getDangerZones()
-      ]);
+      const settings = await apiService.getSettings();
       setUserSettings(settings);
-      setDangerZones(zones);
     } catch (err) {
       setError('Failed to load application data. Please try again later.');
       console.error(err);
@@ -114,20 +69,6 @@ const DashboardScreen = () => {
         console.error(err);
     }
   }, []);
-
-  const handleAddDangerZone = async (details: { type: DangerZoneType; severity: DangerZoneSeverity; description: string; }) => {
-    try {
-        const newZone = await apiService.reportDangerZone(details);
-        setDangerZones(prev => [...prev, newZone]);
-        navigation.goBack();
-        setTimeout(() => {
-            Alert.alert(`Thank you`, `Your report has been added to the map.`);
-        }, 300);
-    } catch (err) {
-        Alert.alert("Error", "Failed to report danger zone. Please try again.");
-        console.error(err);
-    }
-  };
 
   const shakeEnabled = userSettings?.security.shakeToSosEnabled ?? false;
   const voiceEnabled = userSettings?.security.voiceActivationEnabled ?? false;
@@ -190,9 +131,11 @@ const DashboardScreen = () => {
   return (
     <Container>
       <MapViewContainer>
-         <MapImage source={require('./assets/images/map_bg.jpg')}>
-            {dangerZones.map(zone => <DangerZonePin key={zone.id} zone={zone} />)}
-         </MapImage>
+         {/* Hazard reports are not drawn here. They carry real coordinates
+             now and this is a JPEG, so there is no projection from one to the
+             other — a pin placed on this image would be decoration. They are
+             listed, with their age and confirmations, in the Community Hub. */}
+         <MapImage source={require('./assets/images/map_bg.jpg')} />
          <Header>
             <HeaderTextContainer>
                 <HelloText>Hello {userSettings.personalInfo.fullName},</HelloText>
@@ -200,7 +143,7 @@ const DashboardScreen = () => {
                 {isListening && <VoiceGuardText><IconMic size={12} color="#16a34a" /> Voice Guard Active</VoiceGuardText>}
             </HeaderTextContainer>
             <HeaderActions>
-                <ActionButton onPress={() => navigation.navigate('ReportDangerZone', { onReport: handleAddDangerZone })}>
+                <ActionButton onPress={() => navigation.navigate('ReportHazard')}>
                     <IconAlert size={24} color="#f97316" />
                 </ActionButton>
                  <ActionButton onPress={() => navigation.navigate('Settings', { onLogout: onLogout, currentSettings: userSettings, onSave: handleSaveSettings })}>
@@ -313,7 +256,7 @@ const App = () => {
                             <MainStack.Screen name="FollowMe" component={FollowMeScreen} />
                             <MainStack.Screen name="CheckIn" component={CheckInScreen} />
                             <MainStack.Screen name="FakeCall" component={FakeCallScreen} />
-                            <MainStack.Screen name="ReportDangerZone" component={ReportDangerZoneScreen} />
+                            <MainStack.Screen name="ReportHazard" component={ReportHazardScreen} />
                             <MainStack.Screen name="SafetyAssistant" component={SafetyAssistantScreen} />
                         </MainStack.Group>
                         <MainStack.Group screenOptions={{ presentation: 'fullScreenModal' }}>

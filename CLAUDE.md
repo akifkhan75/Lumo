@@ -11,8 +11,8 @@
 
 ## 1. What this app is
 
-A **personal safety app** for Android/iOS: a map of community-reported danger
-zones, a one-tap SOS, hands-free SOS triggers (shake / voice / crash detection),
+A **personal safety app** for Android/iOS: community-reported hazard
+reports, a one-tap SOS, hands-free SOS triggers (shake / voice / crash detection),
 a fake-call escape tool, journey sharing, a check-in timer, and an AI safety
 assistant.
 
@@ -43,9 +43,6 @@ apps/mobile     Expo 58 / React Native 0.88, styled-components  (the app)
 packages/types        shared TS domain types  (@lumo/types)
 packages/api-client   typed fetch client      (@lumo/api-client)
 packages/tsconfig     shared tsconfig base    (@lumo/tsconfig)
-packages/config       EMPTY — placeholder only
-packages/validation   EMPTY — placeholder only
-packages/eslint-config EMPTY — placeholder only
 android/        stray top-level Gradle output, not the app's android project
 docker/         EMPTY
 metadata.json   leftover from the original AI Studio scaffold; unused
@@ -62,10 +59,10 @@ pnpm install                       # once, from the repo root
 
 docker compose up -d postgres      # Postgres 15 on host port 5434
 pnpm --filter api exec prisma generate
-pnpm --filter api exec prisma db push      # NO migrations exist yet — see §7
+pnpm --filter api exec prisma migrate deploy   # migrations are the source of truth
 pnpm --filter api exec prisma db seed      # creates josim@example.com / password
 
-pnpm --filter api start:dev        # API — reads API_PORT, defaults to 3001 (!)
+pnpm --filter api start:dev        # API — reads API_PORT, defaults to 3005
 pnpm --filter mobile start         # Metro / Expo dev server
 pnpm --filter mobile android       # expo run:android (needs a dev build)
 
@@ -76,11 +73,10 @@ pnpm lint
 pnpm typecheck                     # ⚠️ CURRENTLY A NO-OP — see below
 ```
 
-> **`pnpm typecheck` checks nothing.** `turbo run typecheck --dry` resolves all 8
-> tasks to `<NONEXISTENT>`: no package defines the script, so it exits 0 having
-> verified nothing. Until Phase 0 fixes it, typecheck per package with
-> `pnpm --filter <pkg> exec tsc --noEmit`. Tracked as STD-1 in
-> [`docs/audit/TECHNICAL_AUDIT.md`](docs/audit/TECHNICAL_AUDIT.md).
+> **`pnpm typecheck` is real** as of Phase 0. It used to resolve all 8 turbo tasks
+> to `<NONEXISTENT>` and exit 0 having verified nothing (STD-1 in
+> [`docs/audit/TECHNICAL_AUDIT.md`](docs/audit/TECHNICAL_AUDIT.md)). Every package
+> defines the script now, test files included, and CI runs it.
 
 **Build order matters.** `packages/types` → `packages/api-client` → `apps/*`.
 Turbo handles it via `dependsOn: ["^build"]`. If the mobile app cannot resolve
@@ -89,36 +85,33 @@ source.
 
 ---
 
-## 4. The five facts that trip everyone up
+## 4. The facts that trip everyone up
 
-1. **Port mismatch.** `apps/api/src/main.ts` defaults to **3001**. `.env.example`
-   sets `API_PORT=3005`. The mobile app hardcodes **3005**. Always set
-   `API_PORT=3005` in `apps/api/.env`, or the app cannot reach the API.
+1. **The API port is 3005** everywhere: `getPort()` defaults to it, `.env.example`
+   sets it, and the mobile app falls back to it. It used to default to 3001 in
+   `main.ts` while the app hardcoded 3005, so nothing connected (KI-1, fixed).
 
-2. **The API base URL is a hardcoded LAN IP.** `apps/mobile/services/apiService.ts`:
+2. **The API base URL is configuration.** `apps/mobile/services/apiService.ts`
+   reads `EXPO_PUBLIC_API_URL`, then `EXPO_PUBLIC_API_PORT` against the Metro
+   bundler's host, then `localhost:3005`. It used to be a hardcoded LAN IP, so the
+   app only worked on one developer's network (KI-1, fixed). A release build with
+   no `EXPO_PUBLIC_API_URL` logs an error — set it.
 
-   ```ts
-   const LAN_IP = "192.168.100.81";
-   export const API_BASE_URL = `http://${LAN_IP}:3005`;
-   ```
+3. **Hazard reports have real coordinates; the map does not.** `HazardReport`
+   stores `latitude`/`longitude` with an optional `accuracyMetres`, and the server
+   stores what the client sends. There is still **no map SDK** — the dashboard is a
+   static JPEG (`apps/mobile/assets/images/map_bg.jpg`) with no projection, so
+   reports are listed rather than pinned, and the device cannot read its own
+   position yet, so **submitting a report is unavailable** rather than guessing a
+   point. The predecessor stored CSS percentages the server invented with
+   `Math.random()` (KI-2, ADR-0010).
 
-   `EXPO_PUBLIC_API_URL` exists in `.env.example` but **nothing reads it**. On a
-   new network you must edit that constant. Fixing this properly is
-   [KI-1](docs/audit/KNOWN_ISSUES.md).
-
-3. **Danger-zone "coordinates" are CSS percentages, not geography.** The schema
-   stores `top: String` and `left: String` (e.g. `"45%"`), positioned over a
-   static JPEG (`apps/mobile/assets/images/map_bg.jpg`). There is no map SDK and
-   no lat/lng anywhere. On create, the server _invents_ a position:
-   `` `${48 + Math.random() * 4}%` ``. Any real geospatial work starts with
-   migrating this model — [KI-2](docs/audit/KNOWN_ISSUES.md).
-
-4. **The SOS screen does not contact anyone.** `EmergencyModal.tsx` is a
-   convincing UI: a ring of hardcoded contacts (Police, EMS, Mom…), "Notifying
-   Nearby Volunteers…", a defense-mode overlay. No call, no SMS, no push, no
-   location upload. `shareLocationOnSos` / `sendSmsOnSos` are persisted to
-   Postgres and **never read**. This is the single biggest gap between the demo
-   and a safety product — [KI-3](docs/audit/KNOWN_ISSUES.md).
+4. **The SOS screen does not contact anyone, and now says so.**
+   `EmergencyModal.tsx` leads with "Nothing has been sent" and offers the phone
+   dialler. No call, no SMS, no push, no location upload is wired up, and
+   `shareLocationOnSos` / `sendSmsOnSos` are persisted to Postgres and **never
+   read**. This is still the biggest gap between the demo and a safety product —
+   [KI-3](docs/audit/KNOWN_ISSUES.md).
 
 5. **Auth does not survive a restart.** The JWT lives in a module-level variable
    in `apiService.ts` and `isAuthenticated` is `useState` in `App.tsx`. No
@@ -134,20 +127,21 @@ It separates _mock_ from _real_ and is kept prioritized.
 
 **Backend (`apps/api`)**
 
-- One directory per domain: `auth/`, `settings/`, `danger-zones/`, `ai/`,
+- One directory per domain: `auth/`, `settings/`, `hazard-reports/`, `ai/`,
   `prisma/`. Each has `*.module.ts`, `*.controller.ts`, `*.service.ts`, and a
   co-located `*.spec.ts`.
 - Controllers own the route string in full: `@Controller('api/v1/settings')`.
   There is **no** global prefix or versioning helper — add the prefix yourself.
 - Protect routes with `@UseGuards(JwtAuthGuard)`. `req.user` is `{ id, email }`,
   shaped by `JwtStrategy.validate`.
-- Validate input with a DTO in `dto/` + `class-validator`. The global
-  `ValidationPipe` uses `{ transform: true, whitelist: true }`, so **unlisted
-  properties are silently stripped** — if a field vanishes, it is missing a
-  decorator. `SettingsController.updateSettings` still takes `@Body() body: any`
-  and is the exception to fix, not to copy.
+- Validate input with a DTO in `dto/` + `class-validator`. The pipeline lives in
+  `src/app.setup.ts` (`configureApp`) and is shared with the e2e suite, so tests
+  run the same validation production does. It uses
+  `{ transform: true, whitelist: true, forbidNonWhitelisted: true }` — an unknown
+  property is **rejected with a 400**, not stripped. Every endpoint has a DTO.
 - Services return **API-shaped objects, not Prisma rows** (see
-  `DangerZonesService.findAll` mapping `top`/`left` into `location`).
+  `HazardReportsService.toApi`, which derives `confirmationCount` from a relation
+  count and `influencesRouting` from the confirmation floor).
 
 **Mobile (`apps/mobile`)**
 
@@ -196,18 +190,22 @@ inside `apiService.ts`, duplicating logic that already exists in
 ## 7. Database
 
 Prisma 5.22, PostgreSQL 15 (Docker, **host port 5434**). Models: `User`,
-`TrustedContact`, `DangerZone` + enums `DangerZoneSeverity`, `DangerZoneType`.
+`TrustedContact`, `HazardReport`, `HazardConfirmation` + enums `HazardType`,
+`HazardReportSource`.
 
-**`apps/api/prisma/migrations/` does not exist.** Despite what
-`docs/archive/PRODUCTION_AUDIT.md` claims, no migration has ever been generated;
-the schema is applied with `db push`. Before any production deploy, baseline the
-migration history — [KI-5](docs/audit/KNOWN_ISSUES.md).
+**Migrations are the source of truth.** `apps/api/prisma/migrations/` holds a
+baseline plus the HazardReport replacement, and CI fails if the history and
+`schema.prisma` disagree. Use `prisma migrate deploy`, not `db push` (KI-5, fixed).
 
-**Enum gotcha:** `DangerZoneType` members are `Poor_Lighting` and
-`Suspicious_Activity` in Prisma but `@map` to `"Poor Lighting"` and
-`"Suspicious Activity"` in Postgres, while the client type is the space-separated
-string. `DangerZonesService` hand-maps both directions in `mapInputType` /
-`mapOutputType`. Touching this enum means touching all three places.
+**No `@map` on enums.** Members are SCREAMING_SNAKE in Prisma, in Postgres and on
+the wire, and the human label lives in `HAZARD_TYPE_LABELS` in `@lumo/types`.
+The predecessor `@map`'d `Poor_Lighting` to `"Poor Lighting"` and hand-translated
+it in `mapInputType`/`mapOutputType`, so a new member silently fell through to a
+default unless all three places were edited. Do not reintroduce that.
+
+**Hazard reports expire.** `expiresAt` is set from a per-type TTL
+(`HAZARD_TTL_DAYS`) and list queries filter on it, so a report stops being served
+without a cleanup job. A confirmation re-arms it.
 
 Details: [`docs/DATABASE.md`](docs/engineering/DATABASE.md).
 
@@ -284,8 +282,9 @@ one rather than re-deriving the rules:
 
 These override convenience, and a change that breaks one is rejected:
 
-1. **No success state without a verified record** (PLAT-9). The SOS screen currently
-   violates this — it says "Emergency Calling…" and contacts nobody.
+1. **No success state without a verified record** (PLAT-9). Enforced by
+   `scripts/check-no-fake-success.mjs` in CI; the escape hatch
+   (`lumo-verified-claim`) makes you name the record that proves the claim.
 2. **AI emits signals; a deterministic engine decides** ([ADR-0013](docs/adr/0013-ai-never-decides.md)).
 3. **Distinguish attempted / delivered / acknowledged** — never one tick
    ([ADR-0012](docs/adr/0012-delivery-ledger.md)).
@@ -294,8 +293,9 @@ These override convenience, and a change that breaks one is rejected:
 
 ## 14. Do not
 
-- Commit secrets. `JWT_SECRET` and `API_KEY` fall back to insecure defaults — that
-  is a bug, not a convenience.
+- Commit secrets. `JWT_SECRET` has no fallback and the API refuses to boot without
+  a real one (KI-9); do not reintroduce a default. `API_KEY` is still optional
+  because every AI method has a hardcoded fallback — see §8.
 - Trust `docs/archive/*`. Those are historical snapshots with claims that were
   never true; [`docs/KNOWN_ISSUES.md`](docs/audit/KNOWN_ISSUES.md) supersedes them.
 - Describe a mock as a shipped feature. Half of the UI is a prototype, and a user

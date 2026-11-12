@@ -10,7 +10,7 @@
 ```
 apps/mobile/
 ├── index.js                  registerRootComponent entry
-├── App.tsx                   root navigator + DashboardScreen + DangerZonePin
+├── App.tsx                   root navigator + DashboardScreen
 ├── App.styled.ts             dashboard styles (the only extracted stylesheet)
 ├── types.ts                  domain types (duplicated) + navigation param lists
 ├── constants.tsx             all icon wrappers — the only @expo/vector-icons import
@@ -33,9 +33,8 @@ apps/mobile/
 │   ├── FollowMeModal.tsx
 │   ├── CheckInModal.tsx
 │   ├── CommunitySafetyModal.tsx
-│   ├── ReportDangerZoneModal.tsx
+│   ├── ReportHazardModal.tsx
 │   └── SafetyAssistantModal.tsx
-├── data/dangerZones.ts       obsolete, self-documented as such
 ├── assets/images/            map_bg.jpg, user_avatar.jpg
 └── android/                  the real native project (not /android at the repo root)
 ```
@@ -64,7 +63,7 @@ NavigationContainer
         │   ├── FollowMe
         │   ├── CheckIn             params: { onEmergency }
         │   ├── FakeCall
-        │   ├── ReportDangerZone    params: { onReport }
+        │   ├── ReportHazard        params: none
         │   └── SafetyAssistant
         │
         └── Group  presentation: 'fullScreenModal'
@@ -88,25 +87,25 @@ There is **no Redux, no Zustand, no Context**. `DashboardScreen` owns everything
 
 ```ts
 const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
-const [dangerZones, setDangerZones] = useState<DangerZone[]>([]);
 const [isLoading, setIsLoading] = useState(true);
 const [error, setError] = useState<string | null>(null);
 
-// mount: both requests in parallel
-const [settings, zones] = await Promise.all([
-  apiService.getSettings(),
-  apiService.getDangerZones(),
-]);
+// mount
+const settings = await apiService.getSettings();
 ```
+
+The dashboard no longer fetches hazard reports. It cannot draw them — the "map" is
+a JPEG and reports carry real coordinates, so there is no projection between the
+two — so the screen that lists them (`CommunitySafetyModal`) fetches them itself.
 
 and hands state plus mutators to children through route params:
 
-| Screen             | Params                                  |
-| ------------------ | --------------------------------------- |
-| `Settings`         | `{ onLogout, currentSettings, onSave }` |
-| `ReportDangerZone` | `{ onReport }`                          |
-| `CheckIn`          | `{ onEmergency }`                       |
-| `Emergency`        | `{ settings }`                          |
+| Screen         | Params                                  |
+| -------------- | --------------------------------------- |
+| `Settings`     | `{ onLogout, currentSettings, onSave }` |
+| `ReportHazard` | none                                    |
+| `CheckIn`      | `{ onEmergency }`                       |
+| `Emergency`    | `{ settings }`                          |
 
 The settings sub-stack re-passes `currentSettings` / `onSave` to each leaf via
 `initialParams`.
@@ -118,7 +117,7 @@ these screens. `initialParams` also means a leaf screen holds a _snapshot_ —
 remount. It is acceptable at this size.
 
 If you outgrow it, replace it **completely** (one `SettingsContext` + a
-`useDangerZones` hook, params reduced to ids). A half-migration with both patterns
+`useHazardReports` hook, params reduced to ids). A half-migration with both patterns
 live is worse than either. See [ADR-0004](../adr/0004-route-params-as-state-transport.md).
 
 ---
@@ -225,18 +224,18 @@ Icons: add to `constants.tsx` as `Icon<Name>` wrappers. Nothing else should impo
 
 ## Screen notes
 
-| Screen                  | What it really does                                                                                                                                                                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AuthScreen`            | Onboarding → login/signup tabs. **Prefills `josim@example.com` / `password`.** Calls `apiService.login`/`signup`, then `onLoginSuccess()`.                                                                                     |
-| `DashboardScreen`       | Static JPEG "map" + absolutely positioned `DangerZonePin`s, header with the user's name (location text is the hardcoded string _"San diago, 8453 Street, Italy"_), bottom nav, SOS, AI button. Pins pulse via `Animated.loop`. |
-| `EmergencyModal`        | **UI only — contacts nobody.** Hardcoded contact ring, "Notifying Nearby Volunteers…", a defense-mode overlay that _does_ fetch real AI tips. `isRecording` is a `const false`. ([KI-3](../audit/KNOWN_ISSUES.md))             |
-| `FakeCallScreen`        | Real: fetches a script from the AI endpoint and plays it as an incoming call.                                                                                                                                                  |
-| `SafetyAssistantModal`  | Real: chats against `POST /ai/safety-chat` (history is dropped server-side, [KI-14](../audit/KNOWN_ISSUES.md)).                                                                                                                |
-| `ReportDangerZoneModal` | Real: posts type/severity/description. The server invents the location.                                                                                                                                                        |
-| `CheckInModal`          | Timer works and calls `onEmergency()` at zero — but in-process only, so backgrounding or killing the app cancels the escalation.                                                                                               |
-| `FollowMeModal`         | Mock: `shareLink` is a hardcoded constant; nothing is shared.                                                                                                                                                                  |
-| `CommunitySafetyModal`  | Mock: Safe Walk request status is local `useState`.                                                                                                                                                                            |
-| `settings/*`            | Real: reads `currentSettings`, calls `onSave` → `PUT /settings`.                                                                                                                                                               |
+| Screen                 | What it really does                                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AuthScreen`           | Onboarding → login/signup tabs. **Prefills `josim@example.com` / `password`.** Calls `apiService.login`/`signup`, then `onLoginSuccess()`.                                                                         |
+| `DashboardScreen`      | Static JPEG "map" with a demo notice over it and no pins, header with the user's name and a plain statement that Lumo cannot read the user's position, bottom nav, SOS, AI button.                                 |
+| `EmergencyModal`       | **UI only — contacts nobody.** Hardcoded contact ring, "Notifying Nearby Volunteers…", a defense-mode overlay that _does_ fetch real AI tips. `isRecording` is a `const false`. ([KI-3](../audit/KNOWN_ISSUES.md)) |
+| `FakeCallScreen`       | Real: fetches a script from the AI endpoint and plays it as an incoming call.                                                                                                                                      |
+| `SafetyAssistantModal` | Real: chats against `POST /ai/safety-chat` (history is dropped server-side, [KI-14](../audit/KNOWN_ISSUES.md)).                                                                                                    |
+| `ReportHazardModal`    | **Unavailable, and says so.** A hazard report needs real coordinates and the device cannot read its position, so the form is gone rather than submitting a guessed point.                                          |
+| `CheckInModal`         | Timer works and calls `onEmergency()` at zero — but in-process only, so backgrounding or killing the app cancels the escalation.                                                                                   |
+| `FollowMeModal`        | Mock: `shareLink` is a hardcoded constant; nothing is shared.                                                                                                                                                      |
+| `CommunitySafetyModal` | Mock: Safe Walk request status is local `useState`.                                                                                                                                                                |
+| `settings/*`           | Real: reads `currentSettings`, calls `onSave` → `PUT /settings`.                                                                                                                                                   |
 
 ---
 

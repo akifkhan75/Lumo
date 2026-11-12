@@ -7,20 +7,36 @@ identifier is given — use the same word in code, docs and UI copy.
 
 ## Domain
 
-**Danger Zone** — `DangerZone`
-A user-reported hazard at a location: a `severity`, a `type`, a free-text
-`description`, and a timestamp. Community data: it outlives its reporter
-(`onDelete: SetNull`) and the feed is global. Today its position is a CSS
-percentage over a static image, not a coordinate ([KI-2](audit/KNOWN_ISSUES.md)).
+**Hazard Report** — `HazardReport`
+An observation about a **condition** at a place: a `type`, a `source`, a
+free-text `description`, real `latitude`/`longitude` with an optional
+`accuracyMetres`, a `reportedAt` and an `expiresAt`. Community data: it outlives
+its reporter (`onDelete: SetNull`) and the feed is global. Replaced `DangerZone`
+([ADR-0010](adr/0010-hazard-reports-replace-danger-zones.md)).
 
-**Severity** — `DangerZoneSeverity`
-`low` | `medium` | `high`. Drives pin colour: blue `#3b82f6`, amber `#f59e0b`,
-red `#ef4444`.
+**Severity** — **does not exist, by decision.**
+A danger grade attached to a place is the redlining primitive. A condition has
+confirmations and an age, not a score. Adding one back is rejected.
 
-**Zone Type** — `DangerZoneType`
-`Theft` | `Assault` | `Harassment` | `Poor Lighting` | `Suspicious Activity`.
-Beware: three spellings per value across Prisma, Postgres and the API — see
-[DATABASE.md](engineering/DATABASE.md).
+**Hazard Type** — `HazardType`
+`POOR_LIGHTING` | `OBSTRUCTED_PATH` | `BROKEN_INFRASTRUCTURE` | `UNSAFE_CROSSING`
+| `THEFT_REPORTED` | `HARASSMENT_REPORTED` | `AGGRESSION_REPORTED` | `OTHER`. One
+spelling in Prisma, Postgres and the API; the human label lives in
+`HAZARD_TYPE_LABELS` in `@lumo/types`.
+
+**Report Source** — `HazardReportSource`
+`COMMUNITY` | `VERIFIED_PARTNER` | `OFFICIAL_FEED`. A community report and a
+verified advisory must never render identically, so the distinction is data.
+
+**Confirmation** — `HazardConfirmation`
+One row per person per report, uniquely constrained, so a count cannot be
+inflated by one account. `confirmationCount` is derived from these rows, never
+stored.
+
+**Confirmation floor** — `HAZARD_CONFIRMATION_FLOOR`
+Three. Below it a community report is shown but must not influence routing or any
+automated decision; the server says so in `influencesRouting` and clients must not
+recompute it.
 
 **Trusted Contact** — `TrustedContact`
 Someone the user nominates to be alerted in an emergency: `name` + `phone`.
@@ -101,9 +117,10 @@ See [ADR-0004](adr/0004-route-params-as-state-transport.md).
 The passport-jwt guard on every protected route. Populates
 `req.user = { id, email }` via `JwtStrategy.validate`.
 
-**Enum mapping** — `mapInputType` / `mapOutputType`
-Hand-written translation in `DangerZonesService` between the Prisma enum member,
-the `@map`'d Postgres value and the API's display string.
+**Enum mapping** — _removed._
+`DangerZonesService` used to hand-translate every type between a Prisma member, a
+`@map`'d Postgres value and an API display string, with no error branch. There is
+now one spelling everywhere and `@IsEnum` rejects the rest.
 
 **Fallback (AI)**
 The hardcoded response every `AiService` method returns when there is no API key,
@@ -236,11 +253,11 @@ records. The repo directory, GitHub repo and git remote are all `Lumo` as of
 
 Unrelated naming traps that remain:
 
-| In the code                  | Means                                                           |
-| ---------------------------- | --------------------------------------------------------------- |
-| `*Modal.tsx`                 | A navigator **screen** presented modally, not a `<Modal>`       |
-| `/android` at the repo root  | Stray Gradle output. The real project is `apps/mobile/android/` |
-| `location` on a `DangerZone` | CSS percentages, **not** latitude/longitude                     |
-| `lumo.example`               | A placeholder link, not a real domain (`.example` is reserved)  |
+| In the code                 | Means                                                           |
+| --------------------------- | --------------------------------------------------------------- |
+| `*Modal.tsx`                | A navigator **screen** presented modally, not a `<Modal>`       |
+| `/android` at the repo root | Stray Gradle output. The real project is `apps/mobile/android/` |
+| `coordinates` on a report   | Real latitude/longitude — but there is still no map SDK         |
+| `lumo.example`              | A placeholder link, not a real domain (`.example` is reserved)  |
 
-All four are tracked in [KNOWN_ISSUES.md](audit/KNOWN_ISSUES.md).
+All of these are tracked in [KNOWN_ISSUES.md](audit/KNOWN_ISSUES.md).

@@ -41,40 +41,48 @@ is coming. Until it is implemented, the screen should say it is a demo.
 
 **To fix:** a `POST /api/v1/sos` endpoint that records an incident and fans out to
 trusted contacts (SMS via a provider, push, and a shareable live-location link),
-plus `expo-location` on the client. Depends on KI-2.
+plus `expo-location` on the client. The geo model it needed is done (KI-2); the
+location provider is not.
 
 ---
 
-## 🔴 KI-2 — There is no real map, and no real coordinates
+## 🟡 KI-2 — Real coordinates, still no map and no device location
 
-> **Partially addressed — 2026-10-27.** Not fixed. The screens that show it now say so: the dashboard map carries a demo banner and reports state that they are placed at random on a picture.
+> **Largely resolved — 2026-10-27.** The data model is fixed; two capabilities it
+> depends on are not built, and both are now stated in the UI instead of faked.
 
-**`apps/api/prisma/schema.prisma`, `danger-zones.service.ts`, `App.tsx`**
+**`apps/api/prisma/schema.prisma`, `hazard-reports.service.ts`, `App.tsx`**
 
-> `DangerZone` is being renamed to `HazardReport`, and `severity` removed, because the
-> name encodes a neighbourhood-labelling bias — [ADR-0010](../adr/0010-hazard-reports-replace-danger-zones.md).
+`DangerZone` is gone, replaced by `HazardReport`
+([ADR-0010](../adr/0010-hazard-reports-replace-danger-zones.md)). It stores
+`latitude Float` / `longitude Float` with a nullable `accuracyMetres`, a `source`,
+an `expiresAt` from a per-type TTL, and confirmations as one uniquely-constrained
+row per person — so `confirmationCount` is derived and cannot drift, and a report
+below `HAZARD_CONFIRMATION_FLOOR` is marked as influencing nothing. **`severity` is
+removed and must not return.** The migration drops the old table and every row in
+it, because a CSS percentage the server generated with `Math.random()` carries no
+location and cannot be backfilled.
 
-`DangerZone` stores `top: String` and `left: String` — CSS percentages like
-`"45%"` — positioned absolutely over a static JPEG
-(`apps/mobile/assets/images/map_bg.jpg`). There is no map SDK, no tile layer, no
-latitude/longitude field anywhere in the system, and no device location is ever
-read.
-
-Worse, `DangerZonesController.create` **fabricates** the position of every new
-report:
+`DangerZonesController.create` used to fabricate the position of every report:
 
 ```ts
 const top = `${48 + Math.random() * 4}%`;
 const left = `${48 + Math.random() * 4}%`;
 ```
 
-So a reported danger zone has no relationship to where the user was. Reports are
-also global — `findAll()` returns every zone ever created, unfiltered by distance.
+Coordinates are now required, validated and taken from the request.
 
-**To fix:** add `latitude Float` / `longitude Float` (+ PostGIS or a geohash index
-for radius queries), accept coordinates from the client, render with
-`react-native-maps`, and query by bounding box. The percentage fields can be
-dropped once the static map is gone.
+**What is still missing, and how it reads in the app:**
+
+- **No map SDK.** The dashboard is still `map_bg.jpg` with a demo notice, and
+  there is no projection from a coordinate to a pixel on it, so reports are
+  **listed** in the Community Hub rather than pinned. Needs `react-native-maps`.
+- **No device location**, so submitting a report is **unavailable**: the screen
+  says Lumo cannot read the user's position and offers no submit control. Needs
+  `expo-location`, which is Phase 1 and also unblocks KI-3.
+- **No proximity query.** `GET` is bounded (`take` ≤ 200) but returns reports
+  globally, because filtering by distance needs the device's own position too.
+- **No moderation.** A report is visible as soon as it is written.
 
 ---
 
@@ -253,7 +261,6 @@ model and lifting the string into config rather than repeating it.
 | `docker/`                                                          | Empty                                                                    |
 | `/android/` (repo root)                                            | Stray Gradle output; the real project is `apps/mobile/android/`          |
 | `metadata.json`                                                    | Leftover AI Studio scaffold, unreferenced                                |
-| `apps/mobile/data/dangerZones.ts`                                  | Self-described: "This file is obsolete"                                  |
 | `apps/mobile/components/settings/SettingsModal.tsx` et al.         | Named `*Modal` but registered as navigator screens — misleading names    |
 
 ---
@@ -344,12 +351,16 @@ brute-forceable; `/ai/*` is an uncapped cost vector.
 Validation returns `message` as an **array**, plain exceptions as a **string**, so
 arrays reach the UI stringified. Stack traces may leak.
 
-### 🟡 KI-24 — No pagination, no indexes
+### ✅ KI-24 — No pagination, no indexes
 
-> **Partially addressed — 2026-10-27.** Indexes added — `TrustedContact(userId)`, `DangerZone(userId)`, `DangerZone(reportedAt)`. **Pagination is still missing**; `GET /danger-zones` remains an unbounded `findMany`.
+> **Resolved — 2026-10-27.** Indexes on `TrustedContact(userId)`,
+> `HazardReport(userId)`, `HazardReport(expiresAt)`, `HazardReport(reportedAt)`,
+> `HazardConfirmation(userId)` and a unique `(reportId, userId)`.
+> `GET /hazard-reports` takes `take`, defaulting to 50 and **capped at 200**, so
+> the endpoint can no longer return the whole table.
 
-`GET /danger-zones` is an unbounded `findMany` over every row ever created, and the
-schema has **no explicit indexes at all** — not even on `reportedAt`, its sole sort key.
+`GET /danger-zones` was an unbounded `findMany` over every row ever created, and the
+schema had **no explicit indexes at all** — not even on `reportedAt`, its sole sort key.
 
 ### 🟡 KI-25 — No observability
 
@@ -363,25 +374,83 @@ encryption.
 
 ---
 
+## 🔴 KI-27 — SOS is unavailable whenever the settings fetch fails
+
+**`apps/mobile/App.tsx`**
+
+`DashboardScreen` fetches settings on mount and then gates the entire screen on the
+result:
+
+```ts
+if (error || !userSettings) {
+  return (
+    <ErrorContainer>
+      <ErrorText>{error || "An unexpected error occurred."}</ErrorText>
+    </ErrorContainer>
+  );
+}
+```
+
+So if the device is offline, the API is down, or the request simply fails, the user
+gets an error screen with **no SOS button**. `handleActivateEmergency` also opens
+with `if (!userSettings) return;`, so shake and voice triggers do nothing either —
+the detectors fire into a no-op.
+
+This inverts the requirement: the emergency path must be _most_ available when the
+network is worst. Being offline is a reason to need help, not a reason to be denied
+the button.
+
+Found by the `emergency-review` gate (check 3: the SOS path must never block on a
+network round-trip) while replacing `DangerZone`. **Pre-existing** — not introduced
+by that change, which removed one of the two blocking requests.
+
+**To fix:** render the dashboard and the SOS control from a locally cached
+`UserSettings`, treat the fetch as a refresh rather than a precondition, and show a
+non-blocking staleness notice instead of an error screen. Settings should never be
+on the critical path for a trigger. Pairs with PLAT-4 (the pre-authorised emergency
+token) and the Phase 1 local safety engine.
+
+---
+
 ## Phase 0 status — 2026-10-27
 
 **Resolved:** KI-1, KI-5, KI-6, KI-7, KI-9, KI-11, KI-13, KI-16, KI-17, KI-18,
-KI-19, KI-20, KI-22, KI-23.
+KI-19, KI-20, KI-22, KI-23, KI-24.
 
-**Partially addressed:** KI-2, KI-3, KI-8 (labelled in-app as demos, not
-implemented) · KI-24 (indexes done, pagination outstanding).
+**Partially addressed:** KI-2 (geo model done; no map SDK, no device location) ·
+KI-3, KI-8 (labelled in-app as demos, not implemented).
 
 **Still open:** KI-4 (in-memory auth state), KI-10 (login/signup bypass the
 shared client), KI-12 (dated Gemini model string), KI-14 (unreachable AI chat
 history), KI-15 (no accessibility pass), KI-21 (two accelerometer
-subscriptions), KI-25 (no observability), KI-26 (PII in plaintext).
+subscriptions), KI-25 (no observability), KI-26 (PII in plaintext),
+**KI-27 (SOS unavailable when the settings fetch fails — found after Phase 0)**.
 
 KI-21 is deliberately left: DET-4 replaces single-threshold impact detection
 with sequence analysis in Phase 3, and merging the two subscriptions now would
 be rewritten then. KI-15 is a Phase 1 gate, not a cleanup.
 
+## Hazard reports — 2026-10-27
+
+The `DangerZone` → `HazardReport` replacement landed as its own change after
+Phase 0: real coordinates, mandatory decay, per-person confirmations, no
+`severity`, one enum spelling everywhere, and a bounded list query (closing the
+pagination half of **KI-24**).
+
+Two defects found while doing it, both fixed:
+
+- The **e2e suite built its own looser `ValidationPipe`** — no
+  `forbidNonWhitelisted` — so an unknown property was accepted in tests and
+  rejected in production. The pipeline is now `configureApp` in
+  `src/app.setup.ts`, shared by `main.ts` and the e2e harness.
+- **`POST /api/v1/ai/safety-chat` had no DTO.** Its body was an inline object
+  type, which `class-validator` cannot see, so the global pipe skipped the
+  endpoint entirely and an unbounded `message` went straight into a metered
+  Gemini call. It now has `SafetyChatDto` with length and history-depth limits.
+
 ### Next
 
-Phase 1 of [`../product/ROADMAP.md`](../product/ROADMAP.md): **KI-2** (a real
-geo model, via the `DangerZone` → `HazardReport` rename) → **KI-3** (a real
-SOS, behind the Verified Delivery Ledger) — the product's reason to exist.
+Phase 1 of [`../product/ROADMAP.md`](../product/ROADMAP.md): **device location**
+(`expo-location`) and a real map, which together finish KI-2 and unblock
+**KI-3** (a real SOS, behind the Verified Delivery Ledger) — the product's reason
+to exist.

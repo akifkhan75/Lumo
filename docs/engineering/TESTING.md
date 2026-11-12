@@ -26,7 +26,8 @@ apps/api/src/
 ├── app.controller.spec.ts
 ├── auth/      auth.controller.spec.ts  auth.service.spec.ts  jwt.strategy.spec.ts
 ├── settings/  settings.controller.spec.ts  settings.service.spec.ts
-├── danger-zones/  danger-zones.controller.spec.ts  danger-zones.service.spec.ts
+├── hazard-reports/ hazard-reports.controller.spec.ts  hazard-reports.service.spec.ts
+│                   dto/create-hazard-report.dto.spec.ts
 ├── ai/        ai.controller.spec.ts  ai.service.spec.ts
 └── prisma/    prisma.service.spec.ts
 ```
@@ -75,7 +76,10 @@ pnpm --filter api exec prisma db push && pnpm --filter api exec prisma db seed
 ```
 
 Covered: root health, signup/login, rejecting unauthenticated access to protected
-routes, settings round-trip, danger-zone create/list, AI endpoints.
+routes, settings round-trip, hazard-report create/list/confirm, AI endpoints.
+It runs the same request pipeline as production via `configureApp` from
+`src/app.setup.ts` — it used to build a looser `ValidationPipe` of its own, so an
+unknown property was accepted in tests and rejected in production.
 
 ---
 

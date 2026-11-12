@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/app.setup';
 
 describe('Lumo API (e2e integration)', () => {
   let app: INestApplication;
@@ -19,7 +20,8 @@ describe('Lumo API (e2e integration)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    // The same pipeline main.ts installs, rather than a looser copy.
+    configureApp(app);
     await app.init();
   });
 
@@ -75,9 +77,9 @@ describe('Lumo API (e2e integration)', () => {
         .expect(401);
     });
 
-    it('GET /api/v1/danger-zones rejects unauthenticated requests with 401', async () => {
+    it('GET /api/v1/hazard-reports rejects unauthenticated requests with 401', async () => {
       await request(app.getHttpServer())
-        .get('/api/v1/danger-zones')
+        .get('/api/v1/hazard-reports')
         .expect(401);
     });
 
@@ -132,38 +134,88 @@ describe('Lumo API (e2e integration)', () => {
     });
   });
 
-  describe('Danger Zones Flow (/api/v1/danger-zones)', () => {
-    it('POST /api/v1/danger-zones creates a reported danger zone', async () => {
-      const zonePayload = {
-        type: 'Suspicious Activity',
-        severity: 'high',
-        description: 'Suspicious activity reported via E2E integration test',
-      };
+  describe('Hazard Reports Flow (/api/v1/hazard-reports)', () => {
+    const validReport = {
+      type: 'POOR_LIGHTING',
+      description: 'Streetlight out on the footbridge',
+      latitude: 51.5074,
+      longitude: -0.1278,
+      accuracyMetres: 12.5,
+    };
+    let createdId: string;
 
+    it('POST /api/v1/hazard-reports stores the coordinates it was given', async () => {
       const response = await request(app.getHttpServer())
-        .post('/api/v1/danger-zones')
+        .post('/api/v1/hazard-reports')
         .set('Authorization', `Bearer ${authToken}`)
-        .send(zonePayload)
+        .send(validReport)
         .expect(201);
 
-      expect(response.body).toHaveProperty('id');
-      expect(response.body).toHaveProperty('location');
-      expect(response.body.location).toHaveProperty('top');
-      expect(response.body.location).toHaveProperty('left');
-      expect(response.body.type).toBe(zonePayload.type);
-      expect(response.body.severity).toBe(zonePayload.severity);
+      createdId = response.body.id;
+      expect(response.body.coordinates).toEqual({
+        latitude: validReport.latitude,
+        longitude: validReport.longitude,
+        accuracyMetres: validReport.accuracyMetres,
+      });
+      expect(response.body.type).toBe('POOR_LIGHTING');
+      expect(response.body.source).toBe('COMMUNITY');
+      expect(response.body.confirmationCount).toBe(0);
+      // One person's observation does not steer anything.
+      expect(response.body.influencesRouting).toBe(false);
+      expect(new Date(response.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
+      expect(response.body).not.toHaveProperty('severity');
+      expect(response.body).not.toHaveProperty('location');
     });
 
-    it('GET /api/v1/danger-zones retrieves the list of danger zones', async () => {
+    it('POST /api/v1/hazard-reports rejects a report with no position', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/hazard-reports')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ type: 'POOR_LIGHTING', description: 'Streetlight out' })
+        .expect(400);
+    });
+
+    it('POST /api/v1/hazard-reports rejects a severity field', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/hazard-reports')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ ...validReport, severity: 'high' })
+        .expect(400);
+    });
+
+    it('POST /api/v1/hazard-reports rejects contact details in the description', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/hazard-reports')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ ...validReport, description: 'ask for him on +44 7700 900123' })
+        .expect(400);
+    });
+
+    it('GET /api/v1/hazard-reports lists live reports', async () => {
       const response = await request(app.getHttpServer())
-        .get('/api/v1/danger-zones')
+        .get('/api/v1/hazard-reports')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body.length).toBeGreaterThan(0);
-      expect(response.body[0]).toHaveProperty('location');
-      expect(response.body[0]).toHaveProperty('severity');
+      expect(response.body[0]).toHaveProperty('coordinates');
+      expect(response.body[0]).toHaveProperty('confirmationCount');
+      expect(response.body[0]).not.toHaveProperty('severity');
+    });
+
+    it('POST /api/v1/hazard-reports/:id/confirm refuses the reporter confirming their own report', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/hazard-reports/${createdId}/confirm`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(409);
+    });
+
+    it('POST /api/v1/hazard-reports/:id/confirm 404s for an unknown report', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/hazard-reports/11111111-1111-4111-8111-111111111111/confirm')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(404);
     });
   });
 

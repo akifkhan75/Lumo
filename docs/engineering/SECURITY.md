@@ -18,7 +18,7 @@ That framing should drive every decision in this document.
 | ----------------- | -------------------------------------------------------------------- |
 | Password hashing  | **argon2id** (`argon2` v0.45), library defaults                      |
 | Session tokens    | HS256 JWT, `{ email, sub }`, **7-day** expiry                        |
-| Route protection  | `JwtAuthGuard` on settings, danger zones, and all AI routes          |
+| Route protection  | `JwtAuthGuard` on settings, hazard reports, and all AI routes        |
 | Input validation  | Global `ValidationPipe({ whitelist: true, transform: true })` + DTOs |
 | Ownership scoping | Every service query is filtered by `req.user.id`                     |
 | Secrets in git    | `.gitignore` excludes `.env*` except `.env.example`                  |
@@ -73,9 +73,11 @@ implemented) live location.
 Needed: HTTPS only, short-lived access tokens + rotating refresh tokens, secure
 storage, server-side revocation, and device binding.
 
-### T3 — Malicious or spammed danger-zone reports
+### T3 — Malicious or spammed hazard reports
 
-`POST /danger-zones` has no DTO, no rate limit, no moderation and no expiry. One
+`POST /hazard-reports` now has a DTO (coordinates required, description bounded,
+links and contact details rejected), a global rate limit, and a per-type expiry.
+It still has **no moderation**. One
 script can flood the community map, which degrades the feature for everyone and
 could be used to _steer_ people toward a location.
 
@@ -116,7 +118,7 @@ this principle — extend it to the whole response path.
 - [ ] Rate-limit `/auth/*` (`@nestjs/throttler`) and `/ai/*`
 - [ ] Store the token in `expo-secure-store`; clear it on logout
 - [ ] `UpdateSettingsDto` with nested validation; transactional contact updates
-- [ ] A DTO on `POST /danger-zones`
+- [x] A DTO on `POST /hazard-reports`
 - [ ] Remove the prefilled credentials from `AuthScreen.tsx`
 - [ ] A global exception filter that never returns stack traces
 - [ ] Rotate every credential currently in `.env.example`
