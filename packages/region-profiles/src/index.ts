@@ -9,4 +9,5 @@ export * from './types';
 export * from './validation';
 export * from './registry';
 export * from './resolve';
+export * from './place';
 export * from './profiles';

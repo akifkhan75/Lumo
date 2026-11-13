@@ -280,3 +280,21 @@ describe('App: the emergency path does not depend on anything else', () => {
     });
   });
 });
+
+describe('App: location on the dashboard', () => {
+  it('is off at launch, does not ask the OS by itself, and claims no sharing', async () => {
+    const Location = require('expo-location');
+    api.restoreSession.mockResolvedValue(true);
+    api.getSettings.mockImplementation(() => new Promise<never>(() => {}));
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<App />); });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain('Location is off');
+    expect(text).toContain('shares it with no one');
+    expect(text).not.toContain('does not read your position yet');
+    expect(Location.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+    expect(Location.watchPositionAsync).not.toHaveBeenCalled();
+    act(() => { tree.unmount(); });
+  });
+});

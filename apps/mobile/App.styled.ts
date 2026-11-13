@@ -243,3 +243,20 @@ export const RetryButtonText = styled(Text)`
     font-size: 16px;
     font-weight: bold;
 `;
+
+export const LocationAction = styled(TouchableOpacity)`
+    min-height: 44px;
+    min-width: 44px;
+    align-self: flex-start;
+    justify-content: center;
+    padding: 8px 16px;
+    margin-top: 6px;
+    border-radius: 9999px;
+    background-color: #1e3a8a;
+`;
+
+export const LocationActionText = styled(Text)`
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: bold;
+`;

@@ -98,6 +98,27 @@ describe('what counts as a CURRENT fix', () => {
   });
 });
 
+describe('a position the geocoder could not place', () => {
+  it('is flagged, and the note says so — it does not pass for "no location"', () => {
+    const r = resolve({ fix: fix(''), accountCountry: 'US' });
+    expect(r).toMatchObject({ unplacedFix: true, source: 'account-country', confirmed: false });
+    expect(r.note).toBe("We have your position but couldn't tell which country you are in. Showing United States emergency numbers; we couldn't confirm your location.");
+  });
+  it('still never asserts the account country as confirmed', () => {
+    expect(resolve({ fix: fix('  '), accountCountry: 'US' }).confirmed).toBe(false);
+    expect(emergencyNumbersFor(resolve({ fix: fix(''), accountCountry: 'PK' })).possibleNumbers.map((n) => n.number)).toEqual(['1122']);
+  });
+  it('is also flagged when nothing else is known', () => {
+    const r = resolve({ fix: fix('') });
+    expect(r).toMatchObject({ unplacedFix: true, source: 'none' });
+    expect(r.note).toBe("We have your position but couldn't tell which country you are in. We couldn't determine your location or country.");
+  });
+  it('is NOT flagged when there is simply no fix, or when the fix was placed', () => {
+    expect(resolve({ accountCountry: 'PK' }).unplacedFix).toBe(false);
+    expect(resolve({ fix: fix('PK', 'PB') }).unplacedFix).toBe(false);
+  });
+});
+
 describe('describeAge', () => {
   it.each([
     [60_000, '1 minute'], [120_000, '2 minutes'], [59 * 60_000, '59 minutes'],

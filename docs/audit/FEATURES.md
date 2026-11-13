@@ -32,7 +32,8 @@ Verified by reading the code on 2026-10-26.
 | Settings & profile             | `PRO-6`     | ✅ Real    | `SettingsModule`, `settings/*`                                      |
 | Trusted contacts               | `RES-2/7`   | 🟨 Partial | stored; never used by any alert                                     |
 | Hazard report feed             | `PREV-2`    | 🟨 Partial | real data, real coordinates, not drawn                              |
-| Report a hazard                | `PREV-1`    | ⛔ Blocked | needs the device's location                                         |
+| Device location (read-only)    | `RES-10`    | 🟨 Partial | foreground only, shown with age and accuracy; shared with no one    |
+| Report a hazard                | `PREV-1`    | ⛔ Blocked | location now readable, but no submit UI yet                         |
 | Map                            | `PREV-2`    | ⛔ Mock    | static JPEG, no map SDK                                             |
 | SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                                                     |
 | Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                                                  |
@@ -112,8 +113,8 @@ over:
 - **No map SDK.** The dashboard is still `map_bg.jpg`, and there is no projection
   from a coordinate to a pixel on it, so reports are listed in the Community Hub
   rather than pinned. A pin on that image would be decoration.
-- **No device location**, so reporting is unavailable. The screen says Lumo cannot
-  read the user's position and offers no submit, instead of the predecessor's
+- **Reporting is still unavailable.** The device can now read its position (see
+  _Device location_), but the screen still offers no submit, instead of the predecessor's
   `` `${48 + Math.random() * 4}%` `` on the server.
 
 `GET` is bounded (`take` ≤ 200) but is still not a proximity query, because that
@@ -172,14 +173,30 @@ backend, no volunteer directory, no second user.
 
 ### The map
 
-A JPEG. No `react-native-maps`, no tiles, no geolocation, and the header's
-location is the hardcoded string _"San diago, 8453 Street, Italy"_.
+A JPEG. No `react-native-maps`, no tiles. The header now shows the device's real
+position as text (see _Device location_); the avatar on the picture is still not you.
+
+### Device location
+
+`expo-location`, foreground only: permission is read at launch and asked only when
+the user taps "Show my location". While the dashboard is focused and the app is in
+the foreground it shows the newest fix with its age and accuracy ("Location 9:41 PM
+(2 minutes ago), ±18 m"); past five minutes it is "Last known location" and says it is
+not where you are now. A reading with unknown accuracy is discarded, never shown as
+precise. The country is worked out by the platform's reverse geocoder and attached to
+the fix it came from; if that fails the screen says so.
+
+**What it does not do:** it uploads nothing and shares with no one (no session or
+incident exists to attach a position to), keeps nothing across a restart, and reads
+nothing while the app is closed or in the background. The generated Android manifest
+holds no background-location permission. Not yet run on a device. Spec:
+`docs/specs/LOCATION.md`; gaps: KI-56 – KI-59.
 
 ---
 
 ## ❌ Absent entirely
 
-Push notifications · device location (`expo-location` is not a dependency) ·
+Push notifications · sharing a position with anyone ·
 real-time transport (no WebSocket) · offline queue · SMS/telephony · audio or
 video capture · background execution · wearable support · emergency-service
 integration · crash/analytics reporting · i18n · dark mode
