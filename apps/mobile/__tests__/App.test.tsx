@@ -298,3 +298,53 @@ describe('App: location on the dashboard', () => {
     act(() => { tree.unmount(); });
   });
 });
+
+describe('App: the dashboard map', () => {
+  const Location = require('expo-location');
+  const flushAll = () => act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+  const mountSignedIn = async () => {
+    api.restoreSession.mockResolvedValue(true);
+    api.getSettings.mockImplementation(() => new Promise<never>(() => {}));
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<App />); });
+    await flushAll();
+    return tree;
+  };
+  const byId = (t: ReactTestRenderer, id: string) => t.root.findAll((n) => n.props.testID === id && typeof n.type === 'string');
+
+  it('renders a real map, no marker and no accuracy circle, and says the position is not known', async () => {
+    const tree = await mountSignedIn();
+    expect(byId(tree, 'map').length).toBe(1);
+    expect(byId(tree, 'map-marker').length).toBe(0);
+    expect(byId(tree, 'map-circle').length).toBe(0);
+    expect(JSON.stringify(tree.toJSON())).toContain("Your position isn't known");
+    act(() => { tree.unmount(); });
+  });
+
+  it('draws the marker and accuracy circle only once there is a real fix', async () => {
+    let onFix: (l: any) => void = () => {};
+    Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'granted', granted: true, canAskAgain: true });
+    Location.watchPositionAsync.mockImplementation(async (_o: any, cb: any) => { onFix = cb; return { remove: jest.fn() }; });
+    const tree = await mountSignedIn();
+    expect(byId(tree, 'map-marker').length).toBe(0);
+
+    await act(async () => { onFix({ coords: { latitude: 31.5, longitude: 74.3, accuracy: 18 }, timestamp: Date.now() }); });
+    expect(byId(tree, 'map-marker').length).toBe(1);
+    expect(byId(tree, 'map-circle')[0].props.radius).toBe(18);
+    act(() => { tree.unmount(); });
+  });
+
+  it('draws no hazard report (that is a deliberate Phase 4 change)', async () => {
+    const tree = await mountSignedIn();
+    // The dashboard does not even fetch them: pins are Phase 4, with their own age/confidence rules.
+    expect(api.getHazardReports).not.toHaveBeenCalled();
+    expect(byId(tree, 'map-marker').length).toBe(0);
+    act(() => { tree.unmount(); });
+  });
+
+  it('no longer says the map is a picture or the avatar is not you', async () => {
+    const tree = await mountSignedIn();
+    expect(JSON.stringify(tree.toJSON())).not.toContain('static picture');
+    act(() => { tree.unmount(); });
+  });
+});
