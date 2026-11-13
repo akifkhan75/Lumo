@@ -62,3 +62,17 @@ jest.mock('expo-location', () => ({
   watchPositionAsync: jest.fn(async () => ({ remove: jest.fn() })),
   reverseGeocodeAsync: jest.fn(async () => []),
 }));
+
+// react-native-maps is a native view; render its pieces as plain host components that
+// keep their props so tests can see what was drawn.
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MapView = React.forwardRef((props, ref) => {
+    React.useImperativeHandle(ref, () => ({ animateToRegion: jest.fn() }));
+    return React.createElement(View, { testID: 'map', ...props }, props.children);
+  });
+  const Marker = (props) => React.createElement(View, { testID: 'map-marker', ...props });
+  const Circle = (props) => React.createElement(View, { testID: 'map-circle', ...props });
+  return { __esModule: true, default: MapView, Marker, Circle };
+});

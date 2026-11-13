@@ -1,4 +1,4 @@
-import { Animated, Image, ImageBackground, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import styled from 'styled-components/native';
 
 
@@ -30,11 +30,6 @@ export const MapViewContainer = styled(View)`
   background-color: #e5e7eb;
 `;
 
-export const MapImage = styled(ImageBackground)`
-    width: 100%;
-    height: 100%;
-`;
-
 export const Header = styled(View)`
     position: absolute;
     top: 40px;
@@ -46,8 +41,14 @@ export const Header = styled(View)`
     z-index: 10;
 `;
 
+// A real map is light and busy, unlike the old picture. Text on it sits on a dark
+// backing so it keeps its contrast whatever tile is underneath.
 export const HeaderTextContainer = styled(View)`
     flex: 1;
+    margin-right: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background-color: rgba(15, 23, 42, 0.78);
 `;
 
 export const HelloText = styled(Text)`
@@ -59,7 +60,7 @@ export const HelloText = styled(Text)`
 
 export const LocationText = styled(Text)`
     font-size: 14px;
-    color: #94a3b8;
+    color: #e2e8f0;
     margin-top: 4px;
     font-weight: 500;
     text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.7);
@@ -89,42 +90,6 @@ export const ActionButton = styled(TouchableOpacity)`
     shadow-opacity: 0.25;
     shadow-radius: 3.84px;
     elevation: 5;
-`;
-
-export const UserLocationPinContainer = styled(View)`
-    position: absolute;
-    top: 50%;
-    left: 50%;
-`;
-
-export const UserImagePulse = styled(Animated.View)`
-    position: absolute;
-    background-color: rgba(52, 211, 153, 0.3);
-    width: 64px;
-    height: 64px;
-    border-radius: 32px;
-`;
-
-export const UserImageContainer = styled(View)`
-    width: 64px;
-    height: 64px;
-    border-radius: 32px;
-    background-color: #fbbF04;
-    border-width: 4px;
-    border-color: white;
-    shadow-color: #000;
-    shadow-offset: 0px 2px;
-    shadow-opacity: 0.25;
-    shadow-radius: 3.84px;
-    elevation: 5;
-    justify-content: center;
-    align-items: center;
-`;
-
-export const UserImage = styled(Image)`
-    width: 56px;
-    height: 56px;
-    border-radius: 28px;
 `;
 
 export const BottomNavContainer = styled(View)`
@@ -194,15 +159,6 @@ export const SafetyAssistantButton = styled(TouchableOpacity)`
     shadow-radius: 4.65px;
     elevation: 8;
     z-index: 20;
-`;
-
-// Sits under the dashboard header, over the placeholder map. Removed with the
-// placeholder map.
-export const DemoMapNotice = styled.View`
-  position: absolute;
-  top: 110px;
-  left: 16px;
-  right: 16px;
 `;
 
 

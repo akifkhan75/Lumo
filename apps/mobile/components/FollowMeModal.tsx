@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Image, ImageBackground, Alert, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Platform } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation } from '@react-navigation/native';
 import { IconArrowLeft, IconShare } from '../constants';
@@ -123,9 +123,9 @@ const FollowMeScreen = () => {
         </View>
 
         <MapContainer>
-           <ImageBackground source={require('../assets/images/map_bg.jpg')} style={{width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center'}}>
-                <Image source={require('../assets/images/user_avatar.jpg')} style={{width: 56, height: 56, borderRadius: 28, borderWidth: 4, borderColor: 'white'}} />
-           </ImageBackground>
+           <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#e5e7eb', padding: 24}}>
+                <Text style={{textAlign: 'center', color: '#374151'}}>No map yet. A map of your journey appears here once journeys work; today nothing is shared.</Text>
+           </View>
            <View style={{position: 'absolute', bottom: 16, left: 16, backgroundColor: 'white', padding: 8, borderRadius: 8}}>
              <Text style={{fontWeight: '600'}}>Status: <Text style={{color: monitoringActive ? '#16a34a' : '#6b7280'}}>{monitoringActive ? 'Active' : 'Inactive'}</Text></Text>
            </View>
