@@ -126,6 +126,20 @@ model ConsentRecord {                      // consent is a record, never a flag
   @@index([grantedById, kind])
   @@index([reconfirmDueAt])
 }
+model ContactInvite {                     // docs/specs/TRUSTED_CONTACTS.md
+  id          String   @id @default(uuid())
+  contactId   String                     // TrustedContact
+  tokenHash   String   @unique           // sha256 of the token; the token itself is never stored
+  expiresAt   DateTime                   // for ACCEPTING only
+  createdAt   DateTime @default(now())
+  acceptedAt  DateTime?
+  consentId   String?  @unique           // set with acceptedAt (CHECK)
+  endedAt     DateTime?                  // open while null; at most one open per contact (partial unique index)
+  endedReason String?                    // set with endedAt (CHECK): CONTACT_WITHDREW | DETAILS_CHANGED | CONTACT_REMOVED | REPLACED
+  @@index([contactId])
+}
+// ConsentRecord for a contact: grantedById = the CONTACT's id (they have no account), subjectId = null,
+// regionProfileId = the user's, or 'UNRESOLVED' when none is set.
 enum ConsentKind { contact_role location_sharing recording data_processing }
 
 model SafetySession {

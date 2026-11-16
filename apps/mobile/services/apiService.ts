@@ -106,6 +106,12 @@ export const getSettings = async (): Promise<UserSettings> => {
     return apiClient.getSettings();
 };
 
+/** A link for the contact to open. Lumo sends nothing; the caller passes it on. */
+export const createContactInvite = async (contactId: string): Promise<{ url: string; expiresAt: string }> => {
+    const { path, expiresAt } = await apiClient.createContactInvite(contactId);
+    return { url: `${API_BASE_URL}${path}`, expiresAt };
+};
+
 export const updateSettings = async (settings: UserSettings): Promise<UserSettings> => {
     return apiClient.updateSettings(settings);
 };

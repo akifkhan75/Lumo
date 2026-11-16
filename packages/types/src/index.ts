@@ -15,10 +15,26 @@ export interface ChatMessage {
   text: string;
 }
 
+/**
+ * Where a contact stands on agreeing to the role (RES-7). Only the CONTACT changes it.
+ * "agreed" records willingness; it does NOT mean an alert path exists yet.
+ */
+export type ConsentStatus = 'not_invited' | 'waiting' | 'agreed' | 'withdrawn' | 'expired' | 'details_changed';
+
 export interface TrustedContact {
   id: string;
   name: string;
   phone: string;
+  /** Read-only, set by the server. Absent on a contact not yet saved. */
+  consentStatus?: ConsentStatus;
+}
+
+/** A link for a contact to open. Lumo sends nothing: the user passes it on. */
+export interface ContactInvite {
+  /** Path on the API host; the client adds its own base URL. */
+  path: string;
+  expiresAt: string;
+  sentByLumo: false;
 }
 
 export interface PersonalInfo {

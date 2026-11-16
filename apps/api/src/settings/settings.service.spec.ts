@@ -43,14 +43,14 @@ describe('SettingsService', () => {
     it('returns decrypted personal info and the settings shape clients have always received', async () => {
       prisma.user.findUnique.mockResolvedValue(dbUser());
       contacts.list.mockResolvedValue([
-        { id: 'c1', name: 'Mom', phone: '+1234567890', email: 'mom@example.com', priority: 0, consented: true },
+        { id: 'c1', name: 'Mom', phone: '+1234567890', email: 'mom@example.com', priority: 0, consented: true, consentStatus: 'agreed' },
       ]);
 
       const result = await service.getSettings('user-1');
 
       expect(result.personalInfo).toEqual({ fullName: 'Josim', bloodType: 'O+', allergies: 'Peanuts' });
-      // Id, name, phone — email and consent status are not part of this response yet.
-      expect(result.trustedContacts).toEqual([{ id: 'c1', name: 'Mom', phone: '+1234567890' }]);
+      // Email is not part of this response; the consent status is.
+      expect(result.trustedContacts).toEqual([{ id: 'c1', name: 'Mom', phone: '+1234567890', consentStatus: 'agreed' }]);
       expect(result.security).toEqual({
         locationSharingEnabled: true,
         shareLocationOnSos: true,
@@ -129,7 +129,7 @@ describe('SettingsService', () => {
       it('are reconciled, not replaced — ids that are sent back are handed over so they can be kept', async () => {
         const input = [{ id: 'c2', name: 'Dad', phone: '+9876543210' }];
         await service.updateSettings('user-1', { trustedContacts: input });
-        expect(contacts.replaceSet).toHaveBeenCalledWith(prisma, 'user-1', input);
+        expect(contacts.replaceSet).toHaveBeenCalledWith(prisma, 'user-1', input, null);
       });
 
       it('are reconciled inside the same transaction as the profile update', async () => {
@@ -140,6 +140,16 @@ describe('SettingsService', () => {
         expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       });
 
+      it('read a locally written number in the user’s own country, and in none when no region is set', async () => {
+        prisma.user.update.mockResolvedValue({ regionProfileId: 'PK' });
+        await service.updateSettings('user-1', { trustedContacts: [{ name: 'A', phone: '0300 1234567' }] });
+        expect(contacts.replaceSet).toHaveBeenLastCalledWith(prisma, 'user-1', expect.anything(), 'PK');
+
+        prisma.user.update.mockResolvedValue({ regionProfileId: 'UNRESOLVED' });
+        await service.updateSettings('user-1', { trustedContacts: [{ name: 'A', phone: '+923001234567' }] });
+        expect(contacts.replaceSet).toHaveBeenLastCalledWith(prisma, 'user-1', expect.anything(), null);
+      });
+
       it('are left alone when the key is omitted', async () => {
         await service.updateSettings('user-1', { personalInfo: { fullName: 'Josim' } });
         expect(contacts.replaceSet).not.toHaveBeenCalled();
@@ -147,7 +157,7 @@ describe('SettingsService', () => {
 
       it('are all removed when an empty list is sent — which is not the same as omitting it', async () => {
         await service.updateSettings('user-1', { trustedContacts: [] });
-        expect(contacts.replaceSet).toHaveBeenCalledWith(prisma, 'user-1', []);
+        expect(contacts.replaceSet).toHaveBeenCalledWith(prisma, 'user-1', [], null);
       });
 
       it('roll back the profile update if reconciling them fails', async () => {

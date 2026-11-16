@@ -1,14 +1,16 @@
 import { Module } from '@nestjs/common';
+import { ContactInviteController, PublicConsentController } from './contact-consent.controller';
+import { ContactConsentService } from './contact-consent.service';
 import { TrustedContactsService } from './trusted-contacts.service';
 
 /**
- * No controller yet, on purpose. Per-contact endpoints arrive with the consent
- * invite flow (milestone 1.6), where "create a contact" also means "ask them to
- * agree" — and an endpoint that creates one without asking would be the wrong one
- * to ship first. Settings is the only caller for now.
+ * Contacts are still written through settings (and reconciled there). What is added in
+ * milestone 1.6 is the consent flow: a link per contact, and the public page the contact
+ * opens to agree or withdraw. See docs/specs/TRUSTED_CONTACTS.md.
  */
 @Module({
-  providers: [TrustedContactsService],
-  exports: [TrustedContactsService],
+  controllers: [ContactInviteController, PublicConsentController],
+  providers: [TrustedContactsService, ContactConsentService],
+  exports: [TrustedContactsService, ContactConsentService],
 })
 export class TrustedContactsModule {}

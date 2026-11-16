@@ -74,6 +74,8 @@ model TrustedContact {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  invites ContactInvite[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -516,4 +518,30 @@ model AuditLog {
 
   @@index([actorId, at])
   @@index([subjectType, subjectId])
+}
+
+// The link a user hands to a contact so the CONTACT can agree to the role (RES-7).
+// Only a hash of the token is stored: the token is shown once, to the user, and is
+// also the contact's means of withdrawing, so it is as sensitive as a password.
+// docs/specs/TRUSTED_CONTACTS.md.
+model ContactInvite {
+  id        String @id @default(uuid())
+  contactId String
+  contact   TrustedContact @relation(fields: [contactId], references: [id])
+
+  tokenHash String   @unique
+  // Applies to ACCEPTING only. Withdrawing works for as long as the invite is open.
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  acceptedAt DateTime?
+  consentId  String?   @unique
+
+  // An invite is "open" while endedAt is null. At most one is open per contact
+  // (partial unique index in the migration). Ended invites are kept: they are the
+  // history of who was asked and who withdrew.
+  endedAt     DateTime?
+  endedReason String?
+
+  @@index([contactId])
 }

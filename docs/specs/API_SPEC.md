@@ -52,8 +52,11 @@ Opaque ≥128-bit token, expiring, revocable, `noindex`, no referrer leakage (T6
 
 ### Contacts and consent
 
-`POST /trusted-contacts` (sends a consent invite) · `POST /contacts/invites/:token/accept`
-· `DELETE /contacts/consent/:id` (contact may revoke) · circles CRUD.
+`POST /api/v1/trusted-contacts/:id/invite` (mints a consent link; **Lumo sends nothing**, the user
+passes it on) · public, token-bearing: `GET /api/v1/contacts/invites/:token` (page),
+`POST …/:token/accept`, `POST …/:token/revoke` (the contact withdraws with the same link — a contact
+has no account, so the planned `DELETE /contacts/consent/:id` is replaced by this) · circles CRUD
+(deferred, see KI-66). Spec: [`TRUSTED_CONTACTS.md`](TRUSTED_CONTACTS.md).
 **A non-consented contact is never alerted** (RES-7).
 
 ### Acknowledgement — `POST /incidents/:id/ack`

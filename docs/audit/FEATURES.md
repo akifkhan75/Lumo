@@ -30,7 +30,7 @@ Verified by reading the code on 2026-10-26.
 | Email + password auth          | `—`         | ✅ Real    | `AuthModule`, `AuthScreen`                                          |
 | Session persistence            | `KI-4`      | 🟨 Partial | token kept in the keystore and restored on launch; no refresh token |
 | Settings & profile             | `PRO-6`     | ✅ Real    | `SettingsModule`, `settings/*`                                      |
-| Trusted contacts               | `RES-2/7`   | 🟨 Partial | stored; never used by any alert                                     |
+| Trusted contacts               | `RES-2/7`   | 🟨 Partial | stored; a contact can agree or withdraw via a link; never alerted   |
 | Hazard report feed             | `PREV-2`    | 🟨 Partial | real data, real coordinates, not drawn                              |
 | Device location (read-only)    | `RES-10`    | 🟨 Partial | foreground only, shown with age and accuracy; shared with no one    |
 | Report a hazard                | `PREV-1`    | ⛔ Blocked | location now readable, but no submit UI yet                         |
@@ -179,6 +179,22 @@ and only when a usable fix exists. With none it shows a world view and says the 
 isn't known. No hazard pins, no journeys. A map is not screen-reader operable; the text
 line from _Device location_ is the equivalent. The Android map needs a Google Maps key
 (KI-60). Not yet run on a device.
+
+### Trusted contacts and consent
+
+A contact must agree before they could ever be alerted, and the **contact** is the one who agrees.
+For each saved contact the user can get a link (the phone's share sheet; **Lumo sends nothing**).
+The contact opens it in any browser, sees who is asking and what is not happening yet, and agrees —
+once, even under concurrent taps — or later withdraws with the same link, immediately. Changing a
+contact's number or email, or removing them, ends any outstanding link and revokes consent, so a
+link sent to the old number cannot grant consent for the new one. Numbers are stored as E.164;
+a local number needs the user's region (no country is ever assumed). A pure `resolveRecipients`
+returns who is eligible and who is skipped, each skip with a reason.
+
+**What it does not do:** no alert is ever sent (no SMS, push or email path exists), so "Agreed"
+means only "willing". The server cannot tell the contact from the account holder using the same
+link (KI-62). The consent page is a stopgap for the web app (1.11). Circles are not built (KI-66).
+Spec: `docs/specs/TRUSTED_CONTACTS.md`; gaps KI-62 – KI-66. Not run on a device.
 
 ### Device location
 

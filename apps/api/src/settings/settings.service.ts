@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { countryOfRegionProfile } from '../trusted-contacts/phone';
 import { PiiCipher, type PiiContext } from '../crypto/pii-cipher';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrustedContactsService } from '../trusted-contacts/trusted-contacts.service';
@@ -33,9 +34,9 @@ export class SettingsService {
         bloodType: this.cipher.decryptNullable(user.bloodType, this.cell(userId, 'bloodType')) || '',
         allergies: this.cipher.decryptNullable(user.allergies, this.cell(userId, 'allergies')) || '',
       },
-      // The shape clients have always received: id, name, phone. Consent status and
-      // email are available from the service but are not part of this response yet.
-      trustedContacts: trustedContacts.map(c => ({ id: c.id, name: c.name, phone: c.phone })),
+      // id, name, phone as always, plus the consent status (additive). "agreed" is the
+      // contact's agreement; it does not mean an alert path exists yet.
+      trustedContacts: trustedContacts.map(c => ({ id: c.id, name: c.name, phone: c.phone, consentStatus: c.consentStatus })),
       security: {
         locationSharingEnabled: user.locationSharingEnabled,
         shareLocationOnSos: user.shareLocationOnSos,
@@ -61,8 +62,9 @@ export class SettingsService {
     // anything had gone wrong. One transaction: the new set is stored or the old
     // set stands.
     await this.prisma.$transaction(async tx => {
-      await tx.user.update({
+      const updated = await tx.user.update({
         where: { id: userId },
+        select: { regionProfileId: true },
         data: {
           fullName: personalInfo?.fullName,
           bloodType: this.sealOptional(personalInfo?.bloodType, this.cell(userId, 'bloodType')),
@@ -84,7 +86,8 @@ export class SettingsService {
       // that id (the delivery ledger points at it), and a changed number revokes the
       // consent the old number gave. See TrustedContactsService.
       if (trustedContacts !== undefined) {
-        await this.contacts.replaceSet(tx, userId, trustedContacts);
+        // A number written locally is read in the user's own country, never a guessed one.
+        await this.contacts.replaceSet(tx, userId, trustedContacts, countryOfRegionProfile(updated?.regionProfileId));
       }
     });
 

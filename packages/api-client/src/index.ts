@@ -1,4 +1,4 @@
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite } from '@lumo/types';
 
 export interface AuthResponse {
   user: PersonalInfo;
@@ -144,11 +144,22 @@ export class ApiClient {
     return this.send('/api/v1/settings', { headers: this.getHeaders() });
   }
 
+  async createContactInvite(contactId: string): Promise<ContactInvite> {
+    return this.send(`/api/v1/trusted-contacts/${encodeURIComponent(contactId)}/invite`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+  }
+
   async updateSettings(settings: UserSettings): Promise<UserSettings> {
     return this.send('/api/v1/settings', {
       method: 'PUT',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(settings),
+      // consentStatus is read-only and set by the server; never send it back.
+      body: JSON.stringify({
+        ...settings,
+        trustedContacts: settings.trustedContacts?.map(({ consentStatus: _status, ...contact }) => contact),
+      }),
     });
   }
 

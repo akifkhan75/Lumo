@@ -116,7 +116,7 @@ describe('Lumo API (e2e integration)', () => {
           shakeToSosEnabled: true,
         },
         trustedContacts: [
-          { name: 'Primary Contact', phone: '+15551234567' },
+          { name: 'Primary Contact', phone: '+14155551234' },
         ],
       };
 
