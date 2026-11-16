@@ -122,6 +122,16 @@ describe('failure and fallback', () => {
     expect(run('QUEUED', 'NOT_ATTEMPTED', 'push', 'contact')).toMatchObject({ rejection: 'ACTOR_NOT_PERMITTED' });
     expect(run('SENT', 'NOT_ATTEMPTED', 'sms')).toMatchObject({ rejection: 'ILLEGAL_TRANSITION' }); // it WAS handed over
   });
+  it('a message the provider accepted and then reported undelivered is FAILED and falls back', () => {
+    for (const ch of ['sms', 'push', 'voice'] as const) {
+      const out = run('SENT', 'PROVIDER_REPORTED_FAILURE', ch);
+      expect(out.ok && out.snapshot.state).toBe('FAILED');
+      expect(out.ok && out.record.effects).toEqual(['triggerFallback']);
+    }
+    // But not from QUEUED (nothing was accepted) and not from a settled state.
+    expect(run('QUEUED', 'PROVIDER_REPORTED_FAILURE', 'sms')).toMatchObject({ rejection: 'ILLEGAL_TRANSITION' });
+    expect(run('DELIVERED', 'PROVIDER_REPORTED_FAILURE', 'sms')).toMatchObject({ rejection: 'ILLEGAL_TRANSITION' });
+  });
   it('an attempt that never left the queue expires and falls back', () => {
     const out = run('QUEUED', 'TTL_ELAPSED', 'push');
     expect(out.ok && out.snapshot.state).toBe('EXPIRED');

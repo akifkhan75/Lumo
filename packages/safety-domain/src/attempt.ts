@@ -15,6 +15,7 @@ export const ATTEMPT_EVENTS = [
   'PROVIDER_ACCEPTED',
   'PROVIDER_REJECTED',
   'NOT_ATTEMPTED',
+  'PROVIDER_REPORTED_FAILURE',
   'TTL_ELAPSED',
   'SPEND_CAP_REACHED',
   'RECEIPT_DELIVERED',
@@ -71,6 +72,13 @@ const rows: Row<AttemptState, AttemptEvent, AttemptContext>[] = [
   }),
   ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('SENT', 'RECEIPT_DELIVERED', 'DELIVERED', ['system', 'contact'], {
     guard: canReportDelivered,
+  }),
+  // The provider accepted it, and LATER said it did not arrive (an SMS the carrier
+  // reports undelivered). A failure, and it falls back — NOT the same as a receipt that
+  // never came (that is UNKNOWN or EXPIRED). Without this row a message the carrier
+  // told us it dropped could only be recorded as SENT or UNKNOWN, both of which hide it.
+  ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('SENT', 'PROVIDER_REPORTED_FAILURE', 'FAILED', ['system'], {
+    effects: ['triggerFallback'],
   }),
   // An acknowledgement may arrive before any delivery receipt.
   ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>(['SENT', 'DELIVERED'], 'ACK', 'ACKNOWLEDGED', ['contact'], {
