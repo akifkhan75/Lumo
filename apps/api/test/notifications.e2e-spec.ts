@@ -25,6 +25,9 @@ process.env.TWILIO_ACCOUNT_SID = TWILIO.sid;
 process.env.TWILIO_AUTH_TOKEN = TWILIO.token;
 process.env.TWILIO_MESSAGING_SERVICE_SID = 'MGtest';
 process.env.PUBLIC_API_URL = TWILIO.url;
+// Its own queue: other suites' workers must not be able to take this suite's jobs.
+process.env.NOTIFICATIONS_QUEUE = 'on';
+process.env.NOTIFICATIONS_QUEUE_SCHEMA = 'pgboss_notifications_e2e';
 
 class FakeSms implements SmsProvider {
   isConfigured = true;
@@ -117,7 +120,7 @@ describe('planning: an attempt and its jobs exist together or not at all', () =>
     const [p] = await plan(s);
     expect(p).toMatchObject({ outcome: 'queued', channel: 'sms', recipientId: s.contactId });
     expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED']);
-    const jobs = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM pgboss.job WHERE data->>'attemptId' = $1 ORDER BY name`, p.attemptId);
+    const jobs = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM pgboss_notifications_e2e.job WHERE data->>'attemptId' = $1 ORDER BY name`, p.attemptId);
     expect(jobs.map((j) => j.name)).toEqual(['notify.expire', 'notify.send']);
   });
 
@@ -130,7 +133,7 @@ describe('planning: an attempt and its jobs exist together or not at all', () =>
     }).catch(() => {});
     expect(ids).toHaveLength(1);
     expect(await prisma.notificationAttempt.count({ where: { id: { in: ids } } })).toBe(0);
-    const jobs = await prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM pgboss.job WHERE data->>'attemptId' = ANY($1)`, ids);
+    const jobs = await prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM pgboss_notifications_e2e.job WHERE data->>'attemptId' = ANY($1)`, ids);
     expect(Number(jobs[0].n)).toBe(0);
   });
 
@@ -141,7 +144,7 @@ describe('planning: an attempt and its jobs exist together or not at all', () =>
     expect((await attempt(p.attemptId)).state).toBe('FAILED');
     expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:CONSENT_NOT_INVITED']);
     expect(fake.calls).toHaveLength(0);
-    expect(await prisma.$queryRawUnsafe(`SELECT 1 FROM pgboss.job WHERE data->>'attemptId' = $1`, p.attemptId)).toHaveLength(0);
+    expect(await prisma.$queryRawUnsafe(`SELECT 1 FROM pgboss_notifications_e2e.job WHERE data->>'attemptId' = $1`, p.attemptId)).toHaveLength(0);
   });
 
   it('push has no address for a contact: ledgered NO_ADDRESS, and no device is guessed from a matching email', async () => {
@@ -234,7 +237,7 @@ describe('sending', () => {
   it('the real queue delivers the job to the worker', { timeout: 30_000 }, async () => {
     const s = await scenario('realqueue', { agree: true });
     // Earlier tests left their (no-op'd) jobs queued; drain them so this one is not waiting in line.
-    await prisma.$executeRawUnsafe(`DELETE FROM pgboss.job WHERE name IN ('notify.send','notify.expire') AND state = 'created'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM pgboss_notifications_e2e.job WHERE name IN ('notify.send','notify.expire') AND state = 'created'`);
     queue.setHandlers({ send: (id) => worker.send(id), expire: (id) => worker.expire(id) });
     const [p] = await plan(s);
     for (let i = 0; i < 40 && (await attempt(p.attemptId)).state === 'QUEUED'; i++) await new Promise((r) => setTimeout(r, 250));

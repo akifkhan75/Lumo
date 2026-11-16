@@ -22,3 +22,10 @@ process.env.JWT_SECRET =
  */
 process.env.DATA_ENCRYPTION_KEY =
   process.env.DATA_ENCRYPTION_KEY || Buffer.alloc(32, 7).toString('base64');
+
+/**
+ * Test suites run in parallel processes against ONE database. Every app that boots would start
+ * a pg-boss worker on the same queue and steal each other's jobs, so the queue is off by default
+ * in tests; the notifications suite turns it on with a schema of its own.
+ */
+process.env.NOTIFICATIONS_QUEUE = process.env.NOTIFICATIONS_QUEUE ?? 'off';
