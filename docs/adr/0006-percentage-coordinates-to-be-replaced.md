@@ -1,6 +1,6 @@
 # ADR-0006: Percentage coordinates were a porting shortcut, not a design
 
-- **Status:** Accepted, **to be superseded** — see [KI-2](../audit/KNOWN_ISSUES.md)
+- **Status:** Superseded by [ADR-0010](0010-hazard-reports-replace-danger-zones.md) (data model) and milestone 1.5 (a real map replaced the background image) — see [KI-2](../audit/KNOWN_ISSUES.md)
 - **Date:** 2026-10-04 (decided), 2026-10-26 (recorded)
 - **Deciders:** Project owner
 
