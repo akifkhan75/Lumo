@@ -25,11 +25,16 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
-const SCAN_DIRS = ['apps/mobile', 'apps/web'];
+// Since milestone 1.7 the strings that reach a person in an emergency (SMS bodies, push
+// payloads, the journey page) are written in apps/api and packages/, not only in the
+// clients, so the same rules apply there. Tests are skipped: they quote these phrases.
+const SCAN_DIRS = ['apps/mobile', 'apps/web', 'apps/api/src', 'packages'];
 const SKIP_SEGMENTS = new Set([
   'node_modules', 'coverage', 'dist', 'build', '.expo', 'android', 'ios', '__tests__', '.next',
 ]);
-const EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+const EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.html'];
+// Config, not copy.
+const SKIP_FILES = /(^|\/)(package|tsconfig[^/]*|\.eslintrc[^/]*|app)\.json$|\.(spec|test|e2e-spec)\.[jt]sx?$/;
 const ALLOW_MARKER = 'lumo-verified-claim';
 const ALLOW_LOOKBACK = 3;
 
@@ -62,7 +67,7 @@ function* walk(dir) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
       yield* walk(full);
-    } else if (EXTENSIONS.some(ext => entry.endsWith(ext))) {
+    } else if (EXTENSIONS.some(ext => entry.endsWith(ext)) && !SKIP_FILES.test(full)) {
       yield full;
     }
   }
