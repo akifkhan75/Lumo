@@ -74,9 +74,8 @@ Coordinates are now required, validated and taken from the request.
 
 **What is still missing, and how it reads in the app:**
 
-- **No map SDK.** The dashboard is still `map_bg.jpg` with a demo notice, and
-  there is no projection from a coordinate to a pixel on it, so reports are
-  **listed** in the Community Hub rather than pinned. Needs `react-native-maps`.
+- **No map SDK.** _Resolved in 1.5:_ the dashboard has a real map. Reports are still
+  **listed** in the Community Hub rather than pinned; pins are Phase 4.
 - **No device location**, so submitting a report is **unavailable**: the screen
   says Lumo cannot read the user's position and offers no submit control. Needs
   `expo-location`, which is Phase 1 and also unblocks KI-3.
@@ -737,3 +736,19 @@ Foreground permission flows, `watchPositionAsync` stop-on-blur/background, and t
 were tested against a mock. Not run on iOS or Android hardware; `expo prebuild` was checked for the
 absence of background permissions on Android only. The native project must be rebuilt for the new
 plugin.
+
+## Found while building milestone 1.5 — 2026-11-13
+
+### 🟠 KI-60 — The Android map has no tiles without a Google Maps key
+
+`react-native-maps` uses Google Maps on Android, which needs an API key. It is not in the repo (it
+must not be): `app.config.js` injects it from `GOOGLE_MAPS_API_KEY` at build time. Until the owner
+creates a key (restricted to the app's package and signing certificate) and sets it as a build
+secret, the Android map renders blank; the position text above it still works. iOS uses Apple Maps
+and needs nothing. The map views themselves are verified in Jest against a mock only.
+
+### 🟡 KI-61 — The map shows a third-party view of where the user is
+
+The map SDK's tile requests reveal the viewed area to Apple or Google. Lumo sends them no
+coordinates itself, and `showsUserLocation` is off so the OS's blue dot is not a second claim, but
+the store privacy declarations (Data Safety / privacy manifest) must mention map tiles before release.

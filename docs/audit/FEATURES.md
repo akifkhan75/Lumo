@@ -34,7 +34,7 @@ Verified by reading the code on 2026-10-26.
 | Hazard report feed             | `PREV-2`    | 🟨 Partial | real data, real coordinates, not drawn                              |
 | Device location (read-only)    | `RES-10`    | 🟨 Partial | foreground only, shown with age and accuracy; shared with no one    |
 | Report a hazard                | `PREV-1`    | ⛔ Blocked | location now readable, but no submit UI yet                         |
-| Map                            | `PREV-2`    | ⛔ Mock    | static JPEG, no map SDK                                             |
+| Map                            | `PREV-2`    | 🟨 Partial | real map, shows only your own fix; no hazard pins                   |
 | SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                                                     |
 | Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                                                  |
 | Voice activation               | `DET-5`     | ✅ Real    | `useVoiceActivation` (dev build only)                               |
@@ -110,9 +110,9 @@ below which a report influences nothing.
 Two things are still missing, and both are honest in the UI rather than papered
 over:
 
-- **No map SDK.** The dashboard is still `map_bg.jpg`, and there is no projection
-  from a coordinate to a pixel on it, so reports are listed in the Community Hub
-  rather than pinned. A pin on that image would be decoration.
+- **Reports are not pinned.** The dashboard now has a real map, but hazard pins are
+  Phase 4 (they need confidence and age rules of their own), so reports are listed in
+  the Community Hub rather than drawn. The dashboard does not fetch them.
 - **Reporting is still unavailable.** The device can now read its position (see
   _Device location_), but the screen still offers no submit, instead of the predecessor's
   `` `${48 + Math.random() * 4}%` `` on the server.
@@ -173,8 +173,12 @@ backend, no volunteer directory, no second user.
 
 ### The map
 
-A JPEG. No `react-native-maps`, no tiles. The header now shows the device's real
-position as text (see _Device location_); the avatar on the picture is still not you.
+`react-native-maps` (Apple Maps on iOS, Google Maps on Android). It draws one thing:
+the device's own fix, as a marker with its accuracy circle (grey when the fix is stale),
+and only when a usable fix exists. With none it shows a world view and says the position
+isn't known. No hazard pins, no journeys. A map is not screen-reader operable; the text
+line from _Device location_ is the equivalent. The Android map needs a Google Maps key
+(KI-60). Not yet run on a device.
 
 ### Device location
 

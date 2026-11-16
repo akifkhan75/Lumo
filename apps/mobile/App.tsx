@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ActivityIndicator, Alert, Animated, AppState, Easing } from 'react-native';
+import { ActivityIndicator, Alert, AppState } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ActionButton, BottomNavContainer, Container, DemoMapNotice, Header, HeaderActions, HeaderTextContainer, HelloText, MapImage, MapViewContainer, NavItemContainer, NavItemLabel, RetryButton, RetryButtonText, SafetyAssistantButton, SettingsStatusRow, SettingsStatusStrip, SettingsStatusText, SOSButton, SOSButtonContainer, SOSText, UserImage, UserImageContainer, UserImagePulse, UserLocationPinContainer, VoiceGuardText } from './App.styled';
+import { ActionButton, BottomNavContainer, Container, Header, HeaderActions, HeaderTextContainer, HelloText, MapViewContainer, NavItemContainer, NavItemLabel, RetryButton, RetryButtonText, SafetyAssistantButton, SettingsStatusRow, SettingsStatusStrip, SettingsStatusText, SOSButton, SOSButtonContainer, SOSText, VoiceGuardText } from './App.styled';
 import { useShakeDetector } from './hooks/useShakeDetector';
 import { useVoiceActivation } from './hooks/useVoiceActivation';
 import { useAccidentDetector } from './hooks/useAccidentDetector';
@@ -26,7 +26,7 @@ import CheckInScreen from './components/CheckInModal';
 import CommunitySafetyScreen from './components/CommunitySafetyModal';
 import ReportHazardScreen from './components/ReportHazardModal';
 import SafetyAssistantScreen from './components/SafetyAssistantModal';
-import DemoBanner from './components/common/DemoBanner';
+import MapSurface from './components/MapSurface';
 import LocationStatus from './components/LocationStatus';
 import { useLocation } from './hooks/useLocation';
 
@@ -137,16 +137,6 @@ const DashboardScreen = () => {
   }, []);
   const location = useLocation(focused && appActive);
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-      Animated.loop(
-          Animated.sequence([
-              Animated.timing(pulseAnim, { toValue: 1.1, duration: 1500, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
-              Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
-          ])
-      ).start();
-  }, [pulseAnim]);
-
   return (
     <Container>
       <MapViewContainer>
@@ -154,7 +144,7 @@ const DashboardScreen = () => {
              now and this is a JPEG, so there is no projection from one to the
              other — a pin placed on this image would be decoration. They are
              listed, with their age and confirmations, in the Community Hub. */}
-         <MapImage source={require('./assets/images/map_bg.jpg')} />
+         <MapSurface fix={location.fix} />
          <Header>
             <HeaderTextContainer>
                 <HelloText>{userSettings ? `Hello ${userSettings.personalInfo.fullName},` : 'Hello,'}</HelloText>
@@ -174,18 +164,6 @@ const DashboardScreen = () => {
                 </ActionButton>
             </HeaderActions>
          </Header>
-         <DemoMapNotice>
-            <DemoBanner>
-              The map is a static picture. The pins are sample reports placed at
-              random — they are not positions, and the avatar is not you.
-            </DemoBanner>
-         </DemoMapNotice>
-         <UserLocationPinContainer style={{transform: [{translateX: -32}, {translateY: -32}]}}>
-            <UserImagePulse style={{ transform: [{ scale: pulseAnim }] }} />
-            <UserImageContainer>
-                <UserImage source={require('./assets/images/user_avatar.jpg')} />
-            </UserImageContainer>
-         </UserLocationPinContainer>
       </MapViewContainer>
       {!userSettings && (
         <SettingsStatusStrip>

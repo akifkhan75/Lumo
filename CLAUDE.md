@@ -105,11 +105,10 @@ source.
 
 3. **Hazard reports have real coordinates; the map does not.** `HazardReport`
    stores `latitude`/`longitude` with an optional `accuracyMetres`, and the server
-   stores what the client sends. There is still **no map SDK** — the dashboard is a
-   static JPEG (`apps/mobile/assets/images/map_bg.jpg`) with no projection, so
-   reports are listed rather than pinned, and the device cannot read its own
-   position yet, so **submitting a report is unavailable** rather than guessing a
-   point. The predecessor stored CSS percentages the server invented with
+   stores what the client sends. The dashboard now has a real map (`react-native-maps`) that
+   draws only the device's own fix, so reports are listed rather than pinned
+   (pins are Phase 4), and **submitting a report is still unavailable** rather than
+   guessing a point. The predecessor stored CSS percentages the server invented with
    `Math.random()` (KI-2, ADR-0010).
 
 4. **The SOS screen does not contact anyone, and now says so.**

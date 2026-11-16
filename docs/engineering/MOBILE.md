@@ -35,7 +35,7 @@ apps/mobile/
 │   ├── CommunitySafetyModal.tsx
 │   ├── ReportHazardModal.tsx
 │   └── SafetyAssistantModal.tsx
-├── assets/images/            map_bg.jpg, user_avatar.jpg
+├── assets/images/            onboarding_hero.jpg
 └── android/                  the real native project (not /android at the repo root)
 ```
 
@@ -104,9 +104,9 @@ const [error, setError] = useState<string | null>(null);
 const settings = await apiService.getSettings();
 ```
 
-The dashboard no longer fetches hazard reports. It cannot draw them — the "map" is
-a JPEG and reports carry real coordinates, so there is no projection between the
-two — so the screen that lists them (`CommunitySafetyModal`) fetches them itself.
+The dashboard does not fetch hazard reports. Its map draws only the device's own fix
+(hazard pins are Phase 4), so the screen that lists them (`CommunitySafetyModal`)
+fetches them itself.
 
 and hands state plus mutators to children through route params:
 
@@ -241,7 +241,7 @@ Icons: add to `constants.tsx` as `Icon<Name>` wrappers. Nothing else should impo
 | Screen                 | What it really does                                                                                                                                                                                                |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `AuthScreen`           | Onboarding → login/signup tabs. **Prefills `josim@example.com` / `password`.** Calls `apiService.login`/`signup`, then `onLoginSuccess()`.                                                                         |
-| `DashboardScreen`      | Static JPEG "map" with a demo notice over it and no pins, header with the user's name and a plain statement that Lumo cannot read the user's position, bottom nav, SOS, AI button.                                 |
+| `DashboardScreen`      | Real map (`MapSurface`) showing only the device's own fix, header with the user's name and `LocationStatus` (position with age and accuracy), bottom nav, SOS, AI button.                                          |
 | `EmergencyModal`       | **UI only — contacts nobody.** Hardcoded contact ring, "Notifying Nearby Volunteers…", a defense-mode overlay that _does_ fetch real AI tips. `isRecording` is a `const false`. ([KI-3](../audit/KNOWN_ISSUES.md)) |
 | `FakeCallScreen`       | Real: fetches a script from the AI endpoint and plays it as an incoming call.                                                                                                                                      |
 | `SafetyAssistantModal` | Real: chats against `POST /ai/safety-chat` (history is dropped server-side, [KI-14](../audit/KNOWN_ISSUES.md)).                                                                                                    |
