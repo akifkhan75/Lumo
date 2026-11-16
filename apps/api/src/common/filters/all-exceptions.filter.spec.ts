@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BadRequestException, HttpStatus } from '@nestjs/common';
-import { AllExceptionsFilter } from './all-exceptions.filter';
+import { AllExceptionsFilter, loggablePath } from './all-exceptions.filter';
 
 function makeHost(method = 'GET', url = '/api/v1/settings') {
   const json = vi.fn();
@@ -60,5 +60,34 @@ describe('AllExceptionsFilter', () => {
 
     filter.catch(new Error('boom'), makeHost().host);
     expect(filter['logger'].error).toHaveBeenCalled();
+  });
+});
+
+describe('loggablePath — a URL can carry a secret', () => {
+  const TOKEN = 'Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo';
+
+  it('logs the route template when the router matched one, never the token', () => {
+    const req: any = { url: `/api/v1/contacts/invites/${TOKEN}`, route: { path: '/api/v1/contacts/invites/:token' } };
+    expect(loggablePath(req)).toBe('/api/v1/contacts/invites/:token');
+  });
+
+  it('with no matched route, drops the query and masks any long opaque segment', () => {
+    const req: any = { url: `/api/v1/contacts/invites/${TOKEN}/accept?x=${TOKEN}` };
+    const out = loggablePath(req);
+    expect(out).toBe('/api/v1/contacts/invites/:redacted/accept');
+    expect(out).not.toContain(TOKEN);
+  });
+
+  it('leaves ordinary paths readable', () => {
+    expect(loggablePath({ url: '/api/v1/settings' } as any)).toBe('/api/v1/settings');
+  });
+
+  it('the filter’s own log line carries no token', () => {
+    const logs: string[] = [];
+    const filter = new AllExceptionsFilter();
+    vi.spyOn(filter['logger'], 'error').mockImplementation((m: any) => { logs.push(String(m)); });
+    const { host } = makeHost('POST', `/api/v1/contacts/invites/${TOKEN}/accept`);
+    filter.catch(new Error('boom'), host);
+    expect(logs.join('\n')).not.toContain(TOKEN);
   });
 });

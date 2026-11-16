@@ -94,19 +94,19 @@ describe('trusted contacts keep their identity', () => {
   it('EXIT: an attempt references a contact, the contact is edited twice, and the attempt still resolves to the same contact', async () => {
     const { token, id: userId } = await signup('exit');
 
-    await putSettings(token, { trustedContacts: [{ name: 'Mum', phone: '+15550100100' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ name: 'Mum', phone: '+14155100100' }] }).expect(200);
     const [original] = (await getSettings(token).expect(200)).body.trustedContacts;
     expect(original.id).toBeTruthy();
 
     const { attempt } = await history(userId, original.id); // the attempt points at the contact
 
     // Edit 1: the name. Edit 2: the number. Each sends the id back, as the app does.
-    await putSettings(token, { trustedContacts: [{ id: original.id, name: 'Mother', phone: '+15550100100' }] }).expect(200);
-    await putSettings(token, { trustedContacts: [{ id: original.id, name: 'Mother', phone: '+15550100200' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ id: original.id, name: 'Mother', phone: '+14155100100' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ id: original.id, name: 'Mother', phone: '+14155100200' }] }).expect(200);
 
     const [after] = (await getSettings(token).expect(200)).body.trustedContacts;
     expect(after.id).toBe(original.id);
-    expect(after).toMatchObject({ name: 'Mother', phone: '+15550100200' });
+    expect(after).toMatchObject({ name: 'Mother', phone: '+14155100200' });
 
     const reread = await prisma.notificationAttempt.findUniqueOrThrow({ where: { id: attempt.id } });
     expect(reread.recipientId).toBe(original.id);
@@ -118,7 +118,7 @@ describe('trusted contacts keep their identity', () => {
   it('orders contacts by their position in the list', async () => {
     const { token } = await signup('order');
     await putSettings(token, { trustedContacts: [
-      { name: 'First', phone: '+15550101001' }, { name: 'Second', phone: '+15550101002' }, { name: 'Third', phone: '+15550101003' },
+      { name: 'First', phone: '+14155101001' }, { name: 'Second', phone: '+14155101002' }, { name: 'Third', phone: '+14155101003' },
     ] }).expect(200);
     const names = (await getSettings(token)).body.trustedContacts.map((c: any) => c.name);
     expect(names).toEqual(['First', 'Second', 'Third']);
@@ -126,10 +126,10 @@ describe('trusted contacts keep their identity', () => {
 
   it('a duplicated id in one request creates a new contact for the second, not two edits of one', async () => {
     const { token } = await signup('dupid');
-    await putSettings(token, { trustedContacts: [{ name: 'A', phone: '+15550102001' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ name: 'A', phone: '+14155102001' }] }).expect(200);
     const [a] = (await getSettings(token)).body.trustedContacts;
     await putSettings(token, { trustedContacts: [
-      { id: a.id, name: 'A', phone: '+15550102001' }, { id: a.id, name: 'Clone', phone: '+15550102002' },
+      { id: a.id, name: 'A', phone: '+14155102001' }, { id: a.id, name: 'Clone', phone: '+14155102002' },
     ] }).expect(200);
     const contacts = (await getSettings(token)).body.trustedContacts;
     expect(contacts).toHaveLength(2);
@@ -142,7 +142,7 @@ describe('personal data is encrypted at rest (KI-26)', () => {
     const { token, id: userId } = await signup('enc');
     await putSettings(token, {
       personalInfo: { fullName: 'Enc', bloodType: 'AB-', allergies: 'penicillin' },
-      trustedContacts: [{ name: 'Dad', phone: '+15550103999' }],
+      trustedContacts: [{ name: 'Dad', phone: '+14155103999' }],
     }).expect(200);
 
     const [user] = await prisma.$queryRaw<{ bloodType: string; allergies: string }[]>`SELECT "bloodType", "allergies" FROM "User" WHERE id = ${userId}`;
@@ -150,19 +150,19 @@ describe('personal data is encrypted at rest (KI-26)', () => {
 
     for (const stored of [user.bloodType, user.allergies, contact.phone]) expect(stored.startsWith('enc:v1:')).toBe(true);
     expect(user.allergies).not.toContain('penicillin');
-    expect(contact.phone).not.toContain('5550103999');
+    expect(contact.phone).not.toContain('4155103999');
 
     // …and the API still returns the plaintext to the owner.
     const body = (await getSettings(token)).body;
     expect(body.personalInfo).toMatchObject({ bloodType: 'AB-', allergies: 'penicillin' });
-    expect(body.trustedContacts[0].phone).toBe('+15550103999');
+    expect(body.trustedContacts[0].phone).toBe('+14155103999');
   });
 
   it('a ciphertext moved into another row is refused, and the response leaks nothing', async () => {
     const a = await signup('moveA');
     const b = await signup('moveB');
-    await putSettings(a.token, { trustedContacts: [{ name: 'A-contact', phone: '+15550104111' }] }).expect(200);
-    await putSettings(b.token, { trustedContacts: [{ name: 'B-contact', phone: '+15550104222' }] }).expect(200);
+    await putSettings(a.token, { trustedContacts: [{ name: 'A-contact', phone: '+14155104111' }] }).expect(200);
+    await putSettings(b.token, { trustedContacts: [{ name: 'B-contact', phone: '+14155104222' }] }).expect(200);
 
     // Copy A's encrypted phone number into B's contact row.
     await prisma.$executeRaw`UPDATE "TrustedContact" SET "phone" = (SELECT "phone" FROM "TrustedContact" WHERE "userId" = ${a.id}) WHERE "userId" = ${b.id}`;
@@ -174,16 +174,16 @@ describe('personal data is encrypted at rest (KI-26)', () => {
 
   it('plaintext written before encryption existed is still readable, until db:encrypt-pii converts it', async () => {
     const { token, id: userId } = await signup('legacy');
-    await putSettings(token, { trustedContacts: [{ name: 'Old', phone: '+15550105000' }] }).expect(200);
-    await prisma.$executeRaw`UPDATE "TrustedContact" SET "phone" = '+15550105000' WHERE "userId" = ${userId}`;
-    expect((await getSettings(token).expect(200)).body.trustedContacts[0].phone).toBe('+15550105000');
+    await putSettings(token, { trustedContacts: [{ name: 'Old', phone: '+14155105000' }] }).expect(200);
+    await prisma.$executeRaw`UPDATE "TrustedContact" SET "phone" = '+14155105000' WHERE "userId" = ${userId}`;
+    expect((await getSettings(token).expect(200)).body.trustedContacts[0].phone).toBe('+14155105000');
   });
 });
 
 describe('consent follows the person, not the id (RES-7)', () => {
   async function contactWithConsent(label: string) {
     const { token, id: userId } = await signup(label);
-    await putSettings(token, { trustedContacts: [{ name: 'Sam', phone: '+1 (555) 010-6000' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ name: 'Sam', phone: '+1 (415) 510-6000' }] }).expect(200);
     const contact = await prisma.trustedContact.findFirstOrThrow({ where: { userId } });
     const consent = await prisma.consentRecord.create({
       data: { grantedById: contact.id, kind: 'contact_role', scope: `contact:${contact.id}`, regionProfileId: 'PK', version: '1' },
@@ -198,7 +198,7 @@ describe('consent follows the person, not the id (RES-7)', () => {
 
   it('keeps consent when only the name changes', async () => {
     const { token, contact, consent } = await contactWithConsent('cn');
-    await putSettings(token, { trustedContacts: [{ id: contact.id, name: 'Samuel', phone: '+1 (555) 010-6000' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ id: contact.id, name: 'Samuel', phone: '+1 (415) 510-6000' }] }).expect(200);
     const s = await state(contact.id, consent.id);
     expect(s.contact.consentId).toBe(consent.id);
     expect(s.consent.revokedAt).toBeNull();
@@ -206,7 +206,7 @@ describe('consent follows the person, not the id (RES-7)', () => {
 
   it('keeps consent when the number is only reformatted', async () => {
     const { token, contact, consent } = await contactWithConsent('cf');
-    await putSettings(token, { trustedContacts: [{ id: contact.id, name: 'Sam', phone: '+15550106000' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ id: contact.id, name: 'Sam', phone: '+14155106000' }] }).expect(200);
     const s = await state(contact.id, consent.id);
     expect(s.contact.consentId).toBe(consent.id);
     expect(s.consent.revokedAt).toBeNull();
@@ -214,7 +214,7 @@ describe('consent follows the person, not the id (RES-7)', () => {
 
   it('REVOKES consent when the number is a different number — never deleting the record', async () => {
     const { token, contact, consent } = await contactWithConsent('cp');
-    await putSettings(token, { trustedContacts: [{ id: contact.id, name: 'Sam', phone: '+15550107777' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ id: contact.id, name: 'Sam', phone: '+14155107777' }] }).expect(200);
     const s = await state(contact.id, consent.id);
     expect(s.contact.id).toBe(contact.id); // same contact…
     expect(s.contact.consentId).toBeNull(); // …no longer consented
@@ -227,14 +227,14 @@ describe('contacts are scoped to their owner', () => {
   it("another user's contact id cannot be used to read or change their contact", async () => {
     const a = await signup('scopeA');
     const b = await signup('scopeB');
-    await putSettings(a.token, { trustedContacts: [{ name: 'A-only', phone: '+15550108111' }] }).expect(200);
+    await putSettings(a.token, { trustedContacts: [{ name: 'A-only', phone: '+14155108111' }] }).expect(200);
     const [aContact] = (await getSettings(a.token)).body.trustedContacts;
 
     // B sends A's contact id with new details.
-    await putSettings(b.token, { trustedContacts: [{ id: aContact.id, name: 'Hijack', phone: '+15550108999' }] }).expect(200);
+    await putSettings(b.token, { trustedContacts: [{ id: aContact.id, name: 'Hijack', phone: '+14155108999' }] }).expect(200);
 
     const aAfter = (await getSettings(a.token)).body.trustedContacts;
-    expect(aAfter).toEqual([{ id: aContact.id, name: 'A-only', phone: '+15550108111' }]); // untouched
+    expect(aAfter).toEqual([{ id: aContact.id, name: 'A-only', phone: '+14155108111', consentStatus: 'not_invited' }]); // untouched
     const bAfter = (await getSettings(b.token)).body.trustedContacts;
     expect(bAfter).toHaveLength(1);
     expect(bAfter[0].id).not.toBe(aContact.id); // B got a NEW contact of their own
@@ -244,7 +244,7 @@ describe('contacts are scoped to their owner', () => {
 describe('removing a contact is a soft delete', () => {
   it('drops the contact from every read, keeps the row so the ledger resolves, and withdraws consent', async () => {
     const { token, id: userId } = await signup('rm');
-    await putSettings(token, { trustedContacts: [{ name: 'Gone', phone: '+15550109000' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ name: 'Gone', phone: '+14155109000' }] }).expect(200);
     const contact = await prisma.trustedContact.findFirstOrThrow({ where: { userId } });
     const consent = await prisma.consentRecord.create({
       data: { grantedById: contact.id, kind: 'contact_role', scope: `contact:${contact.id}`, regionProfileId: 'PK', version: '1' },
@@ -266,7 +266,7 @@ describe('removing a contact is a soft delete', () => {
 
   it('omitting the key leaves contacts alone — which is not the same as sending an empty list', async () => {
     const { token } = await signup('omit');
-    await putSettings(token, { trustedContacts: [{ name: 'Stay', phone: '+15550109500' }] }).expect(200);
+    await putSettings(token, { trustedContacts: [{ name: 'Stay', phone: '+14155109500' }] }).expect(200);
     await putSettings(token, { personalInfo: { fullName: 'Omit' } }).expect(200);
     expect((await getSettings(token)).body.trustedContacts).toHaveLength(1);
   });

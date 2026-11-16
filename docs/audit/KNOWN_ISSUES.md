@@ -737,3 +737,37 @@ Foreground permission flows, `watchPositionAsync` stop-on-blur/background, and t
 were tested against a mock. Not run on iOS or Android hardware; `expo prebuild` was checked for the
 absence of background permissions on Android only. The native project must be rebuilt for the new
 plugin.
+
+## Found while building milestone 1.6 — 2026-11-17
+
+### 🔴 KI-62 — Consent is a shared link, not verified identity
+
+The server cannot tell the contact from the account holder when both can open the same link. A user
+who wants to can open their own link and "agree" for someone who never did. The link proves possession,
+not identity. Mitigations that need infrastructure which does not exist yet: confirm through the
+contact's own number (a one-time code by SMS, milestone 1.7) before consent counts. Until then, treat
+"agreed" as the contact's agreement **as far as a shared link can show it**.
+
+### 🟠 KI-63 — Nothing delivers the link
+
+Lumo has no SMS, email or push path until milestone 1.7, so the user must pass the link on themselves.
+It can be forgotten, sent to the wrong person, or read by anyone who sees the message. The link is
+valid for 7 days, replaceable, and ended by a change of number, but a forwarded link works for whoever
+opens it first.
+
+### 🟡 KI-64 — The consent page is a stopgap
+
+A minimal server-rendered page in the API, English only, with no accessibility audit, until `apps/web`
+(1.11) replaces it. Its wording is versioned (`v1`) and recorded with each consent.
+
+### 🟡 KI-65 — Old phone numbers are not validated
+
+Numbers saved before E.164 validation may be loose or unparseable. They are kept as stored when sent
+back unchanged (so one old contact cannot block every settings save) but are not flagged to the user,
+and would not be dialable by a later alert path. A review step belongs with the alert work (1.7/1.8).
+
+### 🟠 KI-66 — Safety circles are not built
+
+The plan listed circles in 1.6, but they have no requirement ID in the PRD, nothing consumes them until
+the escalation engine (1.9), and the roadmap rule is not to mint IDs. Deferred to 1.9; the owner should
+assign the ID.

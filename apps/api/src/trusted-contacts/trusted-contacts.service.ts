@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PiiCipher, type PiiContext } from '../crypto/pii-cipher';
 import { normaliseEmail, normalisePhone } from './normalise';
+import { toE164 } from './phone';
 
 /**
  * Trusted contacts: who a user would call in an emergency.
@@ -52,12 +53,35 @@ export interface ContactView {
   readonly priority: number;
   /** Has the CONTACT agreed, and not since withdrawn it? Only then are they alerted. */
   readonly consented: boolean;
+  /** Why, in the words the app shows. "agreed" is NOT "will be alerted today" (no alert path yet). */
+  readonly consentStatus: ConsentStatus;
+}
+
+export type ConsentStatus = 'not_invited' | 'waiting' | 'agreed' | 'withdrawn' | 'expired' | 'details_changed';
+
+export const ENDED_CONTACT_WITHDREW = 'CONTACT_WITHDREW';
+export const ENDED_DETAILS_CHANGED = 'DETAILS_CHANGED';
+export const ENDED_CONTACT_REMOVED = 'CONTACT_REMOVED';
+export const ENDED_REPLACED = 'REPLACED';
+
+type Row = Prisma.TrustedContactGetPayload<{ include: { consent: true; invites: true } }>;
+
+/** Display status from the newest invite and the consent record. Pure. */
+export function consentStatusOf(row: Row, now: Date): ConsentStatus {
+  const latest = row.invites[0];
+  if (!latest) return 'not_invited';
+  if (latest.endedAt) {
+    if (latest.endedReason === ENDED_CONTACT_WITHDREW) return 'withdrawn';
+    return latest.endedReason === ENDED_DETAILS_CHANGED ? 'details_changed' : 'expired';
+  }
+  if (latest.acceptedAt) return row.consent !== null && row.consent.revokedAt === null ? 'agreed' : 'withdrawn';
+  return latest.expiresAt > now ? 'waiting' : 'expired';
 }
 
 export const REVOKED_CONTACT_CHANGED = 'CONTACT_DETAILS_CHANGED';
 export const REVOKED_CONTACT_REMOVED = 'CONTACT_REMOVED';
 
-type Row = Prisma.TrustedContactGetPayload<{ include: { consent: true } }>;
+const WITH = { consent: true, invites: { orderBy: { createdAt: 'desc' as const }, take: 1 } };
 
 @Injectable()
 export class TrustedContactsService {
@@ -69,6 +93,7 @@ export class TrustedContactsService {
 
   private view(row: Row): ContactView {
     return {
+      consentStatus: consentStatusOf(row, new Date()),
       id: row.id,
       name: row.name,
       phone: this.cipher.decrypt(row.phone, this.cell(row.id, 'phone')),
@@ -81,7 +106,7 @@ export class TrustedContactsService {
   private active(tx: Tx, userId: string): Promise<Row[]> {
     return tx.trustedContact.findMany({
       where: { userId, removedAt: null },
-      include: { consent: true },
+      include: WITH,
       orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     });
   }
@@ -91,7 +116,25 @@ export class TrustedContactsService {
     return (await this.active(tx, userId)).map(row => this.view(row));
   }
 
-  async create(tx: Tx, userId: string, input: ContactInput, priority: number): Promise<ContactView> {
+  /** A NEW or CHANGED number must be a real one, in E.164. See docs/specs/TRUSTED_CONTACTS.md. */
+  private checked(phone: string, country: string | null): string {
+    const r = toE164(phone, country);
+    if (r.ok) return r.e164;
+    throw new BadRequestException(
+      r.reason === 'NEEDS_COUNTRY'
+        ? 'Start the phone number with + and the country code (for example +92…). Lumo does not know which country you are in.'
+        : 'That does not look like a real phone number.',
+    );
+  }
+
+  /** The same person, however the number is written. Falls back to digits for old, unparseable data. */
+  private canon(phone: string, country: string | null): string {
+    const r = toE164(phone, country);
+    return r.ok ? r.e164 : normalisePhone(phone);
+  }
+
+  async create(tx: Tx, userId: string, input: ContactInput, priority: number, country: string | null = null): Promise<ContactView> {
+    const phone = this.checked(input.phone, country);
     // The id is generated here, not by the database, because the ciphertext is
     // bound to it and must be written in the same statement.
     const id = randomUUID();
@@ -100,31 +143,37 @@ export class TrustedContactsService {
         id,
         userId,
         name: input.name,
-        phone: this.cipher.encrypt(input.phone, this.cell(id, 'phone')),
+        phone: this.cipher.encrypt(phone, this.cell(id, 'phone')),
         email: this.cipher.encryptNullable(input.email ?? null, this.cell(id, 'email')),
         priority,
       },
-      include: { consent: true },
+      include: WITH,
     });
     return this.view(row);
   }
 
-  async update(tx: Tx, userId: string, id: string, patch: Partial<Omit<ContactInput, 'id'>> & { priority?: number }): Promise<ContactView> {
-    const row = await tx.trustedContact.findFirst({ where: { id, userId, removedAt: null }, include: { consent: true } });
+  async update(tx: Tx, userId: string, id: string, patch: Partial<Omit<ContactInput, 'id'>> & { priority?: number }, country: string | null = null): Promise<ContactView> {
+    const row = await tx.trustedContact.findFirst({ where: { id, userId, removedAt: null }, include: WITH });
     if (!row) throw new NotFoundException('Contact not found');
-    return this.applyUpdate(tx, row, patch);
+    return this.applyUpdate(tx, row, patch, country);
   }
 
-  private async applyUpdate(tx: Tx, row: Row, patch: Partial<Omit<ContactInput, 'id'>> & { priority?: number }): Promise<ContactView> {
+  private async applyUpdate(tx: Tx, row: Row, patch: Partial<Omit<ContactInput, 'id'>> & { priority?: number }, country: string | null): Promise<ContactView> {
     const before = this.view(row);
-    const phone = patch.phone ?? before.phone;
     const email = patch.email === undefined ? before.email : patch.email;
 
-    const identityChanged =
-      normalisePhone(phone) !== normalisePhone(before.phone) || normaliseEmail(email) !== normaliseEmail(before.email);
+    // A number is validated only when it is CHANGING. One that is merely sent back
+    // as it was stays as stored, even if it is old data we could not normalise now:
+    // otherwise a single legacy contact would make every settings save fail.
+    const sameNumber = patch.phone === undefined || this.canon(patch.phone, country) === this.canon(before.phone, country);
+    const phone = sameNumber ? before.phone : this.checked(patch.phone as string, country);
 
-    if (identityChanged && row.consentId) {
-      await this.revoke(tx, row.consentId, REVOKED_CONTACT_CHANGED);
+    const identityChanged = !sameNumber || normaliseEmail(email) !== normaliseEmail(before.email);
+
+    if (identityChanged) {
+      if (row.consentId) await this.revoke(tx, row.consentId, REVOKED_CONTACT_CHANGED);
+      // A link sent to the OLD number or address must not grant consent for the new one.
+      await this.endInvites(tx, row.id, ENDED_DETAILS_CHANGED);
     }
 
     // updateMany so the userId stays in the WHERE: scoping is part of the write.
@@ -140,7 +189,7 @@ export class TrustedContactsService {
     });
     if (count !== 1) throw new NotFoundException('Contact not found');
 
-    const fresh = await tx.trustedContact.findUniqueOrThrow({ where: { id: row.id }, include: { consent: true } });
+    const fresh = await tx.trustedContact.findUniqueOrThrow({ where: { id: row.id }, include: WITH });
     return this.view(fresh);
   }
 
@@ -153,10 +202,16 @@ export class TrustedContactsService {
 
   private async softRemove(tx: Tx, row: { id: string; userId: string; consentId: string | null }): Promise<void> {
     if (row.consentId) await this.revoke(tx, row.consentId, REVOKED_CONTACT_REMOVED);
+    await this.endInvites(tx, row.id, ENDED_CONTACT_REMOVED);
     await tx.trustedContact.updateMany({
       where: { id: row.id, userId: row.userId, removedAt: null },
       data: { removedAt: new Date(), consentId: null },
     });
+  }
+
+  /** End every open invite for a contact. Ended invites are kept as history. */
+  async endInvites(tx: Tx, contactId: string, reason: string): Promise<void> {
+    await tx.contactInvite.updateMany({ where: { contactId, endedAt: null }, data: { endedAt: new Date(), endedReason: reason } });
   }
 
   private async revoke(tx: Tx, consentId: string, reason: string): Promise<void> {
@@ -180,7 +235,7 @@ export class TrustedContactsService {
    *
    * Position in the list becomes priority: the first is alerted first.
    */
-  async replaceSet(tx: Tx, userId: string, inputs: readonly ContactInput[]): Promise<ContactView[]> {
+  async replaceSet(tx: Tx, userId: string, inputs: readonly ContactInput[], country: string | null = null): Promise<ContactView[]> {
     const existing = new Map((await this.active(tx, userId)).map(row => [row.id, row]));
     const kept = new Set<string>();
 
@@ -188,9 +243,9 @@ export class TrustedContactsService {
       const match = input.id !== undefined && !kept.has(input.id) ? existing.get(input.id) : undefined;
       if (match) {
         kept.add(match.id);
-        await this.applyUpdate(tx, match, { name: input.name, phone: input.phone, email: input.email, priority });
+        await this.applyUpdate(tx, match, { name: input.name, phone: input.phone, email: input.email, priority }, country);
       } else {
-        await this.create(tx, userId, input, priority);
+        await this.create(tx, userId, input, priority, country);
       }
     }
 

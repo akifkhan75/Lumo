@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, SafeAreaView, Share } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { TrustedContact, UserSettings } from '../../types';
+import { ConsentStatus, TrustedContact, UserSettings } from '../../types';
+import * as apiService from '../../services/apiService';
+import { consentLabel, inviteMessage } from '../../services/consentStatus';
 import { IconUser, IconPhoneCall, IconArrowLeft } from '../../constants';
 
 const Container = styled(SafeAreaView)`
@@ -79,6 +81,34 @@ const AddButtonText = styled(Text)`
     font-weight: 600;
 `;
 
+const StatusText = styled(Text)`
+  color: #374151;
+  font-size: 15px;
+  margin-top: 12px;
+`;
+
+const InviteButton = styled(TouchableOpacity)`
+  min-height: 44px;
+  justify-content: center;
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background-color: #1e3a8a;
+`;
+
+const InviteButtonText = styled(Text)`
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+`;
+
+const Note = styled(Text)`
+  color: #6b7280;
+  font-size: 14px;
+  margin-top: 8px;
+`;
+
 const SubmitButton = styled(TouchableOpacity)`
   background-color: #1f2937;
   padding: 16px;
@@ -100,6 +130,8 @@ const ContactSettingsScreen = () => {
 
   const [contacts, setContacts] = useState<TrustedContact[]>(currentSettings.trustedContacts);
   const [isSaving, setIsSaving] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, ConsentStatus>>({});
   const onBack = () => navigation.goBack();
 
   const handleContactChange = (index: number, field: 'name' | 'phone', value: string) => {
@@ -116,12 +148,55 @@ const ContactSettingsScreen = () => {
     setContacts(contacts.filter(c => c.id !== id));
   };
   
+  // A link is made for what is SAVED. Editing a number and then asking would invite the
+  // old one, so asking waits until the edit is saved.
+  const saved = new Map(currentSettings.trustedContacts.map(c => [c.id, c]));
+  const isDirty = (c: TrustedContact) => {
+    const original = saved.get(c.id);
+    return !original || original.name !== c.name || original.phone !== c.phone;
+  };
+
+  const handleInvite = async (contact: TrustedContact) => {
+    setInviteError(null);
+    try {
+      const { url } = await apiService.createContactInvite(contact.id);
+      // The user sends it, through their own messaging app. Lumo sends nothing.
+      setStatuses(s => ({ ...s, [contact.id]: 'waiting' }));
+      await Share.share({ message: inviteMessage(currentSettings.personalInfo.fullName, url) });
+    } catch {
+      setInviteError("Couldn't make a link just now. Check your connection and try again.");
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     const validContacts = contacts.filter(c => c.name && c.phone);
-    await onSave({ ...currentSettings, trustedContacts: validContacts });
+    // consentStatus is read-only; the client strips it again on the wire, and it is
+    // dropped here so a stale value is never sent back as if the user had set it.
+    await onSave({ ...currentSettings, trustedContacts: validContacts.map(({ consentStatus: _s, ...c }) => c) });
     setIsSaving(false);
     onBack();
+  };
+
+  const renderConsent = (contact: TrustedContact) => {
+    const label = consentLabel(statuses[contact.id] ?? contact.consentStatus);
+    if (!label) return <StatusText>Save to be able to ask them to agree.</StatusText>;
+    const dirty = isDirty(contact);
+    return (
+      <>
+        <StatusText accessibilityLiveRegion="polite">{label.text}</StatusText>
+        {label.action && !dirty && (
+          <InviteButton
+            accessibilityRole="button"
+            accessibilityLabel={`${label.action}: ${contact.name}. Opens your share sheet; Lumo does not send it.`}
+            onPress={() => handleInvite(contact)}
+          >
+            <InviteButtonText>{label.action}</InviteButtonText>
+          </InviteButton>
+        )}
+        {label.action && dirty && <Note>Save your changes before asking them.</Note>}
+      </>
+    );
   };
 
   return (
@@ -131,7 +206,7 @@ const ContactSettingsScreen = () => {
                 <BackButton onPress={onBack}>
                 <IconArrowLeft size={24} color="#1f2937" />
                 </BackButton>
-                <Title>Emergency Contact</Title>
+                <Title>Trusted contacts</Title>
             </Header>
             <ScrollView>
                 {contacts.map((contact, index) => (
@@ -156,8 +231,14 @@ const ContactSettingsScreen = () => {
                             onChangeText={(val) => handleContactChange(index, 'phone', val)}
                         />
                     </InputContainer>
+                    {renderConsent(contact)}
                 </ContactCard>
                 ))}
+                {inviteError && <Note accessibilityLiveRegion="polite">{inviteError}</Note>}
+                <Note>
+                  A contact is only ever alerted if they agree. Lumo does not message them:
+                  you send them a link yourself. Lumo does not send alerts to contacts yet.
+                </Note>
                 <AddButton onPress={addContact}>
                     <AddButtonText>+ Add Another Contact</AddButtonText>
                 </AddButton>

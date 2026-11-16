@@ -20,6 +20,19 @@ import { randomUUID } from 'node:crypto';
  * PLAT-8: the response body never carries internals, and the log line never
  * carries a request body — on this API a body can contain a location.
  */
+/**
+ * The path to log. Some URLs carry a secret (a consent link's token is its credential),
+ * and an error line is exactly where one would leak. So log the ROUTE TEMPLATE
+ * ("/contacts/invites/:token") when the router matched one; otherwise the path with the
+ * query dropped and any long opaque segment masked.
+ */
+export function loggablePath(request: Request): string {
+  const template = (request as Request & { route?: { path?: unknown } }).route?.path;
+  if (typeof template === 'string') return template;
+  const path = (request.originalUrl ?? request.url ?? '').split('?')[0];
+  return path.replace(/[A-Za-z0-9_-]{24,}/g, ':redacted');
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('HTTP');
@@ -43,7 +56,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       typeof body === 'string' ? { statusCode: status, message: body, reference } : { ...(body as object), reference };
 
     const detail = exception instanceof Error ? (exception.stack ?? exception.message) : String(exception);
-    const line = `${request.method} ${request.url} -> ${status} [${reference}]`;
+    const line = `${request.method} ${loggablePath(request)} -> ${status} [${reference}]`;
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(line, detail);

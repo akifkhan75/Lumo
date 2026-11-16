@@ -87,6 +87,15 @@ export class TrustedContactInputDto {
     message: 'phone must be a plausible phone number',
   })
   phone!: string;
+
+  // GET /settings now returns each contact's consent status, and a client that
+  // echoes the whole object back on save would otherwise be rejected
+  // (forbidNonWhitelisted) — including every app build already installed. It is
+  // read-only: accepted so the round trip works, and NEVER used. Consent changes
+  // only when the contact agrees or withdraws.
+  @IsString()
+  @IsOptional()
+  consentStatus?: string;
 }
 
 export class UpdateSettingsDto {
