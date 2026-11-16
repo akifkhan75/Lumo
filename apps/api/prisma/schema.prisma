@@ -452,6 +452,10 @@ model NotificationAttempt {
   failedAt          DateTime?
   providerMessageId String?
   providerStatus    String?
+  // Set by the worker, atomically, BEFORE it calls the provider. A job that finds it
+  // set sends nothing: at most one send per attempt, even if the job is redelivered
+  // (docs/specs/NOTIFICATIONS.md, "At most once").
+  claimedAt         DateTime?
   costMinorUnits    Int               @default(0)
   currency          String?
 
@@ -460,12 +464,17 @@ model NotificationAttempt {
   @@unique([incidentId, recipientId, channel, attemptNumber])
   @@index([incidentId])
   @@index([state])
+  // Provider callbacks find their attempt by this id.
+  @@index([providerMessageId])
 }
 
 // APPEND-ONLY. NotificationAttempt.state is a materialised view of the latest
 // event here; this table is the source of truth.
 model NotificationEvent {
   id         String              @id @default(uuid())
+  // The order events happened in. Timestamps are not enough: several events can be
+  // recorded in one transaction with one `occurredAt`, and the history is the evidence.
+  seq        Int                 @default(autoincrement())
   attemptId  String
   attempt    NotificationAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   toState    AttemptState

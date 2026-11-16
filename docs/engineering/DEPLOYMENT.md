@@ -52,7 +52,7 @@ install layer caches:
 
 ```dockerfile
 # ---- build ----
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
@@ -66,7 +66,7 @@ RUN pnpm --filter @lumo/types build \
  && pnpm --filter api build
 
 # ---- run ----
-FROM node:20-alpine
+FROM node:22-alpine
 RUN corepack enable
 WORKDIR /repo
 ENV NODE_ENV=production

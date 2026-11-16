@@ -133,6 +133,16 @@ export class TrustedContactsService {
     return r.ok ? r.e164 : normalisePhone(phone);
   }
 
+  /**
+   * One contact by id, as the worker needs it at SEND time: consent is checked again
+   * then, because it can be withdrawn between planning an alert and sending it. Null
+   * for a contact that is removed or unknown.
+   */
+  async findActive(tx: Tx, id: string): Promise<(ContactView & { userId: string }) | null> {
+    const row = await tx.trustedContact.findFirst({ where: { id, removedAt: null }, include: WITH });
+    return row ? { ...this.view(row), userId: row.userId } : null;
+  }
+
   async create(tx: Tx, userId: string, input: ContactInput, priority: number, country: string | null = null): Promise<ContactView> {
     const phone = this.checked(input.phone, country);
     // The id is generated here, not by the database, because the ciphertext is

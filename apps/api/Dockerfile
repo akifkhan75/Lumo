@@ -5,7 +5,7 @@
 # workspace packages (@lumo/types, @lumo/safety-domain, @lumo/region-profiles) that live outside apps/api.
 
 # ---- deps -------------------------------------------------------------------
-FROM node:20-bookworm-slim AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /repo
 
 # argon2 has no prebuilt binary for every platform we build on, so it is
@@ -51,7 +51,7 @@ RUN pnpm --filter @lumo/types build \
 RUN pnpm install --frozen-lockfile --filter api... --filter @lumo/types... --filter @lumo/safety-domain... --filter @lumo/region-profiles... --prod
 
 # ---- runtime ----------------------------------------------------------------
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /repo
 
 ENV NODE_ENV=production
