@@ -14,6 +14,7 @@ import { ATTEMPT_STATES } from './capabilities';
 export const ATTEMPT_EVENTS = [
   'PROVIDER_ACCEPTED',
   'PROVIDER_REJECTED',
+  'NOT_ATTEMPTED',
   'TTL_ELAPSED',
   'SPEND_CAP_REACHED',
   'RECEIPT_DELIVERED',
@@ -51,6 +52,14 @@ const mayReachBeyondSent = (c: AttemptContext) => maxState(c.capability) !== 'SE
 const rows: Row<AttemptState, AttemptEvent, AttemptContext>[] = [
   ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('QUEUED', 'PROVIDER_ACCEPTED', 'SENT', ['system']),
   ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('QUEUED', 'PROVIDER_REJECTED', 'FAILED', ['system'], {
+    effects: ['triggerFallback'],
+  }),
+  // Nothing was handed to any provider: no address for this recipient on this channel,
+  // the provider is not configured, the channel is disabled for the region. Distinct from
+  // PROVIDER_REJECTED on purpose — a provider that said no and a message that was never
+  // tried are different facts, and the ledger is the evidence of which (the reason code
+  // says why: NO_ADDRESS, PROVIDER_NOT_CONFIGURED, CHANNEL_DISABLED_FOR_REGION).
+  ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('QUEUED', 'NOT_ATTEMPTED', 'FAILED', ['system', 'policy'], {
     effects: ['triggerFallback'],
   }),
   ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('QUEUED', 'TTL_ELAPSED', 'EXPIRED', ['system'], {

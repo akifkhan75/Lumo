@@ -381,6 +381,7 @@ delivery can never be recorded as delivered.
 | ----------- | ----------------------- | -------------- | ------------------------------------------------------------------------------------- |
 | `QUEUED`    | `PROVIDER_ACCEPTED`     | `SENT`         | —                                                                                     |
 | `QUEUED`    | `PROVIDER_REJECTED`     | `FAILED`       | — · triggers fallback                                                                 |
+| `QUEUED`    | `NOT_ATTEMPTED`         | `FAILED`       | nothing was handed to a provider (no address, not configured, region) · reason says which · triggers fallback |
 | `QUEUED`    | `TTL_ELAPSED`           | `EXPIRED`      | —                                                                                     |
 | `QUEUED`    | `SPEND_CAP_REACHED`     | `FAILED`       | reason `SPEND_CAP`; surfaced to the user                                              |
 | `SENT`      | `RECEIPT_DELIVERED`     | `DELIVERED`    | **the channel can reach `DELIVERED`, and the receipt comes from the source it names** |
