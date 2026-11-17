@@ -17,6 +17,8 @@ import AuthScreen from './components/auth/AuthScreen';
 import BootScreen from './components/BootScreen';
 import EmergencyScreen from './components/EmergencyModal';
 import PracticeScreen from './components/PracticeScreen';
+import HistoryScreen from './components/HistoryScreen';
+import IncidentTimelineScreen from './components/IncidentTimelineScreen';
 import FakeCallScreen from './components/FakeCallScreen';
 import SettingsScreen from './components/settings/SettingsModal';
 import ProfileSettingsScreen from './components/settings/ProfileSettings';
@@ -404,6 +406,8 @@ const App = () => {
                             <MainStack.Screen name="CommunitySafety" component={CommunitySafetyScreen} />
                             <MainStack.Screen name="Journey" component={JourneyScreen} />
                             <MainStack.Screen name="Practice" component={PracticeScreen} />
+                            <MainStack.Screen name="History" component={HistoryScreen} />
+                            <MainStack.Screen name="IncidentTimeline" component={IncidentTimelineScreen} />
                             <MainStack.Screen name="FakeCall" component={FakeCallScreen} />
                             <MainStack.Screen name="ReportHazard" component={ReportHazardScreen} />
                             <MainStack.Screen name="SafetyAssistant" component={SafetyAssistantScreen} />

@@ -1,4 +1,4 @@
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken, Journey, CreateJourneyInput, JourneyFix, JourneyLinkInfo, CreateJourneyLinkInput, CreatedJourneyLink } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken, Journey, CreateJourneyInput, JourneyFix, JourneyLinkInfo, CreateJourneyLinkInput, CreatedJourneyLink, IncidentHistoryPage, IncidentTimeline } from '@lumo/types';
 
 export interface AuthResponse {
   user: PersonalInfo;
@@ -185,6 +185,21 @@ export class ApiClient {
    */
   async cancelSosByKey(key: string, bearer?: string | null): Promise<Incident> {
     return this.send('/api/v1/sos/cancel', { method: 'POST', headers: this.getHeaders({ 'Idempotency-Key': key }, bearer) });
+  }
+
+  /** The person's own history (login only). Real incidents unless `mode` is `practice`, which returns rehearsals only. */
+  async listIncidents(q: { limit?: number; cursor?: string | null; mode?: 'real' | 'practice' } = {}): Promise<IncidentHistoryPage> {
+    const params = new URLSearchParams();
+    if (q.limit) params.set('limit', String(q.limit));
+    if (q.cursor) params.set('cursor', q.cursor);
+    if (q.mode) params.set('mode', q.mode);
+    const qs = params.toString();
+    return this.send(`/api/v1/incidents${qs ? `?${qs}` : ''}`, { headers: this.getHeaders() });
+  }
+
+  /** One incident's timeline. `forExport` asks the server for the download form, which it WRITES TO THE AUDIT LOG; plain viewing is not an export. */
+  async getIncidentTimeline(id: string, forExport = false): Promise<IncidentTimeline> {
+    return this.send(`/api/v1/incidents/${encodeURIComponent(id)}/timeline${forExport ? '?format=json' : ''}`, { headers: this.getHeaders() });
   }
 
   async cancelIncident(id: string, bearer?: string | null): Promise<Incident> {

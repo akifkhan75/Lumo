@@ -27,6 +27,8 @@ export type RootStackParamList = {
   JoinContact: { token?: string } | undefined;
   ContactAlert: { attemptId: string; title: string; body: string; responded: boolean };
   Practice: { settings?: UserSettings } | undefined;
+  History: undefined;
+  IncidentTimeline: { id: string };
   Emergency: { settings?: UserSettings; trigger?: 'manual' | 'shake' | 'voice' | 'crash'; resume?: boolean; incidentId?: string } | undefined;
 };
 

@@ -264,6 +264,24 @@ describe('ApiClient', () => {
     }));
   });
 
+  describe('incident history', () => {
+    it('asks for a page with only the options given, and the login (never an emergency token)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ incidents: [], nextCursor: null }) });
+      client.setToken('login');
+      await client.listIncidents({ limit: 20, cursor: 'abc', mode: 'practice' });
+      expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/incidents?limit=20&cursor=abc&mode=practice`, expect.objectContaining({ headers: { Authorization: 'Bearer login' } }));
+      await client.listIncidents();
+      expect((global.fetch as any).mock.calls[1][0]).toBe(`${baseUrl}/api/v1/incidents`);
+    });
+    it('viewing a timeline is not an export; asking for the download form is', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ incident: {}, entries: [] }) });
+      await client.getIncidentTimeline('i 1');
+      expect((global.fetch as any).mock.calls[0][0]).toBe(`${baseUrl}/api/v1/incidents/i%201/timeline`);
+      await client.getIncidentTimeline('i1', true);
+      expect((global.fetch as any).mock.calls[1][0]).toBe(`${baseUrl}/api/v1/incidents/i1/timeline?format=json`);
+    });
+  });
+
   describe('offline SOS', () => {
     it('flags a "too long ago" refusal so a device can tell it from any other 400', async () => {
       global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400, json: () => Promise.resolve({ message: 'Too long ago. Nothing was sent.', tooLate: true }) });

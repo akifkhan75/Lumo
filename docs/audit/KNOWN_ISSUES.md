@@ -1229,7 +1229,9 @@ screen's own slate background.
 
 ## Found while building milestone 1.15a — 2026-11-18
 
-### 🟠 KI-136 — History and export are server-only; there is no screen
+### ✅ KI-136 — History and export were server-only (built in 1.15b)
+
+_Update: Settings → Past alerts and a timeline screen with a share action now exist (audited export). Untested on a device (KI-124, KI-131)._ Original text:
 
 The routes exist and are tested; the app has no history screen, so a person cannot see their past incidents or share a timeline. That is 1.15b.
 

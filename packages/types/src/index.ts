@@ -192,6 +192,42 @@ export interface Incident {
   attempts: IncidentAttempt[];
 }
 
+/** One row of the person's incident history (docs/specs/INCIDENT_HISTORY.md). Counts, no names: who is in the timeline, behind a tap. */
+export interface IncidentSummary {
+  id: string;
+  mode: 'real' | 'practice';
+  state: string;
+  outcome: string;
+  triggerType: string;
+  triggeredAt: string;
+  createdAt: string;
+  lateBySeconds: number;
+  locationAvailable: boolean;
+  contactsTried: number;
+  contactsReached: number;
+  contactsFailed: number;
+  resolvedAt: string | null;
+  closedAt: string | null;
+}
+export interface IncidentHistoryPage { incidents: IncidentSummary[]; nextCursor: string | null }
+
+/** One thing that happened, in order. Never a coordinate or a phone number. */
+export interface TimelineEntry {
+  at: string;
+  kind: 'incident' | 'attempt';
+  event: string;
+  from: string | null;
+  to: string;
+  actor: string | null;
+  reason: string | null;
+  recipient: string | null;
+  channel: string | null;
+  purpose: string | null;
+  /** True for every entry of a practice run. */
+  simulated: boolean;
+}
+export interface IncidentTimeline { incident: IncidentSummary; entries: TimelineEntry[] }
+
 export interface RaiseSosInput {
   triggerType: 'manual' | 'shake' | 'voice' | 'safeword' | 'crash' | 'fall';
   triggeredAt: string;

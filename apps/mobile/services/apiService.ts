@@ -150,6 +150,8 @@ const withCredentials = async <T>(call: (bearer: string | null | undefined) => P
 export const raiseSos = (key: string, input: RaiseSosInput): Promise<Incident> =>
     withCredentials(b => apiClient.raiseSos(key, input, b)).then(r => r.incident);
 export const getIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.getIncident(id, b === undefined ? undefined : b));
+export const listIncidents = (q?: { limit?: number; cursor?: string | null; mode?: 'real' | 'practice' }) => apiClient.listIncidents(q);
+export const getIncidentTimeline = (id: string, forExport = false) => apiClient.getIncidentTimeline(id, forExport);
 export const cancelSosByKey = (key: string): Promise<Incident> => withCredentials(b => apiClient.cancelSosByKey(key, b));
 export const cancelIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.cancelIncident(id, b));
 export const resolveIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.resolveIncident(id, b));
