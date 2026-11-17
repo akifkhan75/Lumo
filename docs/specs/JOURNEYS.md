@@ -3,7 +3,7 @@
 > **Safety-critical.** Implements `RES-12` `RES-13` (the server half), `DET-1`'s missed-check-in trigger. Product intent:
 > [`JOURNEY_GUARDIAN.md`](JOURNEY_GUARDIAN.md), [`SAFETY_CHECK.md`](SAFETY_CHECK.md). State machine:
 > [`SAFETY_STATE_MACHINES.md`](SAFETY_STATE_MACHINES.md) §6a. The ladder that runs after an alert: [`ESCALATION_POLICY.md`](ESCALATION_POLICY.md).
-> **Milestone 1.10a is the server. The app (the journey screens, the check-in prompt, location uploads) is 1.10b.**
+> **Milestone 1.10a is the server; 1.10b is the app (below).**
 
 ## The four-part contract
 
@@ -95,3 +95,24 @@ deadline ─▶ CHECK_IN_DUE ─▶ (prompt window) ─▶ GRACE ─▶ (grace) 
 | An arrival is one instant whatever its UTC offset                                          | database suite |
 | The missed-check-in words are not a plea for help                                          | unit           |
 | Login only; another person's journey is a 404 for every action                             | database suite |
+
+## The app (1.10b)
+
+- **One screen** (`JourneyScreen`) replaces Follow Me and Check-In; both entries open it (Check-In preselects Custom). The old local
+  countdown that opened the SOS screen is gone: the deadline is the server's.
+- **Setup shows the plan before it runs** (`services/journeyCopy.ts`, pure and tested), in "will try" words: who is asked first (only the
+  person), the template's grace, who is tried and in what order, a plain statement that **contacts are not told about the journey itself**,
+  and any contact who has not agreed. It **refuses to start** with no agreed contact, rather than start a journey no one could be told about.
+- **Running:** the arrival time, the plan, "the server keeps this deadline even if your phone dies or the app is closed", and the state of
+  position-saving in words (not saved: you chose not to / location off / you stopped it; saving, with the time of the last save, or "can't
+  reach Lumo, N waiting").
+- **Position:** read only while the journey runs and Lumo is open; uploaded in batches (every 30 s or 5 fixes), kept and resent on failure
+  (the server is idempotent), never with unknown accuracy, nothing kept across a restart. **Stop saving my position** stops uploads on this phone.
+  Location permission is asked only from the "Allow location" button.
+- **The question:** when the server says a check-in is due, the whole screen becomes **Are you OK?** with "I'm OK — 15 more minutes",
+  "I'm OK — an hour" and "I've arrived", and states that only the person has been asked so far and when Lumo **may start** trying their
+  contacts, an estimate by the phone's clock. An answer is not claimed until the server accepts it.
+- **After an alert:** it says so, opens the incident (the SOS screen's ledger, via `incidentId`; it starts nothing new), and still lets
+  the person say they are safe; cancelling is not offered.
+- **Polling** every 5 s while a journey is live. A failed refresh keeps the last state on screen, marked old, and says the journey is
+  still being kept.

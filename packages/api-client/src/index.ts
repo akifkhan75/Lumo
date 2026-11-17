@@ -1,4 +1,4 @@
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken, Journey, CreateJourneyInput, JourneyFix } from '@lumo/types';
 
 export interface AuthResponse {
   user: PersonalInfo;
@@ -181,6 +181,36 @@ export class ApiClient {
 
   async resolveIncident(id: string, bearer?: string | null): Promise<Incident> {
     return this.send(`/api/v1/incidents/${encodeURIComponent(id)}/resolve`, { method: 'POST', headers: this.getHeaders({}, bearer) });
+  }
+
+  // Journeys (docs/specs/JOURNEYS.md). Login only: the emergency token cannot touch them.
+  async createJourney(input: CreateJourneyInput): Promise<Journey> {
+    return this.send('/api/v1/safety-sessions', { method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(input) });
+  }
+
+  async getActiveJourney(): Promise<Journey | null> {
+    const r = await this.send<{ session: Journey | null }>('/api/v1/safety-sessions/active', { headers: this.getHeaders() });
+    return r.session;
+  }
+
+  async checkInJourney(id: string, expectedArrivalAt: string): Promise<Journey> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(id)}/check-in`, {
+      method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ expectedArrivalAt }),
+    });
+  }
+
+  async arriveJourney(id: string): Promise<Journey> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(id)}/arrive`, { method: 'POST', headers: this.getHeaders() });
+  }
+
+  async cancelJourney(id: string): Promise<Journey> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: this.getHeaders() });
+  }
+
+  async postJourneyLocation(id: string, snapshots: JourneyFix[]): Promise<{ stored: number; duplicates: number; atDestination: boolean; arrived: boolean }> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(id)}/location`, {
+      method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ snapshots }),
+    });
   }
 
   // The contact side: a push address, joining as someone's contact, and the device's own report back.

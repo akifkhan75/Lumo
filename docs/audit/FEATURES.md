@@ -42,8 +42,8 @@ Verified by reading the code on 2026-10-26.
 | Fake call                      | `RES-17`    | ✅ Real    | AI-generated script                                                 |
 | AI safety assistant            | `REC-4`     | 🟨 Partial | works; no conversation memory                                       |
 | Self-defense tips              | `REC-4`     | ✅ Real    | AI with fallback                                                    |
-| Check-in timer                 | `RES-13`    | 🟨 Partial | fires, but in-process only                                          |
-| Follow Me                      | `RES-11/12` | ⛔ Mock    | hardcoded share link                                                |
+| Journey / check-in             | `RES-12/13` | 🟨 Partial | server-side deadlines and escalation; no live link for contacts yet |
+| Follow Me link for contacts    | `RES-11`    | ⛔ Absent  | needs the web page (1.11)                                           |
 | Community / Safe Walk          | `RES-20`    | ⛔ Mock    | local state                                                         |
 | Nearby volunteers              | `RES-20`    | ⛔ Mock    | a text label                                                        |
 | Audio/video evidence recording | `PRO-1`     | ⛔ Mock    | `const isRecording = false`                                         |
@@ -165,14 +165,10 @@ was reached"** (KI-83). No retry ladder (1.9), no offline queue (1.13), no dures
 nothing on a device (Jest only). Copy has had no screen-reader or text-scaling pass (1.14). Spec:
 `docs/specs/INCIDENTS.md`; gaps KI-83 – KI-92.
 
-### Follow Me
+### Follow Me (the live link)
 
-```ts
-const shareLink = `https://lumo.example/follow/jS8fD9kL`;
-```
-
-A constant. "Start Sharing" sets local state and shows an alert. No session, no
-location stream, no link anyone can open.
+There is no link a contact can open: that is the web page of milestone 1.11. The old placeholder link (a constant) and the screen that
+pretended to share are gone. What replaced them is the Journey screen below, which does not claim anyone follows you.
 
 ### Community / Safe Walk
 
