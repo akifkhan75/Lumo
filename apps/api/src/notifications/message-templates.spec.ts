@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { alertBody, locationLine, resolvedBody } from './message-templates';
+import { alertBody, locationLine, pushBody, resolvedBody, voiceScript } from './message-templates';
 
 const NOW = Date.UTC(2026, 10, 18, 12, 30);
 const loc = (ageMs: number, accuracyM = 18) => ({ latitude: 33.6844, longitude: 73.0479, accuracyM, capturedAt: NOW - ageMs });
@@ -44,3 +44,23 @@ describe('resolvedBody', () => {
     expect(t).not.toMatch(/maps|https?:/);
   });
 });
+
+describe('a missed check-in is not a plea for help, and the words say so', () => {
+  it('names the check-in, says they may have forgotten or have no signal, and does not say they asked for help', () => {
+    const t = alertBody('Joyce', null, NOW, 'missed_check_in');
+    expect(t).toContain('had a Lumo check-in due and has not answered it');
+    expect(t).toContain('may have forgotten or have no signal');
+    expect(t).not.toContain('asked Lumo to alert you');
+    expect(t.toLowerCase()).not.toMatch(/help is|in danger|emergency/);
+  });
+  it('a position in one is worded exactly as in an SOS: with its time, its precision, and "last known" when stale', () => {
+    expect(alertBody('J', loc(20 * 60_000), NOW, 'missed_check_in')).toContain('Last known location');
+  });
+  it('the push and the call say the same, and an SOS is unchanged', () => {
+    expect(pushBody('Joyce', 'missed_check_in')).toBe('Joyce has not answered a Lumo check-in.');
+    expect(voiceScript('Joyce', 'missed_check_in')).toContain('has not answered a Lumo check-in');
+    expect(pushBody('Joyce')).toBe('Joyce asked Lumo to alert you.');
+    expect(voiceScript('Joyce')).toContain('asked Lumo to alert you');
+  });
+});
+

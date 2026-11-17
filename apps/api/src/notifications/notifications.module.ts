@@ -26,6 +26,6 @@ import { TwilioVoice } from './voice/twilio-voice';
     { provide: VOICE_PROVIDER, useFactory: () => new TwilioVoice() },
     { provide: PUSH_PROVIDER, useFactory: () => new ExpoPush() },
   ],
-  exports: [DispatchService, LedgerService, NotificationQueue],
+  exports: [DispatchService, LedgerService, NotificationQueue, PUSH_PROVIDER],
 })
 export class NotificationsModule {}

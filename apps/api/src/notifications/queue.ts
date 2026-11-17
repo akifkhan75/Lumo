@@ -20,6 +20,8 @@ export const EXPIRE_QUEUE = 'notify.expire';
 export const RECEIPTS_QUEUE = 'notify.receipts';
 export const COUNTDOWN_QUEUE = 'incident.countdown';
 export const STEP_QUEUE = 'incident.step';
+export const SESSION_QUEUE = 'session.tick';
+export const SWEEP_QUEUE = 'session.sweep';
 
 export type Tx = Prisma.TransactionClient;
 
@@ -38,6 +40,10 @@ export interface JobHandlers {
   countdown(incidentId: string): Promise<void>;
   /** An escalation step's timeout has come: advance the ladder. */
   step(incidentId: string, stepOrder: number): Promise<void>;
+  /** A journey's deadline, prompt window or grace has come. `dueAt` is the check-in time the job was set for, so a stale one is ignored. */
+  session(sessionId: string, step: 'deadline' | 'prompt' | 'grace', dueAt: number): Promise<void>;
+  /** The backstop: find journeys whose timers should have fired and did not, and fire them. */
+  sweep(): Promise<void>;
 }
 
 @Injectable()
@@ -76,6 +82,14 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     await boss.work<{ attemptId: string }>(SEND_QUEUE, opts, async jobs => {
       for (const job of jobs) await this.handlers.send?.(job.data.attemptId);
     });
+    await boss.createQueue(SESSION_QUEUE, { retryLimit: 10, retryDelay: 2, retryBackoff: true });
+    await boss.work<{ sessionId: string; step: 'deadline' | 'prompt' | 'grace'; dueAt: number }>(SESSION_QUEUE, opts, async jobs => {
+      for (const job of jobs) await this.handlers.session?.(job.data.sessionId, job.data.step, job.data.dueAt);
+    });
+    // The backstop for a lost or failed timer: once a minute, look for journeys that are overdue and were not advanced.
+    await boss.createQueue(SWEEP_QUEUE, { retryLimit: 0 });
+    await boss.schedule(SWEEP_QUEUE, '* * * * *', {});
+    await boss.work(SWEEP_QUEUE, async () => { await this.handlers.sweep?.(); });
     await boss.createQueue(STEP_QUEUE, { retryLimit: 10, retryDelay: 2, retryBackoff: true });
     await boss.work<{ incidentId: string; stepOrder: number }>(STEP_QUEUE, opts, async jobs => {
       for (const job of jobs) await this.handlers.step?.(job.data.incidentId, job.data.stepOrder);
@@ -113,6 +127,11 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
   /** Enqueue the send. Joins `tx`: it exists only if the transaction commits. */
   async enqueueSend(tx: Tx, attemptId: string): Promise<void> {
     await this.requireBoss().send(SEND_QUEUE, { attemptId }, { db: asDb(tx), singletonKey: attemptId });
+  }
+
+  /** Enqueue a journey timer. Joins `tx`. One job per (session, step, due time); a repeat is a no-op. */
+  async enqueueSessionTick(tx: Tx, sessionId: string, step: 'deadline' | 'prompt' | 'grace', dueAt: number, afterSeconds: number): Promise<void> {
+    await this.requireBoss().send(SESSION_QUEUE, { sessionId, step, dueAt }, { db: asDb(tx), startAfter: Math.max(0, afterSeconds), singletonKey: `${sessionId}:${step}:${dueAt}` });
   }
 
   /** Enqueue an escalation step's timeout. Joins `tx`. One job per (incident, step); a second for the same step is a no-op. */

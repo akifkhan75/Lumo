@@ -52,7 +52,7 @@ const getSettings = (token: string) =>
 /** A user with a policy, session, incident, one attempt, and one row in every history table. */
 async function history(userId: string, recipientId: string = randomUUID()) {
   const policy = await prisma.escalationPolicy.create({ data: { userId, name: 'p', steps: [] } });
-  const session = await prisma.safetySession.create({ data: { userId, kind: 'walk_home', escalationPolicyId: policy.id } });
+  const session = await prisma.safetySession.create({ data: { userId, kind: 'walk_home', state: 'CLOSED', escalationPolicyId: policy.id } });
   const incident = await prisma.emergencyIncident.create({
     data: { userId, sessionId: session.id, idempotencyKey: randomUUID(), triggerType: 'manual', triggeredAt: new Date(), regionProfileId: 'PK' },
   });

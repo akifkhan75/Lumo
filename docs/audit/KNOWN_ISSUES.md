@@ -974,3 +974,25 @@ requirement (RES-4) — until the app shows `GET /escalation-policy`.
 
 A step's deadline is honoured to within the queue's one-second poll plus any backlog; a long outage of the worker delays the next
 contact by that long. An incident whose worker is down is not advanced at all until it returns.
+
+## Found while building milestone 1.10a — 2026-11-20
+
+### 🟠 KI-101 — No deviation detection
+
+RES-14's six-step algorithm needs an expected route, and a journey has only a destination. `DEVIATION_DETECTED` is in the state
+machine and is never raised. A person who is taken somewhere else is caught only by missing their arrival time.
+
+### 🟠 KI-102 — Contacts are not told a journey started
+
+The machine declares `notifyContactsSessionStarted`; it is not carried out. Nothing yet delivers a live link (1.11) and a message per
+journey costs money and goes beyond what a contact agreed to. The consequence: a contact first hears of a journey when it goes wrong.
+
+### 🟡 KI-103 — The prompt to the person is best effort
+
+At the deadline the person is asked by a push to their own devices; if they have none registered, or push is not configured, only the
+app (reading the journey's `needsAnswer`) asks. A person with the app closed and no push token is not asked at all before the grace runs.
+
+### 🟡 KI-104 — The sweep is the only recovery from a lost job
+
+If both a timer and the sweep were down for longer than the grace, a journey escalates late, not never. A journey whose escalation
+failed repeatedly stays `ESCALATING` and is retried by the sweep every minute until it works.
