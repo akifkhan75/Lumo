@@ -111,29 +111,35 @@ afterAll(async () => {
 });
 
 describe('the ladder runs one contact at a time, in priority order', () => {
-  it('only the first contact is alerted at once; the next waits for the first step to give way', async () => {
-    const o = await owner('seq', 3);
+  it('the first TWO contacts are alerted together at once (KI-93); each later contact waits for the step before it to give way', async () => {
+    const o = await owner('seq', 4);
     const r = await sos(o.token).expect(201);
-    expect((await attemptsOf(r.body.id)).filter((a) => a.state === 'QUEUED').map((a) => a.recipientId)).toEqual([o.ids[0]]);
+    expect((await attemptsOf(r.body.id)).filter((a) => a.state === 'QUEUED').map((a) => a.recipientId).sort()).toEqual([o.ids[0], o.ids[1]].sort());
     expect(await ladderOf(r.body.id)).toMatchObject({ phase: 'RUNNING', stepIndex: 0 });
 
     await stepOn(r.body.id, 1);
-    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).toContain(o.ids[1]);
-    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).not.toContain(o.ids[2]);
-    await stepOn(r.body.id, 2);
     expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).toContain(o.ids[2]);
+    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).not.toContain(o.ids[3]);
+    await stepOn(r.body.id, 2);
+    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).toContain(o.ids[3]);
+  });
+
+  it('with only one contact, that one is alerted alone', async () => {
+    const o = await owner('seq_one', 1);
+    const r = await sos(o.token).expect(201);
+    expect((await attemptsOf(r.body.id)).filter((a) => a.state === 'QUEUED').map((a) => a.recipientId)).toEqual([o.ids[0]]);
   });
 
   it('each attempt records the step it belongs to', async () => {
-    const o = await owner('stepno', 2);
+    const o = await owner('stepno', 3);
     const r = await sos(o.token).expect(201);
     await stepOn(r.body.id, 1);
     const steps = (await attemptsOf(r.body.id)).map((a) => [a.recipientId, a.escalationStep]);
-    expect(steps).toEqual(expect.arrayContaining([[o.ids[0], 1], [o.ids[1], 2]]));
+    expect(steps).toEqual(expect.arrayContaining([[o.ids[0], 1], [o.ids[1], 1], [o.ids[2], 2]]));
   });
 
   it('the view says which step is in flight and when it gives way', async () => {
-    const o = await owner('view', 2);
+    const o = await owner('view', 3);
     const r = await sos(o.token).expect(201);
     expect(r.body.escalation).toMatchObject({ phase: 'RUNNING', stepOrder: 1, steps: 2 });
     expect(r.body.escalation.nextStepAt).toBeGreaterThan(Date.now());
@@ -164,11 +170,12 @@ describe('the ladder runs one contact at a time, in priority order', () => {
 
 describe('waiting, and not waiting', () => {
   it('a text that was SENT and is unconfirmed holds the step: it may yet arrive', async () => {
-    const o = await owner('unconfirmed', 2);
+    const o = await owner('unconfirmed', 3);
     const r = await sos(o.token).expect(201);
     await worker.send((await smsOf(r.body.id, o.ids[0])).id);
+    await worker.send((await smsOf(r.body.id, o.ids[1])).id);
     expect((await ladderOf(r.body.id)).stepIndex).toBe(0);
-    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).not.toContain(o.ids[1]);
+    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).not.toContain(o.ids[2]);
   });
 
   it('when every attempt of the step has FAILED the ladder moves on at once, without waiting out the timeout', async () => {
@@ -176,8 +183,10 @@ describe('waiting, and not waiting', () => {
     const r = await sos(o.token).expect(201);
     sms.next = { kind: 'rejected', reason: 'TWILIO_21211' };
     await worker.send((await smsOf(r.body.id, o.ids[0])).id);
-    // no timer was fired: the failure itself moved the ladder on
-    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).toContain(o.ids[1]);
+    expect((await ladderOf(r.body.id)).stepIndex).toBe(0); // one of the two still has its message in flight: the step waits
+    await worker.send((await smsOf(r.body.id, o.ids[1])).id);
+    // no timer was fired: both failing moved the ladder on
+    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).toContain(o.ids[2]);
     expect((await ladderOf(r.body.id)).stepIndex).toBe(1);
   });
 
@@ -250,14 +259,14 @@ describe('consent, and the limits', () => {
 
 describe('acknowledgement halts the ladder, and un-acknowledging resumes it', () => {
   it('an acknowledgement at step 2 means step 3 never happens, even when its timer fires', async () => {
-    const o = await owner('ackhalt', 3, { claim: [1] });
+    const o = await owner('ackhalt', 4, { claim: [2] });
     const r = await sos(o.token).expect(201);
     await stepOn(r.body.id, 1);
-    await api().post(`/api/v1/incidents/${r.body.id}/ack`).set(auth(o.claimers[1].token)).expect(200).expect({ recorded: true });
+    await api().post(`/api/v1/incidents/${r.body.id}/ack`).set(auth(o.claimers[2].token)).expect(200).expect({ recorded: true });
     expect((await row(r.body.id)).state).toBe('ACKNOWLEDGED');
     expect(await ladderOf(r.body.id)).toMatchObject({ phase: 'HALTED' });
     await stepOn(r.body.id, 2); // the timer that would have started step 3
-    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).not.toContain(o.ids[2]);
+    expect((await attemptsOf(r.body.id)).map((a) => a.recipientId)).not.toContain(o.ids[3]);
   });
 
   it('un-acknowledging resumes from the step that was in flight — not from the beginning — and does not re-alert them', async () => {
@@ -301,11 +310,12 @@ describe('the policy is snapshotted, and visible before it runs', () => {
   });
 
   it('with no stored policy it shows the one derived from the contacts, in plain words, before anything runs', async () => {
-    const o = await owner('derived', 2);
+    const o = await owner('derived', 3);
     const g = await api().get('/api/v1/escalation-policy').set(auth(o.token)).expect(200);
     expect(g.body.stored).toBe(false);
-    expect(g.body.policy.steps).toHaveLength(2);
-    expect(g.body.description.join(' ')).toContain('C0');
+    expect(g.body.policy.steps).toHaveLength(2); // the first two together, then the third
+    expect(g.body.policy.steps[0].recipients).toHaveLength(2);
+    expect(g.body.description.join(' ')).toContain('C0 and C1');
     expect(g.body.description.join(' ')).toContain('Try to alert');
     expect(g.body.description.join(' ').toLowerCase()).not.toMatch(/will be notified|help is/);
   });
