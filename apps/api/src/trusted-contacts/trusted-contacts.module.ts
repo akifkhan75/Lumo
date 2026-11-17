@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ContactInviteController, PublicConsentController } from './contact-consent.controller';
+import { ContactClaimController, ContactInviteController, PublicConsentController } from './contact-consent.controller';
 import { ContactConsentService } from './contact-consent.service';
 import { TrustedContactsService } from './trusted-contacts.service';
 
@@ -9,7 +9,7 @@ import { TrustedContactsService } from './trusted-contacts.service';
  * opens to agree or withdraw. See docs/specs/TRUSTED_CONTACTS.md.
  */
 @Module({
-  controllers: [ContactInviteController, PublicConsentController],
+  controllers: [ContactInviteController, PublicConsentController, ContactClaimController],
   providers: [TrustedContactsService, ContactConsentService],
   exports: [TrustedContactsService, ContactConsentService],
 })

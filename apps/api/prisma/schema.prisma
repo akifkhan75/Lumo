@@ -29,6 +29,8 @@ model User {
   regionProfileId String?
 
   trustedContacts     TrustedContact[]
+  // Contacts (of other users) that this account has claimed.
+  contactLinks        TrustedContact[]     @relation("ContactLink")
   hazardReports       HazardReport[] // conditions this user has reported
   hazardConfirmations HazardConfirmation[] // reports this user has confirmed
 
@@ -75,6 +77,15 @@ model TrustedContact {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   invites ContactInvite[]
+
+  // The Lumo ACCOUNT of this contact, when they have claimed their invite while signed in
+  // (docs/specs/NOTIFICATIONS.md). It is the ONLY way a contact has a push address, and it is
+  // NEVER inferred from a matching phone or email: that would deliver one person's emergency
+  // alerts to whoever registers that address. Cleared when the contact withdraws, is removed,
+  // or their number or email changes. Never shown to the user who added the contact.
+  linkedUserId String?
+  linkedUser   User?     @relation("ContactLink", fields: [linkedUserId], references: [id], onDelete: SetNull)
+  linkedAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -504,6 +515,9 @@ model JourneyLink {
 }
 
 model Device {
+  // A push token belongs to ONE user at a time (partial unique index in the migration): a phone
+  // that changes hands, or an account that logs in on another account's phone, must not keep
+  // delivering the old owner's alerts.
   id           String    @id @default(uuid())
   userId       String
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -538,7 +552,7 @@ model AuditLog {
 // also the contact's means of withdrawing, so it is as sensitive as a password.
 // docs/specs/TRUSTED_CONTACTS.md.
 model ContactInvite {
-  id        String @id @default(uuid())
+  id        String         @id @default(uuid())
   contactId String
   contact   TrustedContact @relation(fields: [contactId], references: [id])
 

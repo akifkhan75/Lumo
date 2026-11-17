@@ -74,3 +74,18 @@ export class PublicConsentController {
     this.send(res, invite.state === 'invalid' ? 404 : 200, consentPage(invite, this.action(token)));
   }
 }
+
+/** A signed-in Lumo user claims a consent link. Authenticated, so it is separate from the public page. */
+@Controller('api/v1/contacts/invites')
+@UseGuards(JwtAuthGuard)
+export class ContactClaimController {
+  constructor(private readonly consent: ContactConsentService) {}
+
+  @Post(':token/claim')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async claim(@Request() req: any, @Param('token') token: string) {
+    await this.consent.claim(req.user.id, token, new Date());
+    return { claimed: true };
+  }
+}

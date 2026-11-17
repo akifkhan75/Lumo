@@ -85,8 +85,11 @@ const rows: Row<AttemptState, AttemptEvent, AttemptContext>[] = [
   ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('SENT', 'PROVIDER_REPORTED_FAILURE', 'FAILED', ['system'], {
     effects: ['triggerFallback'],
   }),
-  // An acknowledgement may arrive before any delivery receipt.
-  ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>(['SENT', 'DELIVERED'], 'ACK', 'ACKNOWLEDGED', ['contact'], {
+  // An acknowledgement may arrive before any delivery receipt — and after the ledger gave up
+  // waiting for one. UNKNOWN is "sent, not confirmed", and a person tapping "I'm responding"
+  // an hour later is the one signal that means help knows; refusing it because the receipt
+  // was late would strand the user. (A late DELIVERED receipt is still refused: it adds nothing.)
+  ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>(['SENT', 'DELIVERED', 'UNKNOWN'], 'ACK', 'ACKNOWLEDGED', ['contact'], {
     guard: canBeAcknowledged,
     effects: ['haltEscalation'],
   }),
@@ -113,16 +116,17 @@ export const ATTEMPT_MACHINE: Machine<AttemptState, AttemptEvent, AttemptContext
 
 /**
  * Terminal means no further transition is possible on this channel.
- * DELIVERED is terminal only where nobody can acknowledge through the channel.
+ * DELIVERED and UNKNOWN are terminal only where nobody can acknowledge through the channel.
  */
 export function isAttemptTerminal(state: AttemptState, capability: ChannelCapability): boolean {
   switch (state) {
     case 'ACKNOWLEDGED':
     case 'FAILED':
     case 'EXPIRED':
-    case 'UNKNOWN':
       return true;
     case 'DELIVERED':
+    case 'UNKNOWN':
+      // Where a person can acknowledge, a late acknowledgement is still possible.
       return !capability.humanAck;
     default:
       return false; // QUEUED, SENT

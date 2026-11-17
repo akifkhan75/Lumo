@@ -195,6 +195,8 @@ export class TrustedContactsService {
         email: this.cipher.encryptNullable(email, this.cell(row.id, 'email')),
         priority: patch.priority,
         consentId: identityChanged ? null : undefined,
+        // The account that claimed this contact was the person at the OLD number or address.
+        ...(identityChanged ? { linkedUserId: null, linkedAt: null } : {}),
       },
     });
     if (count !== 1) throw new NotFoundException('Contact not found');
@@ -215,7 +217,7 @@ export class TrustedContactsService {
     await this.endInvites(tx, row.id, ENDED_CONTACT_REMOVED);
     await tx.trustedContact.updateMany({
       where: { id: row.id, userId: row.userId, removedAt: null },
-      data: { removedAt: new Date(), consentId: null },
+      data: { removedAt: new Date(), consentId: null, linkedUserId: null, linkedAt: null },
     });
   }
 

@@ -389,9 +389,10 @@ delivery can never be recorded as delivered.
 | `SENT`      | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel** · ack may precede a receipt                                                                                                                           |
 | `SENT`      | `CHANNEL_CANNOT_REPORT`     | `UNKNOWN`      | the channel stops at `SENT`, **or** its receipts are provider-dependent (SMS), **or** only the device can vouch for it (push, web): a silent device looks like an absent one, so "sent, not confirmed" |
 | `SENT`      | `TTL_ELAPSED`               | `EXPIRED`      | `channel.maxState > SENT` — otherwise `UNKNOWN`                                                                                                                                                        |
+| `UNKNOWN`   | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel** · a late acknowledgement is the one signal that means help knows                                                                                      |
 | `DELIVERED` | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel**                                                                                                                                                       |
 
-Terminal: `ACKNOWLEDGED` · `FAILED` · `EXPIRED` · `UNKNOWN` · `DELIVERED` (when the
+Terminal: `ACKNOWLEDGED` · `FAILED` · `EXPIRED` · `UNKNOWN` and `DELIVERED` (when the
 channel cannot reach `ACKNOWLEDGED`).
 
 **Deliberate rejections:**
