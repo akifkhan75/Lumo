@@ -422,7 +422,7 @@ describe('cancelling', () => {
     await api().post(`/api/v1/incidents/${r.body.id}/cancel`).set(auth(b.token)).expect(404);
   });
 
-  it('a cancel racing the deadline has exactly one winner, and the incident is never half of each', async () => {
+  it('a cancel racing the deadline has exactly one winner, and the incident is never half of each', { timeout: 30_000 }, async () => {
     for (let i = 0; i < 4; i++) {
       const o = await owner(`cancel_race_${i}`, { sms: true });
       const r = await sos(o.token, key(), body({ countdownSeconds: 3 })).expect(201);

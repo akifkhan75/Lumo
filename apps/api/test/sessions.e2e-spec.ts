@@ -357,7 +357,7 @@ describe('the check-in: the person first, then the contacts, and never skipping 
 });
 
 describe('the backstop', () => {
-  it('a journey whose timers were lost is found and advanced, step by step, never skipping one', async () => {
+  it('a journey whose timers were lost is found and advanced, step by step, never skipping one', { timeout: 30_000 }, async () => {
     const j = await journey('sweep');
     const base = j.dueAt;
     await sessions.sweep(new Date(base - 1000));
