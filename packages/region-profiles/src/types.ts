@@ -91,6 +91,14 @@ export interface RegionProfile {
     readonly registrationRequired?: string;
     readonly registrationComplete?: boolean;
     readonly channels: readonly Channel[];
+    /**
+     * PLAT-5: the most messages ONE user may cause on each channel in a rolling 24 hours.
+     * A COUNT, not money: counts need no price table, never meet a currency, and are easy to
+     * tell a user ("you have reached today's limit of N text messages"). Required for every
+     * listed channel except device_direct_sms, which is sent from the user's own SIM and costs
+     * Lumo nothing. HYPOTHESES until validated; a cap set too low blocks someone asking for help.
+     */
+    readonly dailyCaps: Readonly<Partial<Record<Channel, number>>>;
   };
 
   readonly recording: {

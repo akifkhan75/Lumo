@@ -23,6 +23,8 @@ export type ProfileIssueCode =
   | 'AUTO_DIAL_FORBIDDEN'
   | 'DISPATCH_CLAIM_NO_AGREEMENT'
   | 'NO_CHANNELS'
+  | 'SPEND_CAP_MISSING'
+  | 'SPEND_CAP_INVALID'
   | 'UNKNOWN_CHANNEL'
   | 'NO_EMERGENCY_CHANNEL'
   | 'SMS_PROVIDER_MISSING'
@@ -94,6 +96,12 @@ export function completenessIssues(p: RegionProfile): ProfileIssue[] {
     if (known.length > 0 && !known.some((c) => CHANNEL_CAPABILITIES[c].isEmergencyGrade)) {
       add('NO_EMERGENCY_CHANNEL', 'messaging.channels', 'At least one emergency-grade channel is required; email alone is not');
     }
+  }
+  for (const channel of channels) {
+    if (channel === 'device_direct_sms') continue; // the user's own SIM; costs Lumo nothing
+    const cap = p.messaging.dailyCaps?.[channel];
+    if (cap === undefined) add('SPEND_CAP_MISSING', `messaging.dailyCaps.${channel}`, `No daily cap is set for the ${channel} channel (PLAT-5)`);
+    else if (!Number.isInteger(cap) || cap < 1) add('SPEND_CAP_INVALID', `messaging.dailyCaps.${channel}`, 'A daily cap must be a whole number of at least 1');
   }
   const needProvider = (channel: 'sms' | 'voice', ref: RegionProfile['messaging']['smsProvider'], missing: ProfileIssueCode) => {
     if (!channels.includes(channel)) return;
