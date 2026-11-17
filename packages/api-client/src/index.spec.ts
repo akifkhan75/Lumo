@@ -264,6 +264,23 @@ describe('ApiClient', () => {
     }));
   });
 
+  describe('offline SOS', () => {
+    it('flags a "too long ago" refusal so a device can tell it from any other 400', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400, json: () => Promise.resolve({ message: 'Too long ago. Nothing was sent.', tooLate: true }) });
+      await expect(client.raiseSos('k-12345678', { triggerType: 'manual', triggeredAt: 'x', elapsedSeconds: 99999 })).rejects.toMatchObject({ kind: 'http', status: 400, tooLate: true });
+    });
+    it('does not flag any other refusal as too late', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400, json: () => Promise.resolve({ message: 'bad' }) });
+      await expect(client.raiseSos('k-12345678', { triggerType: 'manual', triggeredAt: 'x' })).rejects.toMatchObject({ tooLate: false });
+    });
+    it('cancels by key with the key as the Idempotency-Key header, and an explicit bearer wins', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id: 'i', state: 'CANCELLED' }) });
+      client.setToken('login');
+      await client.cancelSosByKey('k-12345678', 'emergency');
+      expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/sos/cancel`, expect.objectContaining({ method: 'POST', headers: { 'Idempotency-Key': 'k-12345678', Authorization: 'Bearer emergency' } }));
+    });
+  });
+
   describe('journey links', () => {
     it('mints a link with the options given and returns the path once', async () => {
       const made = { id: 'l1', path: '/j/tok', expiresAt: '2026-01-01T00:00:00Z', hasPin: true, sentByLumo: false };

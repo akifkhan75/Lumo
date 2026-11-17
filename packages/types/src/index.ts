@@ -177,6 +177,8 @@ export interface Incident {
   mode?: 'real' | 'practice';
   triggerType: string;
   countdownEndsAt: string | null;
+  /** Seconds between when the alert should have gone and when Lumo got it. 0 or absent for an ordinary SOS. */
+  lateBySeconds?: number;
   locationAvailable: boolean;
   outcome: string;
   /** The escalation ladder: the step in flight, of how many, and when it gives way to the next. */
@@ -194,6 +196,8 @@ export interface RaiseSosInput {
   triggerType: 'manual' | 'shake' | 'voice' | 'safeword' | 'crash' | 'fall';
   triggeredAt: string;
   countdownSeconds?: number;
+  /** How long ago the press was, measured on this device (the server works out the time from its own clock). */
+  elapsedSeconds?: number;
   /** A rehearsal: the whole path, and nobody is contacted. */
   mode?: 'real' | 'practice';
   location?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number };

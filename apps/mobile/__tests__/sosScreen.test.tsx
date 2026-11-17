@@ -120,7 +120,8 @@ describe('the SOS screen', () => {
       api.raiseSos.mockRejectedValueOnce(new ApiError('Network request failed', 'network'));
       await open({ trigger: 'manual' });
       expect(text()).toContain('Nothing has been sent');
-      expect(text()).toContain('could not reach its server');
+      expect(text()).toContain("Lumo can't be reached");
+      expect(text()).toContain('Lumo will keep trying');
       expect(control(/Open the phone dialler to call/)).toBeDefined();
       api.raiseSos.mockResolvedValueOnce(inc('CREATED'));
       await act(async () => { control('Try to start the alert again').props.onPress(); });
