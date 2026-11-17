@@ -341,3 +341,9 @@ Tracked in [ROADMAP.md](../product/ROADMAP.md); listed here so nobody looks for 
 | `POST /api/v1/devices`                                        | Push token registration                                                                   |
 | `POST /api/v1/auth/refresh`, `/forgot-password`               | Session and account recovery                                                              |
 | `GET /api/v1/me`                                              | Identity without the whole settings payload                                               |
+
+## Practice (1.12a)
+
+`POST /api/v1/sos` accepts `mode: "practice"`. The incident it returns has `mode: "practice"` and every attempt has `simulated: true`; nothing
+is sent, queued or costed, and the ledger is the simulated one (`SIMULATED_FAILURE` marks the example failure). `duress: true` is still refused.
+Every incident view now carries `mode` and each attempt `simulated` (false for a real one).

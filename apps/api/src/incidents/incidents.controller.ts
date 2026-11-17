@@ -47,8 +47,7 @@ export class IncidentsController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async sos(@Request() req: any, @Headers('idempotency-key') key: string | undefined, @Body() body: SosDto, @Res({ passthrough: true }) res: Response) {
     if (!key || !KEY.test(key)) throw new BadRequestException('An Idempotency-Key header (8–128 letters, digits or . _ : -) is required.');
-    // Refused, never accepted-and-ignored: either would send real alerts or show a ledger that must be hidden.
-    if (body.mode === 'practice') throw new BadRequestException('Practice mode is not available yet. Nothing was sent.');
+    // Refused, never accepted-and-ignored: it would show a ledger that must be hidden.
     if (body.duress) throw new BadRequestException('This option is not available yet. Nothing was sent.');
 
     const { replay, incident } = await this.incidents.raise(caller(req), key, {
@@ -58,6 +57,7 @@ export class IncidentsController {
       location: body.location ? { latitude: body.location.latitude, longitude: body.location.longitude, accuracyM: body.location.accuracyM ?? null, capturedAt: body.location.capturedAt } : null,
       place: body.place ?? null,
       sessionId: body.sessionId ?? null,
+      mode: body.mode ?? 'real',
     });
     res.status(replay ? 200 : 201);
     return incident;

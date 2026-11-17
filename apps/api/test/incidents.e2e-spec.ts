@@ -187,10 +187,9 @@ describe('raising an incident', () => {
     await api().post('/api/v1/sos').set('Idempotency-Key', key()).send(body()).expect(401);
   });
 
-  it('refuses practice, duress and triggers that do not exist yet — and sends nothing', async () => {
+  it('refuses duress and triggers that do not exist yet — and sends nothing', async () => {
     const o = await owner('refuse', { sms: true });
     const before = await prisma.emergencyIncident.count({ where: { userId: o.userId } });
-    await sos(o.token, key(), body({ mode: 'practice' })).expect(400);
     await sos(o.token, key(), body({ duress: true })).expect(400);
     await sos(o.token, key(), body({ triggerType: 'duress' })).expect(400);
     await sos(o.token, key(), body({ triggerType: 'missed_check_in' })).expect(400);

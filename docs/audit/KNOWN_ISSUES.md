@@ -1045,3 +1045,20 @@ in a way they would notice. Louder, repeated local reminders need a scheduled no
 A journey with the phone in a pocket and the screen off, which is the usual walk home, saves no positions: foreground only, by decision
 (docs/specs/LOCATION.md). The position an alert carries is therefore the last one saved while Lumo was open, with its age. Background
 location is its own permission, review and promise (milestone 1.16 / a decision).
+
+## Found while building milestone 1.12a — 2026-11-17
+
+### 🟡 KI-116 — A practice run with one attempt shows no failure
+
+The simulated failure is the last of two or more attempts. With one contact on push alone there is exactly one attempt, and failing it would
+invent a failure of the only path, so that run shows none. A second contact, or SMS turned on, shows one.
+
+### 🟡 KI-117 — Practice simulates one pass, not the ladder over time
+
+The run resolves who would be tried and over which channels and writes the ledger at once, with fixed offsets. It does not step through the
+escalation timeouts, retries or an acknowledgement, so a person does not yet see what happens when the first contact stays silent.
+
+### 🟠 KI-118 — No way to start a practice run from the app, and no activation record
+
+The server accepts it; the app has no entry, banner or offline run (1.12b). Onboarding step 4 and the "completed one practice run" activation
+measure (PRD §7) are not built, and there is no metrics pipeline yet: `mode` on the incident is the hook that keeps rehearsals out of it.

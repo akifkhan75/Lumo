@@ -53,6 +53,13 @@ export class SendWorker implements OnModuleInit {
       return void (await this.skip(attemptId, 'NO_ADDRESS', now));
     }
 
+    // The practice boundary, before anything else can lead to a provider: a rehearsal is never sent (docs/specs/PRACTICE_MODE.md).
+    const incident = await this.prisma.emergencyIncident.findUnique({ where: { id: attempt.incidentId }, select: { triggerType: true, mode: true } });
+    if (incident?.mode === 'practice') {
+      this.ledger.counters.set('send.practice_refused', (this.ledger.counters.get('send.practice_refused') ?? 0) + 1);
+      return void (await this.skip(attemptId, 'PRACTICE_MODE', now));
+    }
+
     // Consent and existence are checked AGAIN here: both can change between planning and sending.
     const contact = await this.contacts.findActive(this.prisma, attempt.recipientId);
     if (!contact) return void (await this.skip(attemptId, 'CONTACT_REMOVED', now));
@@ -72,7 +79,6 @@ export class SendWorker implements OnModuleInit {
     const owner = await this.prisma.user.findUnique({ where: { id: contact.userId }, select: { fullName: true, shareLocationOnSos: true } });
     const name = owner?.fullName ?? 'Someone';
     const resolved = attempt.purpose === 'RESOLVED';
-    const incident = await this.prisma.emergencyIncident.findUnique({ where: { id: attempt.incidentId }, select: { triggerType: true } });
     const kind: AlertKind = incident?.triggerType === 'missed_check_in' ? 'missed_check_in' : 'sos';
     // A position goes into a message only if the user allows it, and only for an alert (not for "it ended").
     const location = !resolved && owner?.shareLocationOnSos ? await this.latestLocation(attempt.incidentId) : null;

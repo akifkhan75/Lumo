@@ -31,8 +31,8 @@ device shows a countdown and can `POST /incidents/:id/cancel` until then. A kill
 
 ### Refused until they exist
 
-`mode: "practice"` (no send boundary until 1.12) and `duress: true` (no device suppression until 2.5) are **refused with
-400**, not accepted and ignored: accepting either today would send real alerts, or show a ledger that must be hidden.
+`duress: true` (no device suppression until 2.5) is **refused with 400**, not accepted and ignored: it would show a ledger that must be
+hidden. `mode: "practice"` is accepted (1.12, `PRACTICE_MODE.md`): it runs the whole path and contacts nobody.
 
 ### The emergency token (PLAT-4)
 
@@ -123,7 +123,7 @@ No coordinate is ever logged.
 
 - **Never sent to anyone real.** No providers (KI-68, KI-78, KI-82). The plan's two-device exit stays open.
 - Without 1.9, one plan only: no retry ladder, no next contact on silence.
-- `duress` and `practice` are refused (above).
+- `duress` is refused (above). `practice` is a rehearsal and sends nothing.
 - UTC clock times in SMS (no timezone known for the contact).
 - `sendSmsOnSos` defaults off (KI-83).
 
@@ -133,7 +133,7 @@ No coordinate is ever logged.
 | ------------------------------------------------------------------------------------------- | ---------------- |
 | The same `Idempotency-Key` twice creates one incident; concurrent ones plan once            | database suite   |
 | Another user's key is 409 and leaks nothing                                                 | database suite   |
-| Practice and duress are refused; the countdown is clamped by trigger                        | database suite   |
+| Duress is refused; the countdown is clamped by trigger                                      | database suite   |
 | Dispatch proceeds with no location; the message says so                                     | database suite   |
 | An expired login but a valid emergency token dispatches                                     | database suite   |
 | Only the SOS routes accept the emergency token; the JWT strategy rejects it                 | route-table test |

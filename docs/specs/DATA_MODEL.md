@@ -446,3 +446,20 @@ Hand-written in the migration. `prisma migrate diff` ignores all of it, so
 ciphertext (`enc:v1:<keyId>:<iv>:<tag>:<data>`), bound to model, column and **row id** so a value
 copied into another row fails authentication. The key is `DATA_ENCRYPTION_KEY`, required at boot.
 `fullName` and `email` (the account's) are **not** encrypted — they are not in the spec's list.
+
+// Practice Mode's SIMULATED ledger (docs/specs/PRACTICE_MODE.md). Deliberately not a NotificationAttempt: a trigger refuses a real attempt for
+// a practice incident, and no worker reads this table. A second trigger makes EmergencyIncident.mode immutable.
+model PracticeAttempt {
+  id          String @id @default(uuid())
+  incidentId  String
+  incident    EmergencyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  recipientId String
+  channel     Channel
+  state       AttemptState
+  reason      String?
+  queuedAt    DateTime
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  failedAt    DateTime?
+  @@index([incidentId])
+}
