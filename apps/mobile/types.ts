@@ -25,7 +25,7 @@ export type RootStackParamList = {
   SafetyAssistant: undefined;
   // Settings are optional: Emergency is reachable signed out and before the
   // settings fetch finishes, and must open either way.
-  Emergency: { settings?: UserSettings; } | undefined;
+  Emergency: { settings?: UserSettings; trigger?: 'manual' | 'shake' | 'voice' | 'crash'; resume?: boolean } | undefined;
 };
 
 export type SettingsStackParamList = {

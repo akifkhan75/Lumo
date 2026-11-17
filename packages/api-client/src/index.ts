@@ -1,4 +1,4 @@
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken } from '@lumo/types';
 
 export interface AuthResponse {
   user: PersonalInfo;
@@ -69,10 +69,12 @@ export class ApiClient {
     return this.token;
   }
 
-  private getHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  private getHeaders(extraHeaders: Record<string, string> = {}, bearer: string | null | undefined = undefined): Record<string, string> {
     const headers: Record<string, string> = { ...extraHeaders };
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    // An explicit bearer (the emergency token) wins over the stored login.
+    const token = bearer === undefined ? this.token : bearer;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
     return headers;
   }
@@ -137,6 +139,37 @@ export class ApiClient {
       this.setToken(data.token);
     }
     return data;
+  }
+
+  // Incidents (docs/specs/INCIDENTS.md). `bearer` lets the caller use the emergency token, which is
+  // what keeps an SOS from depending on the login being valid.
+  async raiseSos(key: string, input: RaiseSosInput, bearer?: string | null): Promise<{ incident: Incident }> {
+    const body = await this.send<Incident & { __status?: number }>('/api/v1/sos', {
+      method: 'POST',
+      headers: this.getHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': key }, bearer),
+      body: JSON.stringify(input),
+    });
+    return { incident: body };
+  }
+
+  async getIncident(id: string, bearer?: string | null): Promise<Incident> {
+    return this.send(`/api/v1/incidents/${encodeURIComponent(id)}`, { headers: this.getHeaders({}, bearer) });
+  }
+
+  async cancelIncident(id: string, bearer?: string | null): Promise<Incident> {
+    return this.send(`/api/v1/incidents/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: this.getHeaders({}, bearer) });
+  }
+
+  async resolveIncident(id: string, bearer?: string | null): Promise<Incident> {
+    return this.send(`/api/v1/incidents/${encodeURIComponent(id)}/resolve`, { method: 'POST', headers: this.getHeaders({}, bearer) });
+  }
+
+  async mintEmergencyToken(deviceKey: string): Promise<EmergencyToken> {
+    return this.send('/api/v1/emergency-token', {
+      method: 'POST',
+      headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ deviceKey }),
+    });
   }
 
   // Settings

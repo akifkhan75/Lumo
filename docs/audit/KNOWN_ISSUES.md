@@ -926,3 +926,27 @@ locally and sends on reconnect (1.13); until then it must say so and offer the d
 
 A contact's timezone is unknown, so the SMS states UTC. The position is a Google Maps link, which tells Google the
 location when opened. A Lumo-hosted page (1.11) replaces it.
+
+## Found while building milestone 1.8b — 2026-11-18
+
+### 🔴 KI-89 — The SOS screen has never run on a device or against a real server
+
+Everything is tested in Jest with the API mocked. The countdown, polling, the dialler for a number (`tel:911` as opposed
+to a bare `tel:`, KI-34 still open), the emergency-token lifecycle and resuming after a kill are unverified on iOS and
+Android. A native rebuild is needed (it already was, for location, maps and secure-store).
+
+### 🟠 KI-90 — The countdown shown is the device's clock
+
+The server decides when the countdown ends and the screen moves on only when the server says so, so a wrong phone clock
+cannot dispatch early or late; but the seconds it shows are counted locally and can disagree with the server's by the
+clock's error and the request's latency.
+
+### 🟠 KI-91 — A press while offline sends nothing, and nothing queues it
+
+The screen says nothing was sent and offers the dialler and "try again" (user-initiated, same key). There is no
+automatic send on reconnect, and the pre-filled device SMS fallback is not built (1.13).
+
+### 🟡 KI-92 — Emergency numbers on screen rest on unverified profile data
+
+`911` and `15` come from draft profiles (KI-51, KI-52); the fallback `112` is flagged unverified on screen. The regional
+Punjab number is shown as "might work" until the subdivision is confirmed.

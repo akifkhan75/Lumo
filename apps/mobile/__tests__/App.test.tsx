@@ -39,7 +39,7 @@ const settings: any = {
 const LABEL = {
   sos: 'Emergency. Opens the emergency screen and phone dialler',
   help: 'Emergency help. Opens the emergency screen and phone dialler',
-  dialler: 'Open the phone dialler to call your local emergency number',
+  dialler: 'Open the phone dialler to call 112', // no position known: the unverified international number
   retry: 'Try loading your settings again',
   close: 'Close the emergency screen',
 };
@@ -105,7 +105,7 @@ describe('App: the emergency path does not depend on anything else', () => {
       await tap(LABEL.help);                          // tap 1
       expect(has('Nothing has been sent')).toBe(true);
       await tap(LABEL.dialler);                       // tap 2
-      expect(openURL).toHaveBeenCalledWith('tel:');
+      expect(openURL).toHaveBeenCalledWith('tel:112');
     });
 
     it('signed in, with the settings request hanging forever', async () => {
@@ -116,7 +116,7 @@ describe('App: the emergency path does not depend on anything else', () => {
       await tap(LABEL.sos);                           // tap 1
       expect(has('Nothing has been sent')).toBe(true);
       await tap(LABEL.dialler);                       // tap 2
-      expect(openURL).toHaveBeenCalledWith('tel:');
+      expect(openURL).toHaveBeenCalledWith('tel:112');
     });
 
     it('signed in, with the settings request failing', async () => {
@@ -126,7 +126,7 @@ describe('App: the emergency path does not depend on anything else', () => {
 
       await tap(LABEL.sos);
       await tap(LABEL.dialler);
-      expect(openURL).toHaveBeenCalledWith('tel:');
+      expect(openURL).toHaveBeenCalledWith('tel:112');
     });
   });
 
@@ -272,7 +272,7 @@ describe('App: the emergency path does not depend on anything else', () => {
       expect(has('Nothing has been sent')).toBe(true);
       // And the dialler still works from where they are.
       await tap(LABEL.dialler);
-      expect(openURL).toHaveBeenCalledWith('tel:');
+      expect(openURL).toHaveBeenCalledWith('tel:112');
 
       // Leaving the emergency screen lands on login, not on a dead end.
       await tap(LABEL.close);

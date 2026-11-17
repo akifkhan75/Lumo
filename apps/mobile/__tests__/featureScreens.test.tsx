@@ -122,7 +122,7 @@ describe('Feature and Modal Screens', () => {
       const dialler = (root: any) =>
         root.findAll(
           (n: any) =>
-            n.props.accessibilityLabel === 'Open the phone dialler to call your local emergency number' &&
+            n.props.accessibilityLabel === 'Open the phone dialler to call 112' &&
             typeof n.props.onPress === 'function',
         )[0];
 
@@ -134,7 +134,7 @@ describe('Feature and Modal Screens', () => {
 
         await act(async () => { dialler(testRenderer.root).props.onPress(); });
 
-        expect(openURL).toHaveBeenCalledWith('tel:');
+        expect(openURL).toHaveBeenCalledWith('tel:112');
         expect(JSON.stringify(testRenderer.toJSON())).not.toContain('Could not open the phone dialler');
         openURL.mockRestore();
         act(() => { testRenderer.unmount(); });
