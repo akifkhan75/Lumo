@@ -147,6 +147,36 @@ describe('the ladder', () => {
     });
   });
 
+  describe('a step where every attempt failed does not wait out its timeout', () => {
+    it('advances at once to the next person, with a fresh deadline from now', () => {
+      const { state, decisions } = drive(policy(), [[{ type: 'START' }], [{ type: 'STEP_ALL_FAILED', stepOrder: 1 }, T0 + 5_000]]);
+      expect(dispatched(decisions)).toEqual(['maya', 'dad']);
+      expect(state.stepIndex).toBe(1);
+      expect(state.deadline).toBe(T0 + 5_000 + 120_000);
+    });
+    it('on the last step it exhausts and prompts for the emergency number', () => {
+      const { state, decisions } = drive(policy({ steps: policy().steps.slice(0, 1) }), [[{ type: 'START' }], [{ type: 'STEP_ALL_FAILED', stepOrder: 1 }, T0 + 1000]]);
+      expect(state.phase).toBe('EXHAUSTED');
+      expect(of(decisions, 'PROMPT_EMERGENCY_NUMBER')).toHaveLength(1);
+    });
+    it('for a step that is not in flight it changes nothing', () => {
+      const started = drive(policy(), [[{ type: 'START' }]]).state;
+      const r = stepLadder(started, { type: 'STEP_ALL_FAILED', stepOrder: 2 }, input(policy(), { now: T0 + 1000 }));
+      expect(r).toMatchObject({ ok: true, state: started, decisions: [] });
+    });
+    it('is refused before the ladder starts and once it has halted or finished', () => {
+      expect(stepLadder(INITIAL_LADDER, { type: 'STEP_ALL_FAILED', stepOrder: 1 }, input(policy()))).toMatchObject({ ok: false, error: 'NOT_STARTED' });
+      const halted = drive(policy(), [[{ type: 'START' }], [{ type: 'ACK' }]]).state;
+      expect(stepLadder(halted, { type: 'STEP_ALL_FAILED', stepOrder: 1 }, input(policy()))).toMatchObject({ ok: false, error: 'NOT_RUNNING' });
+    });
+    it('after an acknowledgement a late "all failed" cannot restart the ladder', () => {
+      const halted = drive(policy(), [[{ type: 'START' }], [{ type: 'ACK' }]]).state;
+      const r = stepLadder(halted, { type: 'STEP_ALL_FAILED', stepOrder: 1 }, input(policy()));
+      expect(r.ok).toBe(false);
+      expect(r.state.phase).toBe('HALTED');
+    });
+  });
+
   describe('acknowledgement', () => {
     it('an ack at step 2 prevents step 3', () => {
       const { decisions, state } = drive(policy(), [

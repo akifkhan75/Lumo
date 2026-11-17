@@ -312,3 +312,36 @@ describe('the SOS screen', () => {
     }
   });
 });
+
+describe('the escalation plan on the SOS screen', () => {
+  let t: renderer.ReactTestRenderer;
+  beforeEach(() => {
+    jest.useFakeTimers(); jest.clearAllMocks();
+    api.getSelfDefenseTips.mockResolvedValue([]);
+    api.saveActiveSos.mockResolvedValue(undefined as never);
+    api.clearActiveSos.mockResolvedValue(undefined as never);
+  });
+  afterEach(() => { act(() => t?.unmount()); jest.useRealTimers(); });
+  const show = async (i: Incident) => {
+    api.raiseSos.mockResolvedValue(i);
+    mockParams = { trigger: 'manual' };
+    await act(async () => { t = renderer.create(<EmergencyScreen />); });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    return JSON.stringify(t.toJSON());
+  };
+
+  it('says who is tried next, in "will try" words, while a step is in flight', async () => {
+    const out = await show(inc('NOTIFYING', [att({ state: 'SENT', sentAt: T })], { escalation: { phase: 'RUNNING', stepOrder: 1, steps: 3, nextStepAt: Date.now() + 120_000 } }));
+    expect(out).toContain('If nobody responds, Lumo will try the next contact at about');
+    expect(out.toLowerCase()).not.toMatch(/will be notified|help is/);
+  });
+  it('says nothing about a next step on the last one, or once someone is responding', async () => {
+    expect(await show(inc('NOTIFYING', [att()], { escalation: { phase: 'RUNNING', stepOrder: 3, steps: 3, nextStepAt: Date.now() + 1000 } }))).not.toContain('try the next contact');
+    act(() => t.unmount());
+    expect(await show(inc('ACKNOWLEDGED', [att({ channel: 'push', state: 'ACKNOWLEDGED', acknowledgedAt: T })], { escalation: { phase: 'HALTED', stepOrder: 1, steps: 3, nextStepAt: null } }))).not.toContain('try the next contact');
+  });
+  it('a plan limit is explained', async () => {
+    const out = await show(inc('NOTIFYING', [att({ state: 'FAILED', reason: 'MAX_RECIPIENTS', recipientName: 'Dad', recipientId: 'c2' })]));
+    expect(out).toContain('your plan limits how many people are alerted');
+  });
+});

@@ -40,7 +40,7 @@ export function ttlSeconds(channel: Channel): number {
   }
 }
 
-const SKIP_TO_REASON: Record<SkipReason, string> = {
+export const SKIP_TO_REASON: Record<SkipReason, string> = {
   NOT_INVITED: 'CONSENT_NOT_INVITED',
   AWAITING_CONSENT: 'CONSENT_AWAITING',
   INVITE_EXPIRED: 'CONSENT_INVITE_EXPIRED',
@@ -99,87 +99,74 @@ export class DispatchService {
     return (await tx.device.count({ where: { userId: link.linkedUserId, revokedAt: null, pushToken: { not: null } } })) > 0;
   }
 
-  /** Plan inside the caller's transaction, so an incident and its attempts commit together. */
-  async planIn(tx: Tx, input: PlanInput): Promise<PlannedAttempt[]> {
+  /**
+   * Plan ONE recipient inside the caller's transaction: an attempt per channel, each queued, gated by region, checked for an
+   * address, and counted against the daily cap, or settled at once as "never attempted" with the reason. A recipient who may
+   * not be alerted at all (`skipReason`) is ledgered the same way, spending no budget.
+   *
+   * The cap is read and spent under a per-user advisory lock, so two concurrent plans cannot both read the same budget.
+   * The step it belongs to is recorded on the attempt (`escalationStep`), which is how the ladder knows whether a step failed.
+   */
+  async planRecipientIn(
+    tx: Tx,
+    input: { incidentId: string; userId: string; recipientId: string; channels: readonly Channel[]; stepOrder: number; skipReason?: string; now?: Date },
+  ): Promise<PlannedAttempt[]> {
     const now = input.now ?? new Date();
-    const incident = await tx.emergencyIncident.findUniqueOrThrow({
-      where: { id: input.incidentId },
-      select: { userId: true, regionProfileId: true },
-    });
+    const incident = await tx.emergencyIncident.findUniqueOrThrow({ where: { id: input.incidentId }, select: { userId: true, regionProfileId: true } });
     if (incident.userId !== input.userId) throw new Error('The incident does not belong to this user.');
 
     // Region of the INCIDENT (where the device was), not of the account.
     const profile = this.regions.profileFor(incident.regionProfileId);
     if (!profile) this.ledger.counters.set('plan.no_region_profile', (this.ledger.counters.get('plan.no_region_profile') ?? 0) + 1);
 
-    // One plan at a time per user: the cap is read, then spent, and two concurrent plans must not
-    // both read the same remaining budget. The lock is released with the transaction.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lumo.cap:${input.userId}`}))`;
-    const remaining = new Map<Channel, number | null>();
-    for (const channel of new Set(input.channels)) {
-      const cap = this.capFor(profile, channel);
-      if (cap === null || !SENDABLE.has(channel)) {
-        remaining.set(channel, null);
-        continue;
-      }
-      const used = await tx.notificationAttempt.count({
-        where: { channel, reservedAt: { gt: new Date(now.getTime() - DAY_MS) }, incident: { userId: input.userId } },
-      });
-      remaining.set(channel, Math.max(0, cap - used));
-    }
-
-    const { eligible, skipped } = resolveRecipients(await this.contacts.list(tx, input.userId));
     const planned: PlannedAttempt[] = [];
-
-    const create = async (recipientId: string, channel: Channel, reserved: boolean) => {
+    const create = async (channel: Channel, reserved: boolean) => {
       const attempt = await tx.notificationAttempt.create({
-        data: { incidentId: input.incidentId, recipientId, channel, escalationStep: 0, queuedAt: now, reservedAt: reserved ? now : null },
+        data: { incidentId: input.incidentId, recipientId: input.recipientId, channel, escalationStep: input.stepOrder, queuedAt: now, reservedAt: reserved ? now : null },
       });
       await tx.notificationEvent.create({ data: { attemptId: attempt.id, toState: 'QUEUED', reason: 'PLANNED', occurredAt: now } });
       return attempt.id;
     };
-    const settle = async (recipientId: string, channel: Channel, event: 'NOT_ATTEMPTED' | 'SPEND_CAP_REACHED', by: 'system' | 'policy', reason: string) => {
-      const attemptId = await create(recipientId, channel, false);
+    const settle = async (channel: Channel, event: 'NOT_ATTEMPTED' | 'SPEND_CAP_REACHED', by: 'system' | 'policy', reason: string) => {
+      const attemptId = await create(channel, false);
       await this.ledger.apply(attemptId, [{ event, by, reason }], now, tx);
-      planned.push({ attemptId, recipientId, channel, outcome: event === 'SPEND_CAP_REACHED' ? 'capped' : 'not_attempted', reason });
+      planned.push({ attemptId, recipientId: input.recipientId, channel, outcome: event === 'SPEND_CAP_REACHED' ? 'capped' : 'not_attempted', reason });
     };
 
-    // Contacts are in priority order, so the budget goes to the first-priority contacts first.
+    for (const channel of input.channels) {
+      if (input.skipReason) { await settle(channel, 'NOT_ATTEMPTED', 'policy', input.skipReason); continue; }
+      const gate = profile ? channelGate(profile, channel) : ({ allowed: true } as const);
+      if (!gate.allowed) { await settle(channel, 'NOT_ATTEMPTED', 'policy', gate.reason); continue; }
+      if (!SENDABLE.has(channel)) { await settle(channel, 'NOT_ATTEMPTED', 'system', 'NO_ADDRESS'); continue; } // no sender for this channel yet (web)
+      // No claimed account or no live device: nothing to send to, so nothing is reserved. The worker checks again at send time.
+      if (channel === 'push' && !(await this.hasPushAddress(tx, input.recipientId))) { await settle(channel, 'NOT_ATTEMPTED', 'system', 'NO_ADDRESS'); continue; }
+
+      const cap = this.capFor(profile, channel);
+      if (cap !== null) {
+        const used = await tx.notificationAttempt.count({ where: { channel, reservedAt: { gt: new Date(now.getTime() - DAY_MS) }, incident: { userId: input.userId } } });
+        if (used >= cap) { await settle(channel, 'SPEND_CAP_REACHED', 'system', 'SPEND_CAP'); continue; }
+      }
+      const attemptId = await create(channel, true);
+      await this.queue.enqueueSend(tx, attemptId);
+      await this.queue.enqueueExpiry(tx, attemptId, ttlSeconds(channel));
+      if (channel === 'push') await this.queue.enqueueReceipts(tx, attemptId, PUSH_RECEIPT_CHECK_SECONDS);
+      planned.push({ attemptId, recipientId: input.recipientId, channel, outcome: 'queued' });
+    }
+    if (planned.some(p => p.outcome === 'capped')) this.logger.warn(`daily cap reached for a plan (incident ${input.incidentId}); the user must be told`);
+    return planned;
+  }
+
+  /** Plan every contact at once, in priority order (no ladder). The ladder uses planRecipientIn one step at a time. */
+  async planIn(tx: Tx, input: PlanInput): Promise<PlannedAttempt[]> {
+    const now = input.now ?? new Date();
+    const { eligible, skipped } = resolveRecipients(await this.contacts.list(tx, input.userId));
+    const planned: PlannedAttempt[] = [];
     for (const contact of eligible) {
-      for (const channel of input.channels) {
-        const gate = profile ? channelGate(profile, channel) : ({ allowed: true } as const);
-        if (!gate.allowed) {
-          await settle(contact.id, channel, 'NOT_ATTEMPTED', 'policy', gate.reason);
-        } else if (!SENDABLE.has(channel)) {
-          // No sender for this channel yet (web).
-          await settle(contact.id, channel, 'NOT_ATTEMPTED', 'system', 'NO_ADDRESS');
-        } else if (channel === 'push' && !(await this.hasPushAddress(tx, contact.id))) {
-          // No claimed account or no live device: nothing to send to, so nothing is reserved. The
-          // worker checks again at send time (a device can be revoked in between).
-          await settle(contact.id, channel, 'NOT_ATTEMPTED', 'system', 'NO_ADDRESS');
-        } else if (remaining.get(channel) === 0) {
-          await settle(contact.id, channel, 'SPEND_CAP_REACHED', 'system', 'SPEND_CAP');
-        } else {
-          const left = remaining.get(channel);
-          if (left !== null && left !== undefined) remaining.set(channel, left - 1);
-          const attemptId = await create(contact.id, channel, true);
-          await this.queue.enqueueSend(tx, attemptId);
-          await this.queue.enqueueExpiry(tx, attemptId, ttlSeconds(channel));
-          if (channel === 'push') await this.queue.enqueueReceipts(tx, attemptId, PUSH_RECEIPT_CHECK_SECONDS);
-          planned.push({ attemptId, recipientId: contact.id, channel, outcome: 'queued' });
-        }
-      }
+      planned.push(...(await this.planRecipientIn(tx, { incidentId: input.incidentId, userId: input.userId, recipientId: contact.id, channels: input.channels, stepOrder: 0, now })));
     }
-
-    // A contact who may not be alerted is ledgered with the reason; skipped rows spend no budget.
     for (const skip of skipped) {
-      for (const channel of input.channels) {
-        await settle(skip.contactId, channel, 'NOT_ATTEMPTED', 'policy', SKIP_TO_REASON[skip.reason]);
-      }
-    }
-
-    if (planned.some(p => p.outcome === 'capped')) {
-      this.logger.warn(`daily cap reached for a plan (incident ${input.incidentId}); the user must be told`);
+      planned.push(...(await this.planRecipientIn(tx, { incidentId: input.incidentId, userId: input.userId, recipientId: skip.contactId, channels: input.channels, stepOrder: 0, skipReason: SKIP_TO_REASON[skip.reason], now })));
     }
     return planned;
   }

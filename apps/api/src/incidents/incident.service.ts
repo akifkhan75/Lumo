@@ -13,7 +13,8 @@ import {
   type IncidentState,
   type Rejection,
 } from '@lumo/safety-domain';
-import { DispatchService, type PlannedAttempt } from '../notifications/dispatch.service';
+import { EscalationService } from '../escalation/escalation.service';
+import { DispatchService } from '../notifications/dispatch.service';
 import { LedgerService } from '../notifications/ledger.service';
 import { NotificationQueue } from '../notifications/queue';
 import { LocationService, validateSnapshots } from '../location/location.service';
@@ -63,6 +64,8 @@ export interface IncidentView {
   readonly countdownEndsAt: Date | null;
   readonly locationAvailable: boolean;
   readonly outcome: string;
+  /** The ladder: which step is in flight, of how many, and when it gives way to the next. */
+  readonly escalation: { phase: string; stepOrder: number | null; steps: number; nextStepAt: number | null } | null;
   /** More than one channel can reach one contact, so these are per contact. */
   readonly reached: readonly string[];
   readonly acknowledged: readonly string[];
@@ -87,6 +90,7 @@ export class IncidentService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dispatchSvc: DispatchService,
+    private readonly escalation: EscalationService,
     private readonly ledger: LedgerService,
     private readonly queue: NotificationQueue,
     private readonly locations: LocationService,
@@ -94,12 +98,16 @@ export class IncidentService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.queue.setHandlers({ countdown: id => this.dispatch(id) });
+    this.queue.setHandlers({ countdown: id => this.dispatch(id), step: (id, order) => this.escalation.timeout(id, order) });
+    // After the ladder moves on its own (a step's timer), bring the incident up to date.
+    this.escalation.onAdvanced((id, now) => this.recompute(id, now));
     // After an attempt's state changes (committed), bring the incident up to date.
     this.ledger.onApplied(async (attemptId, result) => {
       const attempt = await this.prisma.notificationAttempt.findUnique({ where: { id: attemptId }, select: { incidentId: true, purpose: true } });
       if (!attempt || attempt.purpose !== 'ALERT') return;
       if (result.to === 'ACKNOWLEDGED') await this.apply(attempt.incidentId, 'ACK_RECEIVED', 'contact', 'CONTACT_RESPONDING');
+      // Nobody reached in the step in flight: move on to the next person now, not after the timeout.
+      if (result.to === 'FAILED' || result.to === 'EXPIRED') await this.escalation.stepMayHaveFailed(attempt.incidentId);
       await this.recompute(attempt.incidentId);
     });
   }
@@ -129,6 +137,10 @@ export class IncidentService implements OnModuleInit {
         ...(to === 'CLOSED' ? { closedAt: now } : {}),
       },
     });
+    // The machine DECLARES these effects; the ladder is what carries them out, in this same transaction.
+    if (event === 'ACK_RECEIVED') await this.escalation.halt(tx, incidentId, now);
+    else if (event === 'RESOLVE') await this.escalation.stop(tx, incidentId);
+    else if (event === 'UNACK_RECEIVED') await this.escalation.resume(tx, incidentId, now);
     return { applied: true, from: out.record.from, to, effects: out.record.effects };
   }
 
@@ -224,15 +236,12 @@ export class IncidentService implements OnModuleInit {
 
       await this.apply(incidentId, inc.locationAvailable ? 'LOCATION_ACQUIRED' : 'LOCATION_TIMEOUT', 'system', inc.locationAvailable ? null : 'NO_FIX_PROVIDED', {}, now, tx);
 
-      // The user's own settings decide the channels. SMS is opt-in (default off); push goes to contacts who claimed their invite.
-      const user = await tx.user.findUniqueOrThrow({ where: { id: inc.userId }, select: { sendSmsOnSos: true } });
-      const channels = user.sendSmsOnSos ? (['push', 'sms'] as const) : (['push'] as const);
-      const planned = await this.dispatchSvc.planIn(tx, { incidentId, userId: inc.userId, channels, now });
-
-      // A contact who may not be alerted at all (no consent) is not a recipient; every other contact is.
-      const recipients = new Set(planned.filter(p => !p.reason?.startsWith('CONSENT_')).map(p => p.recipientId));
-      if (recipients.size > 0) {
-        await this.apply(incidentId, 'RECIPIENTS_RESOLVED', 'system', null, { consentedRecipients: recipients.size }, now, tx);
+      // The ladder decides who, in what order, over which channels (the user's own settings bound the channels: SMS is
+      // opt-in, default off; push goes to contacts who claimed their invite). A contact who may not be alerted at all is
+      // ledgered with the reason and does not count as a recipient.
+      const { dispatched } = await this.escalation.start(tx, incidentId, now);
+      if (dispatched > 0) {
+        await this.apply(incidentId, 'RECIPIENTS_RESOLVED', 'system', null, { consentedRecipients: dispatched }, now, tx);
         await this.recompute(incidentId, now, tx);
       } else {
         await this.apply(incidentId, 'NO_RECIPIENTS', 'system', 'NO_CONSENTED_CONTACT', { consentedRecipients: 0 }, now, tx);
@@ -243,8 +252,7 @@ export class IncidentService implements OnModuleInit {
   /**
    * Bring an incident's state in line with its attempts. Idempotent, and run under the incident lock. It emits ONLY
    * "everything has settled"; it NEVER emits an acknowledgement (an attempt stays ACKNOWLEDGED for good, so deriving
-   * it would re-acknowledge the incident after an unack). With no escalation engine yet (1.9) nothing more is coming
-   * after the single plan, so no step remains.
+   * it would re-acknowledge the incident after an unack). Whether another step remains comes from the ladder.
    */
   async recompute(incidentId: string, now: Date = new Date(), tx?: Tx): Promise<void> {
     if (!tx) return void (await this.prisma.$transaction(t => this.recompute(incidentId, now, t)));
@@ -254,8 +262,15 @@ export class IncidentService implements OnModuleInit {
     const attempts = await tx.notificationAttempt.findMany({ where: { incidentId, purpose: 'ALERT' }, select: { recipientId: true, channel: true, state: true } });
     const r = rollupIncident(attempts);
     if (r.pending.length > 0) return; // still in flight
+
+    // More to come only while the ladder is running and another step follows the one in flight.
+    const inc = await tx.emergencyIncident.findUniqueOrThrow({ where: { id: incidentId }, select: { ladder: true, policySnapshot: true } });
+    const ladder = inc.ladder as unknown as { phase: string; stepIndex: number } | null;
+    const policy = inc.policySnapshot as unknown as { steps: unknown[] } | null;
+    const moreStepsRemain = Boolean(ladder && policy && ladder.phase === 'RUNNING' && ladder.stepIndex < policy.steps.length - 1);
+
     await this.apply(incidentId, 'ALL_SETTLED', 'system', null, {
-      pending: 0, reached: r.reached.length + r.acknowledged.length, failed: r.failed.length, moreStepsRemain: false,
+      pending: 0, reached: r.reached.length + r.acknowledged.length, failed: r.failed.length, moreStepsRemain,
     }, now, tx);
   }
 
@@ -336,6 +351,7 @@ export class IncidentService implements OnModuleInit {
     return {
       id: inc.id, state: inc.state, triggerType: inc.triggerType, countdownEndsAt: inc.countdownEndsAt, locationAvailable: inc.locationAvailable,
       outcome: INCIDENT_TERMINAL.includes(inc.state) ? inc.state : roll.outcome,
+      escalation: EscalationService.view(inc.ladder, inc.policySnapshot),
       reached: roll.reached, acknowledged: roll.acknowledged, failed: roll.failed, pending: roll.pending,
       capped: [...new Set(attempts.filter(a => a.stateReason === 'SPEND_CAP').map(a => a.recipientId))],
       attempts: attempts.map(a => ({

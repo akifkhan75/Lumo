@@ -316,6 +316,11 @@ const EmergencyScreen = () => {
   }
 
   const rows = incident ? contactRows(incident) : [];
+  // The plan, in plain words: if nobody answers, who is tried next and roughly when. "Will try", never a promise.
+  const esc = incident?.escalation;
+  const nextStep = esc && esc.phase === 'RUNNING' && esc.stepOrder !== null && esc.stepOrder < esc.steps && esc.nextStepAt
+    ? `If nobody responds, Lumo will try the next contact at about ${clockOf(esc.nextStepAt)}.`
+    : null;
   const live = state.phase === 'live' && incident;
   const ended = incident?.state === 'CLOSED' || incident?.state === 'CANCELLED';
 
@@ -350,6 +355,7 @@ const EmergencyScreen = () => {
                 {r.lines.map(l => <RowLine key={l}>{l}</RowLine>)}
               </RowCard>
             ))}
+            {nextStep ? <Note accessibilityLiveRegion="polite">{nextStep}</Note> : null}
             {rows.length === 0 ? <Note>{reasonText('NO_ADDRESS')}.</Note> : null}
           </ScrollView>
         ) : null}

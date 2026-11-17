@@ -19,6 +19,7 @@ export const SEND_QUEUE = 'notify.send';
 export const EXPIRE_QUEUE = 'notify.expire';
 export const RECEIPTS_QUEUE = 'notify.receipts';
 export const COUNTDOWN_QUEUE = 'incident.countdown';
+export const STEP_QUEUE = 'incident.step';
 
 export type Tx = Prisma.TransactionClient;
 
@@ -35,6 +36,8 @@ export interface JobHandlers {
   receipts(attemptId: string): Promise<void>;
   /** The incident's countdown deadline has passed: dispatch it. */
   countdown(incidentId: string): Promise<void>;
+  /** An escalation step's timeout has come: advance the ladder. */
+  step(incidentId: string, stepOrder: number): Promise<void>;
 }
 
 @Injectable()
@@ -73,6 +76,10 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     await boss.work<{ attemptId: string }>(SEND_QUEUE, opts, async jobs => {
       for (const job of jobs) await this.handlers.send?.(job.data.attemptId);
     });
+    await boss.createQueue(STEP_QUEUE, { retryLimit: 10, retryDelay: 2, retryBackoff: true });
+    await boss.work<{ incidentId: string; stepOrder: number }>(STEP_QUEUE, opts, async jobs => {
+      for (const job of jobs) await this.handlers.step?.(job.data.incidentId, job.data.stepOrder);
+    });
     await boss.createQueue(COUNTDOWN_QUEUE, { retryLimit: 10, retryDelay: 2, retryBackoff: true });
     await boss.work<{ incidentId: string }>(COUNTDOWN_QUEUE, opts, async jobs => {
       for (const job of jobs) await this.handlers.countdown?.(job.data.incidentId);
@@ -106,6 +113,11 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
   /** Enqueue the send. Joins `tx`: it exists only if the transaction commits. */
   async enqueueSend(tx: Tx, attemptId: string): Promise<void> {
     await this.requireBoss().send(SEND_QUEUE, { attemptId }, { db: asDb(tx), singletonKey: attemptId });
+  }
+
+  /** Enqueue an escalation step's timeout. Joins `tx`. One job per (incident, step); a second for the same step is a no-op. */
+  async enqueueStep(tx: Tx, incidentId: string, stepOrder: number, afterSeconds: number): Promise<void> {
+    await this.requireBoss().send(STEP_QUEUE, { incidentId, stepOrder }, { db: asDb(tx), startAfter: afterSeconds, singletonKey: `${incidentId}:${stepOrder}:${Math.round(afterSeconds)}` });
   }
 
   /** Enqueue the countdown deadline. Joins `tx`: the incident and its deadline exist together. */

@@ -14,6 +14,7 @@ import { PrismaClient } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { IncidentService, clampCountdown } from '../src/incidents/incident.service';
+import { EscalationService } from '../src/escalation/escalation.service';
 import { NotificationQueue } from '../src/notifications/queue';
 import { SendWorker } from '../src/notifications/send-worker';
 import { PUSH_PROVIDER, type PushProvider } from '../src/notifications/push/push-provider';
@@ -47,6 +48,9 @@ let incidents: IncidentService;
 let worker: SendWorker;
 let queue: NotificationQueue;
 let jwt: JwtService;
+let escalation: EscalationService;
+/** Let the step in flight time out, as the queue's job would after its deadline. */
+const stepOn = (incidentId: string, order: number) => escalation.timeout(incidentId, order, new Date(Date.now() + 10 * 60_000));
 
 const api = () => request(app.getHttpServer());
 const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
@@ -104,6 +108,7 @@ beforeAll(async () => {
   worker = app.get(SendWorker);
   queue = app.get(NotificationQueue);
   jwt = app.get(JwtService);
+  escalation = app.get(EscalationService);
 });
 
 beforeEach(() => {
@@ -275,7 +280,10 @@ describe('raising an incident', () => {
     const spent = await prisma.emergencyIncident.create({ data: { userId: o.userId, idempotencyKey: key(), triggerType: 'manual', triggeredAt: new Date(), regionProfileId: 'UNRESOLVED', state: 'CLOSED' } });
     for (let i = 0; i < 29; i++) await prisma.notificationAttempt.create({ data: { incidentId: spent.id, recipientId: randomUUID(), channel: 'sms', escalationStep: 0, state: 'SENT', reservedAt: new Date() } });
     const r = await sos(o.token, key()).expect(201);
-    expect(r.body.capped).toEqual([o.contactIds[1]]); // the second contact missed the last of the budget
+    await worker.send((await attemptsOf(r.body.id)).find((a) => a.channel === 'sms')!.id);
+    await stepOn(r.body.id, 1); // the first contact's step gives way to the second
+    const after = await get(o.token, r.body.id).expect(200);
+    expect(after.body.capped).toEqual([o.contactIds[1]]); // the second contact missed the last of the budget
   });
 });
 
@@ -457,10 +465,12 @@ describe('the rollup from the ledger', () => {
   it('PARTIALLY_NOTIFIED when one contact was reached and one was not', async () => {
     const o = await owner('roll_part', { sms: true, contacts: 2 });
     const r = await sos(o.token, key()).expect(201);
-    const [a, b] = (await attemptsOf(r.body.id)).filter((x) => x.channel === 'sms');
     const led = app.get(SendWorker)['ledger'];
+    const a = (await attemptsOf(r.body.id)).find((x) => x.channel === 'sms')!;
     await worker.send(a.id);
     await led.apply(a.id, [{ event: 'RECEIPT_DELIVERED', by: 'system', evidence: 'provider' }]);
+    await stepOn(r.body.id, 1);
+    const b = (await attemptsOf(r.body.id)).filter((x) => x.channel === 'sms')[1];
     sms.next = { kind: 'rejected', reason: 'TWILIO_21211' };
     await worker.send(b.id);
     expect((await row(r.body.id)).state).toBe('PARTIALLY_NOTIFIED');
@@ -549,8 +559,10 @@ describe('resolving', () => {
   it('tells only the contacts whose alert went, closes the incident, and bypasses the cap', async () => {
     const o = await owner('resolve', { sms: true, contacts: 2 });
     const r = await sos(o.token, key()).expect(201);
-    const [a, b] = (await attemptsOf(r.body.id)).filter((x) => x.channel === 'sms');
+    const a = (await attemptsOf(r.body.id)).find((x) => x.channel === 'sms')!;
     await worker.send(a.id); // contact 0: alerted
+    await stepOn(r.body.id, 1);
+    const b = (await attemptsOf(r.body.id)).filter((x) => x.channel === 'sms')[1];
     sms.next = { kind: 'rejected', reason: 'TWILIO_21211' };
     await worker.send(b.id); // contact 1: refused, never alerted
 

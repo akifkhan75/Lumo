@@ -20,6 +20,7 @@ export const REASON_TEXT: Record<string, string> = {
   CONSENT_WITHDRAWN: 'they withdrew their agreement',
   CONSENT_DETAILS_CHANGED: 'their number changed, so they need to agree again',
   CONTACT_REMOVED: 'they were removed as a contact',
+  MAX_RECIPIENTS: "your plan limits how many people are alerted, and that limit was reached",
   SPEND_CAP: "you've reached today's limit for this kind of message",
   CHANNEL_DISABLED_FOR_REGION: "this kind of message isn't available where you are",
   REGISTRATION_INCOMPLETE: "this kind of message isn't available where you are yet",

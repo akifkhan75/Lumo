@@ -118,6 +118,9 @@ Where this document was silent, it does the following. Each is a decision to rev
 
 - **A step whose recipients are all skipped does not wait out its timeout.** There is nobody
   to wait for, so the ladder moves straight on. If that was the last step, it exhausts.
+- **A step whose every attempt failed does not wait out its timeout either** (`STEP_ALL_FAILED`, 1.9). If every
+  attempt of the step in flight is `FAILED` or `EXPIRED`, nobody was reached and nobody will answer, so the ladder moves
+  on at once. A message that was **sent and is unconfirmed** is not failed — it may yet arrive — so that step waits.
 - **A person already contacted is not contacted again** by a later step (`ALREADY_CONTACTED`),
   and a person named twice, directly or through a circle, is contacted once.
 - **A cap hit is told to the user once per advance** (`NOTIFY_USER_CAP`), not once per skipped
@@ -136,3 +139,32 @@ Where this document was silent, it does the following. Each is a decision to rev
   in it claims a message arrives.
 - **"Date Check-In: contact 1 (discreet)"** is not representable: the policy shape has no
   discreet flag. The template uses the same shape as the others.
+
+## As executed — `apps/api/src/escalation` (milestone 1.9)
+
+The evaluator decides; `EscalationService` executes, in the incident's transaction under its lock (incident → user cap →
+attempt). Each decision-to-action choice below was made where this document was silent; each is a decision to review.
+
+- **The incident's policy is a SNAPSHOT** taken when it starts, stored with the ladder's state on the incident. Editing the
+  policy mid-incident changes nothing about a running one (tested).
+- **No stored policy → one is derived**: every contact in priority order, **one per step**, 120 s each, over push, plus SMS
+  only if the person opted in (`sendSmsOnSos`, default off). The person's own settings always bound a stored policy's channels
+  too: a policy cannot turn SMS on for someone who turned it off.
+- **A manual SOS is therefore sequential by default**, not "everyone at once". That is what this spec defines (contact → contact
+  with a timeout), and it is the thing a person may not expect: **the second contact is not alerted until the first step gives way**
+  (timeout, or every attempt of the step failing). Whether a manual SOS should alert the first N contacts together is a product
+  decision (KI-93); a stored policy can already put several recipients in one step.
+- **Timers are queue jobs** (`incident.step`), enqueued in the same transaction that advances the ladder, so a restart or deploy
+  loses none. A stale, early or repeated timer changes nothing.
+- **Acknowledgement halts the ladder; resolve stops it for good** (without recording an acknowledgement). **Un-acknowledge resumes
+  the step that was in flight**, re-arming its timeout without re-alerting its recipients.
+- **A skip is a ledger row**: not consented (with its specific reason), removed (`CONTACT_REMOVED`), over the policy maximum
+  (`MAX_RECIPIENTS`). `ALREADY_CONTACTED` is not ledgered; they already have attempts.
+- **The daily cap binds per attempt** (`SPEND_CAP`), as in 1.7b; the ladder's own `spendCapRecipientsRemaining` is passed as
+  `null` (unlimited) because the cap is a count per channel, not per recipient (KI-94).
+- **The incident settles only when the ladder has nothing more to try**; while a later step remains it stays `NOTIFYING`.
+- **API:** `GET /api/v1/escalation-policy` (the plan, in plain words, before it runs: "Try to alert…", never "will be notified")
+  and `PUT` (validated: grace ≥ 60 s with its own message, no email-only step, only your own contacts, no circles yet). Login only.
+- **Not built:** the app has no screen to read or edit the policy yet (KI-95); per-template defaults are in the evaluator but no
+  session creates one until 1.10; channel fallback _within_ a step is parallel (every listed channel at once), not sequential,
+  until 2.4.

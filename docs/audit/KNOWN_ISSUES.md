@@ -950,3 +950,27 @@ automatic send on reconnect, and the pre-filled device SMS fallback is not built
 
 `911` and `15` come from draft profiles (KI-51, KI-52); the fallback `112` is flagged unverified on screen. The regional
 Punjab number is shown as "might work" until the subdivision is confirmed.
+
+## Found while building milestone 1.9 — 2026-11-19
+
+### 🔴 KI-93 — A manual SOS now reaches contacts one at a time
+
+By the spec's own design the ladder runs contact → contact with a timeout (120 s), so the **second contact is not alerted for up to
+two minutes** unless the first step's attempts all fail. Before 1.9 every contact was alerted at once. A person pressing SOS may
+reasonably expect everyone to be told immediately. The safer default for a _manual_ SOS may be "the first two or three together,
+then escalate", which a stored policy can already express but nobody can set from the app. Needs a product decision.
+
+### 🟠 KI-94 — The spend cap is not part of the ladder's own accounting
+
+The evaluator can record "the cap, not the policy maximum, stopped this", but the cap is a per-channel count and is applied at
+attempt level, so the ladder sees `null` headroom and a capped contact still consumes one of the policy's recipient slots.
+
+### 🟠 KI-95 — No screen for the plan
+
+The plan is readable and editable over the API only. A person cannot see, before it runs, what their app will do, which is the
+requirement (RES-4) — until the app shows `GET /escalation-policy`.
+
+### 🟡 KI-96 — Timers are as accurate as the queue's poll
+
+A step's deadline is honoured to within the queue's one-second poll plus any backlog; a long outage of the worker delays the next
+contact by that long. An incident whose worker is down is not advanced at all until it returns.
