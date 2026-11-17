@@ -18,6 +18,9 @@ import { LedgerService } from '../src/notifications/ledger.service';
 import { NotificationQueue } from '../src/notifications/queue';
 import { SendWorker } from '../src/notifications/send-worker';
 import { SMS_PROVIDER, type SmsOutcome, type SmsProvider } from '../src/notifications/sms/sms-provider';
+import { VOICE_PROVIDER, type VoiceOutcome, type VoiceProvider } from '../src/notifications/voice/voice-provider';
+import { TrustedContactsService } from '../src/trusted-contacts/trusted-contacts.service';
+import { rollupIncident } from '@lumo/safety-domain';
 
 const RUN = `nt_${Date.now()}_${randomUUID().slice(0, 6)}`;
 const TWILIO = { sid: 'ACtest', token: 'test-auth-token-not-real', url: 'https://api.lumo.test' };
@@ -37,6 +40,15 @@ class FakeSms implements SmsProvider {
   async send(r: { to: string; body: string; attemptId: string }) { this.calls.push(r); return this.next; }
 }
 
+class FakeVoice implements VoiceProvider {
+  isConfigured = true;
+  next: VoiceOutcome = { kind: 'accepted', providerMessageId: 'CA_default', status: 'queued' };
+  calls: { to: string; script: string; attemptId: string }[] = [];
+  configured() { return this.isConfigured; }
+  async call(r: { to: string; script: string; attemptId: string }) { this.calls.push(r); return this.next; }
+}
+const fakeVoice = new FakeVoice();
+
 let app: INestApplication;
 let prisma: PrismaClient;
 let dispatch: DispatchService;
@@ -50,7 +62,7 @@ const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
 const api = () => request(app.getHttpServer());
 
 /** A user with one contact, optionally brought all the way to "agreed". */
-async function scenario(label: string, opts: { agree?: boolean; phone?: string } = {}) {
+async function scenario(label: string, opts: { agree?: boolean; phone?: string; region?: string } = {}) {
   const phone = opts.phone ?? '+923001234567';
   const s = await api().post('/api/v1/auth/signup').send({ name: `Owner ${label}`, email: `${RUN}_${label}@example.com`, password: 'password123' }).expect(201);
   const token = s.body.token as string;
@@ -62,11 +74,11 @@ async function scenario(label: string, opts: { agree?: boolean; phone?: string }
     await api().post(`${inv.body.path}/accept`).expect(200);
   }
   const incident = await prisma.emergencyIncident.create({
-    data: { userId, idempotencyKey: randomUUID(), triggerType: 'manual', triggeredAt: new Date(), regionProfileId: 'PK', state: 'NOTIFYING' },
+    data: { userId, idempotencyKey: randomUUID(), triggerType: 'manual', triggeredAt: new Date(), regionProfileId: opts.region ?? 'PK', state: 'NOTIFYING' },
   });
   return { token, userId, contactId, incidentId: incident.id, phone };
 }
-const plan = (s: { incidentId: string; userId: string }, channels: ('sms' | 'push')[] = ['sms']) =>
+const plan = (s: { incidentId: string; userId: string }, channels: ('sms' | 'push' | 'voice')[] = ['sms']) =>
   dispatch.plan({ incidentId: s.incidentId, userId: s.userId, channels });
 const attempt = (id: string) => prisma.notificationAttempt.findUniqueOrThrow({ where: { id } });
 const events = async (id: string) => (await prisma.notificationEvent.findMany({ where: { attemptId: id }, orderBy: { seq: 'asc' } })).map((e) => `${e.toState}${e.reason ? `:${e.reason}` : ''}`);
@@ -86,6 +98,7 @@ beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(getOptionsToken()).useValue([{ name: 'short', ttl: 1000, limit: 1_000_000 }])
     .overrideProvider(SMS_PROVIDER).useValue(fake)
+    .overrideProvider(VOICE_PROVIDER).useValue(fakeVoice)
     .compile();
   app = moduleRef.createNestApplication({ logger: new Capturing() });
   configureApp(app);
@@ -100,6 +113,9 @@ beforeEach(() => {
   fake.isConfigured = true;
   fake.next = { kind: 'accepted', providerMessageId: `SM_${randomUUID().slice(0, 8)}`, status: 'queued' };
   fake.calls = [];
+  fakeVoice.isConfigured = true;
+  fakeVoice.next = { kind: 'accepted', providerMessageId: `CA_${randomUUID().slice(0, 8)}`, status: 'queued' };
+  fakeVoice.calls = [];
   // Deterministic: jobs are drained by hand unless a test wants the real queue.
   queue.setHandlers({ send: async () => {}, expire: async () => {} });
 });
@@ -427,5 +443,207 @@ describe('logging', () => {
     expect(all).not.toContain('secret body text');
     expect(all).not.toContain('asked Lumo to alert you');
     expect(all.toLowerCase()).not.toContain('x-twilio-signature');
+  });
+});
+
+
+// ===================================================================== milestone 1.7b (part 1)
+
+async function newIncident(userId: string, region = 'PK') {
+  return (await prisma.emergencyIncident.create({
+    data: { userId, idempotencyKey: randomUUID(), triggerType: 'manual', triggeredAt: new Date(), regionProfileId: region, state: 'NOTIFYING' },
+  })).id;
+}
+/** Spend `n` of a user's daily budget on a channel, as if earlier incidents had. */
+async function spend(userId: string, channel: 'sms' | 'voice', n: number, at = new Date()) {
+  const incidentId = await newIncident(userId);
+  for (let i = 0; i < n; i++) {
+    await prisma.notificationAttempt.create({ data: { incidentId, recipientId: randomUUID(), channel, escalationStep: 0, state: 'SENT', reservedAt: at } });
+  }
+}
+/** A user with several agreed contacts, in priority order. */
+async function crowd(label: string, count: number, region = 'PK') {
+  const s = await api().post('/api/v1/auth/signup').send({ name: `Owner ${label}`, email: `${RUN}_${label}@example.com`, password: 'password123' }).expect(201);
+  const token = s.body.token as string;
+  const userId = s.body.user.id as string;
+  const phones = Array.from({ length: count }, (_, i) => `+92300123450${i}`);
+  const put = await api().put('/api/v1/settings').set(auth(token)).send({ trustedContacts: phones.map((phone, i) => ({ name: `C${i}`, phone })) }).expect(200);
+  const ids = put.body.trustedContacts.map((c: { id: string }) => c.id) as string[];
+  for (const id of ids) {
+    const inv = await api().post(`/api/v1/trusted-contacts/${id}/invite`).set(auth(token)).expect(201);
+    await api().post(`${inv.body.path}/accept`).expect(200);
+  }
+  return { token, userId, ids, incidentId: await newIncident(userId, region) };
+}
+
+describe('the claim is not taken until the provider is about to be called', () => {
+  it('a lookup that throws leaves the attempt unclaimed, so the retry still sends', async () => {
+    const s = await scenario('claimfix', { agree: true });
+    const [p] = await plan(s);
+    const contacts = app.get(TrustedContactsService);
+    const original = contacts.findActive.bind(contacts);
+    let first = true;
+    contacts.findActive = async (...args: Parameters<typeof original>) => {
+      if (first) { first = false; throw new Error('database blip'); }
+      return original(...args);
+    };
+    try {
+      await expect(worker.send(p.attemptId)).rejects.toThrow('database blip');
+      expect((await attempt(p.attemptId)).claimedAt).toBeNull(); // nothing was sent, so nothing is claimed
+      await worker.send(p.attemptId); // the job's retry
+    } finally {
+      contacts.findActive = original;
+    }
+    expect((await attempt(p.attemptId)).state).toBe('SENT');
+    expect(fake.calls).toHaveLength(1);
+  });
+});
+
+describe('region gating, by the incident’s region', () => {
+  it('US SMS waits for A2P 10DLC registration: NOT_ATTEMPTED / REGISTRATION_INCOMPLETE, nothing sent', async () => {
+    const s = await scenario('us', { agree: true, region: 'US' });
+    const [p] = await plan(s);
+    expect(p).toMatchObject({ outcome: 'not_attempted', reason: 'REGISTRATION_INCOMPLETE' });
+    expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:REGISTRATION_INCOMPLETE']);
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it('a channel the market does not list is off there: PK has no voice', async () => {
+    const s = await scenario('pkvoice', { agree: true, region: 'PK' });
+    const [p] = await plan(s, ['voice']);
+    expect(p).toMatchObject({ outcome: 'not_attempted', reason: 'CHANNEL_DISABLED_FOR_REGION' });
+  });
+
+  it('the incident’s region decides, not the account’s', async () => {
+    const s = await scenario('acct', { agree: true, region: 'PK' });
+    await prisma.user.update({ where: { id: s.userId }, data: { regionProfileId: 'US' } }); // account says US
+    const [p] = await plan(s);
+    expect(p.outcome).toBe('queued'); // the DEVICE is in PK
+  });
+
+  it('with no profile for the incident, nothing is gated, and the strictest known cap applies', async () => {
+    const s = await scenario('noprofile', { agree: true, region: 'UNRESOLVED' });
+    await spend(s.userId, 'sms', 29); // the strictest sms cap among known profiles is 30
+    const [p] = await plan(s);
+    expect(p.outcome).toBe('queued');
+    const s2 = await scenario('noprofile2', { agree: true, region: 'UNRESOLVED' });
+    await spend(s2.userId, 'sms', 30);
+    expect((await plan(s2))[0]).toMatchObject({ outcome: 'capped', reason: 'SPEND_CAP' });
+  });
+});
+
+describe('the daily cap (PLAT-5)', () => {
+  it('budget goes to contacts in priority order; the rest are FAILED / SPEND_CAP and the user must be told', async () => {
+    const c = await crowd('cap_order', 3);
+    await spend(c.userId, 'sms', 28); // PK sms cap is 30: two left
+    const planned = await dispatch.plan({ incidentId: c.incidentId, userId: c.userId, channels: ['sms'] });
+    expect(planned.map((p) => [p.recipientId, p.outcome])).toEqual([[c.ids[0], 'queued'], [c.ids[1], 'queued'], [c.ids[2], 'capped']]);
+    const capped = planned[2];
+    expect(await events(capped.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:SPEND_CAP']);
+    expect((await attempt(capped.attemptId)).reservedAt).toBeNull(); // a capped attempt costs no budget
+  });
+
+  it('an all-capped plan rolls up to ALL_CHANNELS_FAILED', async () => {
+    const c = await crowd('cap_all', 2);
+    await spend(c.userId, 'sms', 30);
+    const planned = await dispatch.plan({ incidentId: c.incidentId, userId: c.userId, channels: ['sms'] });
+    expect(planned.every((p) => p.outcome === 'capped')).toBe(true);
+    const rows = await prisma.notificationAttempt.findMany({ where: { incidentId: c.incidentId } });
+    expect(rollupIncident(rows.map((r) => ({ recipientId: r.recipientId, channel: r.channel, state: r.state }))).outcome).toBe('ALL_CHANNELS_FAILED');
+  });
+
+  it('skipped and capped attempts spend nothing; only queued ones are reserved', async () => {
+    const s = await scenario('cap_skip'); // never invited
+    const before = await prisma.notificationAttempt.count({ where: { incident: { userId: s.userId }, reservedAt: { not: null } } });
+    await plan(s);
+    expect(await prisma.notificationAttempt.count({ where: { incident: { userId: s.userId }, reservedAt: { not: null } } })).toBe(before);
+  });
+
+  it('reservations older than 24 hours no longer count, and another user’s never do', async () => {
+    const c = await crowd('cap_window', 1);
+    await spend(c.userId, 'sms', 30, new Date(Date.now() - 25 * 60 * 60 * 1000)); // yesterday
+    const other = await scenario('cap_other');
+    await spend(other.userId, 'sms', 30);
+    const [p] = await dispatch.plan({ incidentId: c.incidentId, userId: c.userId, channels: ['sms'] });
+    expect(p.outcome).toBe('queued');
+  });
+
+  it('concurrent plans for one user cannot overspend the budget', async () => {
+    const c = await crowd('cap_race', 1);
+    await spend(c.userId, 'sms', 29); // exactly one left
+    const incidents = await Promise.all(Array.from({ length: 5 }, () => newIncident(c.userId)));
+    const results = await Promise.all(incidents.map((incidentId) => dispatch.plan({ incidentId, userId: c.userId, channels: ['sms'] })));
+    const outcomes = results.flat().map((p) => p.outcome);
+    expect(outcomes.filter((o) => o === 'queued')).toHaveLength(1);
+    expect(outcomes.filter((o) => o === 'capped')).toHaveLength(4);
+  });
+
+  it('a plan for another user’s incident is refused', async () => {
+    const a = await scenario('cap_owner', { agree: true });
+    const b = await scenario('cap_intruder', { agree: true });
+    await expect(dispatch.plan({ incidentId: a.incidentId, userId: b.userId, channels: ['sms'] })).rejects.toThrow(/does not belong/);
+  });
+});
+
+describe('voice', () => {
+  const voicePlan = async (label: string) => {
+    const s = await scenario(label, { agree: true, region: 'UNRESOLVED' }); // no profile: PK does not list voice
+    const [p] = await plan(s, ['voice']);
+    return { s, id: p.attemptId };
+  };
+  const voiceCallback = (attemptId: string, params: Record<string, string>) => {
+    const path = `/api/v1/webhooks/twilio/voice-status?attempt=${attemptId}`;
+    return api().post(path).set('X-Twilio-Signature', twilio.getExpectedTwilioSignature(TWILIO.token, `${TWILIO.url}${path}`, params)).type('form').send(params);
+  };
+
+  it('places one call and records SENT — never answered, never acknowledged', async () => {
+    const { s, id } = await voicePlan('v_ok');
+    fakeVoice.next = { kind: 'accepted', providerMessageId: 'CA1', status: 'queued' };
+    await worker.send(id);
+    expect(await events(id)).toEqual(['QUEUED:PLANNED', 'SENT:PROVIDER_ACCEPTED']);
+    expect(fakeVoice.calls).toEqual([{ to: s.phone, script: expect.stringContaining('automated call from Lumo'), attemptId: id }]);
+    await worker.send(id);
+    expect(fakeVoice.calls).toHaveLength(1); // at most once
+  });
+
+  it('without a caller number the voice provider is "not configured", whatever SMS has', async () => {
+    const { id } = await voicePlan('v_conf');
+    fakeVoice.isConfigured = false;
+    await worker.send(id);
+    expect(await events(id)).toEqual(['QUEUED:PLANNED', 'FAILED:PROVIDER_NOT_CONFIGURED']);
+  });
+
+  it.each([['busy', 'VOICE_BUSY'], ['no-answer', 'VOICE_NO_ANSWER'], ['failed', 'VOICE_FAILED'], ['canceled', 'VOICE_CANCELED']])('%s → FAILED / %s', async (status, reason) => {
+    const { id } = await voicePlan(`v_${status}`);
+    await worker.send(id);
+    await voiceCallback(id, { CallSid: (await attempt(id)).providerMessageId!, CallStatus: status }).expect(200);
+    expect(await events(id)).toEqual(['QUEUED:PLANNED', 'SENT:PROVIDER_ACCEPTED', `FAILED:${reason}`]);
+  });
+
+  it('answered is a fact on the attempt, not a state: it stays SENT and settles UNKNOWN', async () => {
+    const { id } = await voicePlan('v_answered');
+    await worker.send(id);
+    const sid = (await attempt(id)).providerMessageId!;
+    await voiceCallback(id, { CallSid: sid, CallStatus: 'in-progress' }).expect(200);
+    await voiceCallback(id, { CallSid: sid, CallStatus: 'completed' }).expect(200);
+    const a = await attempt(id);
+    expect(a.state).toBe('SENT');
+    expect(a.providerStatus).toBe('completed');
+    await worker.expire(id);
+    expect(await events(id)).toEqual(['QUEUED:PLANNED', 'SENT:PROVIDER_ACCEPTED', 'UNKNOWN:NO_RECEIPT_BY_TTL']);
+  });
+
+  it('a call cannot be acknowledged: no person can answer through it', async () => {
+    const { id } = await voicePlan('v_ack');
+    await worker.send(id);
+    expect(await ledger.apply(id, [{ event: 'ACK', by: 'contact' }])).toMatchObject({ applied: false, why: 'GUARD_FAILED' });
+  });
+
+  it('the voice webhook needs a valid signature too', async () => {
+    const { id } = await voicePlan('v_sig');
+    await worker.send(id);
+    const path = `/api/v1/webhooks/twilio/voice-status?attempt=${id}`;
+    await api().post(path).type('form').send({ CallSid: 'x', CallStatus: 'busy' }).expect(403);
+    expect((await attempt(id)).state).toBe('SENT');
   });
 });

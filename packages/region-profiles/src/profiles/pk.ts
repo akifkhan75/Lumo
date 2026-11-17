@@ -46,6 +46,9 @@ export const PK: RegionProfile = {
     deviceDirectSmsAllowed: true,
     recipientConsentRequired: true, // product policy, stricter than local law
     channels: ['push', 'sms', 'device_direct_sms', 'web'],
+    // HYPOTHESES (KNOWN_ISSUES KI-73): sized for a few contacts and a few incidents a day, and
+    // deliberately generous, because a cap that is too low blocks someone asking for help.
+    dailyCaps: { push: 100, sms: 30, web: 100 },
   },
 
   recording: {

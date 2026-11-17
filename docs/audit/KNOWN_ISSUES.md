@@ -821,3 +821,40 @@ The image has still not been built (no Docker daemon was available), so the Node
 A database outage stops sending and recording together. The pg-boss schema is created on boot and needs CREATE
 on the database. Fan-out is unbounded until the spend cap (1.7b), though nothing can raise an incident yet.
 Counters are in-memory only; real metrics are milestone 1.15.
+
+## Found while building milestone 1.7b (part 1) — 2026-11-17
+
+### 🔴 KI-72 — A worker that claimed first and then failed a lookup would have recorded "outcome unknown" for a message never sent
+
+_Fixed in this milestone and kept here as the reason the order is what it is._ The claim is now taken
+immediately before the provider call; lookups, the consent re-check and the configuration check come first.
+
+### 🔴 KI-73 — The daily caps are hypotheses, and a cap too low blocks someone asking for help
+
+PK: 30 SMS and 100 push/web per day; US: 30 SMS, 10 voice, 100 push/web. Nobody has measured how many
+messages a real incident needs (contacts × channels × retries × several incidents in a day). They are
+generous on purpose, but a user with many contacts and a bad day can reach them. A hit is ledgered, returned
+to the caller and must be shown to the user; nothing in the UI shows it yet (1.8).
+
+### 🟠 KI-74 — No per-tenant ceiling
+
+PLAT-5 names per-user **and** per-tenant ceilings. There are no tenants until organisations exist (Phase 4);
+only the per-user cap is built.
+
+### 🟠 KI-75 — A queued attempt that is then skipped keeps its reservation
+
+Consent withdrawn between planning and sending leaves the attempt counted against the cap. Conservative (it
+slightly over-counts), but it can eat budget during a flurry of withdrawals. Left unreleased on purpose, to
+keep the reservation append-only.
+
+### 🟡 KI-76 — With no region profile for the incident, nothing is gated
+
+An `UNRESOLVED` incident region sends on any channel the caller lists (with the strictest known cap). Blocking
+everything because the country is unknown was judged worse in an emergency, but it means US SMS rules cannot be
+applied to an incident whose region could not be worked out.
+
+### 🟡 KI-77 — Voice has never been placed
+
+No Twilio account. The call parameters and statuses follow Twilio's documentation (fetched, not recalled), but
+nothing has been run against the real service, and voice to a US number also needs the registration the
+profile marks incomplete.

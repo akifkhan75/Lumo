@@ -51,6 +51,7 @@ interface RegionProfile {
     recipientConsentRequired: boolean; // consent from the CONTACT, not the user
     registrationRequired?: string; // e.g. US 10DLC / A2P brand+campaign
     channels: ChannelCapability[]; // see DELIVERY_LEDGER.md
+    dailyCaps: Partial<Record<Channel, number>>; // PLAT-5: max messages per user per 24h, per channel
   };
 
   recording: {
@@ -131,6 +132,7 @@ messaging:
   recipientConsentRequired: true # product policy, stricter than local law
   registrationRequired: null # confirm PTA masking/sender-ID rules
   channels: [push, sms, device-direct-sms, web]
+  dailyCaps: { push: 100, sms: 30, web: 100 } # HYPOTHESES — see KNOWN_ISSUES KI-73
 
 recording:
   audioConsent: varies-subnational # CONFIRM WITH COUNSEL
@@ -207,6 +209,7 @@ messaging:
   recipientConsentRequired: true # consent regime for A2P messaging — counsel to confirm scope
   registrationRequired: A2P-10DLC # brand + campaign registration before sending
   channels: [push, sms, voice, device-direct-sms, web]
+  dailyCaps: { push: 100, sms: 30, voice: 10, web: 100 } # HYPOTHESES — see KNOWN_ISSUES KI-73
 
 recording:
   audioConsent: varies-subnational # ~a dozen states require all-party consent
@@ -399,6 +402,11 @@ differs from or extends the spec, **the code is right** and this section is the 
   only named is not a provider, and enablement requires `contracted: true` for every channel used.
 - `messaging.registrationComplete` — added. `registrationRequired: 'A2P-10DLC'` with
   `registrationComplete` unset or false blocks enablement: nothing may send before registration.
+- `messaging.dailyCaps` — added (milestone 1.7b, PLAT-5). A COUNT per channel per user per rolling 24
+  hours, not money: counts need no price table, never meet a currency, and are easy to tell a user.
+  Required for every listed channel except `device_direct_sms` (the user's own SIM; no cost to Lumo);
+  a missing or non-positive cap makes the profile incomplete. Values are hypotheses, and too low a
+  cap blocks someone asking for help.
 - `messaging.channels` is the domain's `Channel[]` (`device_direct_sms`, not `device-direct-sms`).
 - **`checklist`** — added. The §6 checklist is 14 recorded fields (`numbersVerified`,
   `safetyCopyNativeReviewed`, …), all false in both drafts. `approved` cannot be claimed with one

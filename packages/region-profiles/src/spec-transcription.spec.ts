@@ -39,6 +39,7 @@ describe('Pakistan, as the spec has it', () => {
       deviceDirectSmsAllowed: true,
       recipientConsentRequired: true,
       channels: ['push', 'sms', 'device_direct_sms', 'web'],
+      dailyCaps: { push: 100, sms: 30, web: 100 },
     });
   });
 
@@ -85,6 +86,7 @@ describe('United States, as the spec has it', () => {
       registrationRequired: 'A2P-10DLC',
       registrationComplete: false,
       channels: ['push', 'sms', 'voice', 'device_direct_sms', 'web'],
+      dailyCaps: { push: 100, sms: 30, voice: 10, web: 100 },
     });
   });
 

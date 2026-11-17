@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { channelGate, dailyCapFor, type RegionProfile, type RegionRegistry } from '@lumo/region-profiles';
+import { REGION_REGISTRY } from '../regions/regions.module';
 import type { Channel } from '@lumo/safety-domain';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveRecipients, type SkipReason } from '../trusted-contacts/recipients';
@@ -53,57 +55,114 @@ export interface PlannedAttempt {
   readonly attemptId: string;
   readonly recipientId: string;
   readonly channel: Channel;
-  /** Queued for the worker, or settled at once as "never attempted". */
-  readonly outcome: 'queued' | 'not_attempted';
+  /** Queued for the worker; settled at once as "never attempted"; or stopped by the daily cap. */
+  readonly outcome: 'queued' | 'not_attempted' | 'capped';
   readonly reason?: string;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Channels the worker can send today. Push and web have no address for a contact yet. */
+const SENDABLE: ReadonlySet<Channel> = new Set<Channel>(['sms', 'voice']);
+
 @Injectable()
 export class DispatchService {
+  private readonly logger = new Logger('Dispatch');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly contacts: TrustedContactsService,
     private readonly ledger: LedgerService,
     private readonly queue: NotificationQueue,
+    @Inject(REGION_REGISTRY) private readonly regions: RegionRegistry,
   ) {}
+
+  /**
+   * The daily cap for a channel. From the incident's profile; with NO profile, the STRICTEST cap
+   * among the known profiles, because "we do not know where this is" must not mean "unlimited".
+   */
+  private capFor(profile: RegionProfile | null, channel: Channel): number | null {
+    if (profile) return dailyCapFor(profile, channel);
+    const caps = this.regions.profiles.map(p => dailyCapFor(p, channel)).filter((c): c is number => c !== null);
+    return caps.length > 0 ? Math.min(...caps) : null;
+  }
 
   /** Plan inside the caller's transaction, so an incident and its attempts commit together. */
   async planIn(tx: Tx, input: PlanInput): Promise<PlannedAttempt[]> {
     const now = input.now ?? new Date();
+    const incident = await tx.emergencyIncident.findUniqueOrThrow({
+      where: { id: input.incidentId },
+      select: { userId: true, regionProfileId: true },
+    });
+    if (incident.userId !== input.userId) throw new Error('The incident does not belong to this user.');
+
+    // Region of the INCIDENT (where the device was), not of the account.
+    const profile = this.regions.profileFor(incident.regionProfileId);
+    if (!profile) this.ledger.counters.set('plan.no_region_profile', (this.ledger.counters.get('plan.no_region_profile') ?? 0) + 1);
+
+    // One plan at a time per user: the cap is read, then spent, and two concurrent plans must not
+    // both read the same remaining budget. The lock is released with the transaction.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lumo.cap:${input.userId}`}))`;
+    const remaining = new Map<Channel, number | null>();
+    for (const channel of new Set(input.channels)) {
+      const cap = this.capFor(profile, channel);
+      if (cap === null || !SENDABLE.has(channel)) {
+        remaining.set(channel, null);
+        continue;
+      }
+      const used = await tx.notificationAttempt.count({
+        where: { channel, reservedAt: { gt: new Date(now.getTime() - DAY_MS) }, incident: { userId: input.userId } },
+      });
+      remaining.set(channel, Math.max(0, cap - used));
+    }
+
     const { eligible, skipped } = resolveRecipients(await this.contacts.list(tx, input.userId));
     const planned: PlannedAttempt[] = [];
 
-    const create = async (recipientId: string, channel: Channel) => {
+    const create = async (recipientId: string, channel: Channel, reserved: boolean) => {
       const attempt = await tx.notificationAttempt.create({
-        data: { incidentId: input.incidentId, recipientId, channel, escalationStep: 0, queuedAt: now },
+        data: { incidentId: input.incidentId, recipientId, channel, escalationStep: 0, queuedAt: now, reservedAt: reserved ? now : null },
       });
       await tx.notificationEvent.create({ data: { attemptId: attempt.id, toState: 'QUEUED', reason: 'PLANNED', occurredAt: now } });
       return attempt.id;
     };
+    const settle = async (recipientId: string, channel: Channel, event: 'NOT_ATTEMPTED' | 'SPEND_CAP_REACHED', by: 'system' | 'policy', reason: string) => {
+      const attemptId = await create(recipientId, channel, false);
+      await this.ledger.apply(attemptId, [{ event, by, reason }], now, tx);
+      planned.push({ attemptId, recipientId, channel, outcome: event === 'SPEND_CAP_REACHED' ? 'capped' : 'not_attempted', reason });
+    };
 
+    // Contacts are in priority order, so the budget goes to the first-priority contacts first.
     for (const contact of eligible) {
       for (const channel of input.channels) {
-        const attemptId = await create(contact.id, channel);
-        if (channel === 'sms') {
+        const gate = profile ? channelGate(profile, channel) : ({ allowed: true } as const);
+        if (!gate.allowed) {
+          await settle(contact.id, channel, 'NOT_ATTEMPTED', 'policy', gate.reason);
+        } else if (!SENDABLE.has(channel)) {
+          // No address: a Device belongs to a user and a contact is not linked to one (and is never
+          // matched by email or number). Push and web arrive with the contact-claim flow.
+          await settle(contact.id, channel, 'NOT_ATTEMPTED', 'system', 'NO_ADDRESS');
+        } else if (remaining.get(channel) === 0) {
+          await settle(contact.id, channel, 'SPEND_CAP_REACHED', 'system', 'SPEND_CAP');
+        } else {
+          const left = remaining.get(channel);
+          if (left !== null && left !== undefined) remaining.set(channel, left - 1);
+          const attemptId = await create(contact.id, channel, true);
           await this.queue.enqueueSend(tx, attemptId);
           await this.queue.enqueueExpiry(tx, attemptId, ttlSeconds(channel));
           planned.push({ attemptId, recipientId: contact.id, channel, outcome: 'queued' });
-        } else {
-          // No address: a Device belongs to a user and a contact is not linked to one (and is
-          // never matched by email or number). Other channels arrive in 1.7b.
-          await this.ledger.apply(attemptId, [{ event: 'NOT_ATTEMPTED', by: 'system', reason: 'NO_ADDRESS' }], now, tx);
-          planned.push({ attemptId, recipientId: contact.id, channel, outcome: 'not_attempted', reason: 'NO_ADDRESS' });
         }
       }
     }
 
+    // A contact who may not be alerted is ledgered with the reason; skipped rows spend no budget.
     for (const skip of skipped) {
       for (const channel of input.channels) {
-        const attemptId = await create(skip.contactId, channel);
-        const reason = SKIP_TO_REASON[skip.reason];
-        await this.ledger.apply(attemptId, [{ event: 'NOT_ATTEMPTED', by: 'policy', reason }], now, tx);
-        planned.push({ attemptId, recipientId: skip.contactId, channel, outcome: 'not_attempted', reason });
+        await settle(skip.contactId, channel, 'NOT_ATTEMPTED', 'policy', SKIP_TO_REASON[skip.reason]);
       }
+    }
+
+    if (planned.some(p => p.outcome === 'capped')) {
+      this.logger.warn(`daily cap reached for a plan (incident ${input.incidentId}); the user must be told`);
     }
     return planned;
   }

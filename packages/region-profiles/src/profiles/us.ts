@@ -43,6 +43,8 @@ export const US: RegionProfile = {
     registrationRequired: 'A2P-10DLC', // brand + campaign registration before any send
     registrationComplete: false,
     channels: ['push', 'sms', 'voice', 'device_direct_sms', 'web'],
+    // HYPOTHESES (KNOWN_ISSUES KI-73): US SMS and voice cost more, so they are lower than push.
+    dailyCaps: { push: 100, sms: 30, voice: 10, web: 100 },
   },
 
   recording: {

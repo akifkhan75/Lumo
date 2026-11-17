@@ -27,6 +27,7 @@ export const approvedProfile = (overrides: Partial<RegionProfile> = {}): RegionP
     deviceDirectSmsAllowed: true,
     recipientConsentRequired: true,
     channels: ['push', 'sms', 'voice', 'device_direct_sms', 'web'],
+    dailyCaps: { push: 100, sms: 30, voice: 10, web: 100 },
   },
   recording: {
     audioConsent: 'varies-subnational',
