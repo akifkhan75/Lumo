@@ -138,6 +138,8 @@ Not in this slice: the pre-filled text (1.13c), a background send, journey queue
 - **Contacts on the device**: the agreed contacts, as id, name and number only (at most 10), in the platform's encrypted store. Refreshed
   whenever settings load or are saved, so a withdrawal removes them; **removed on logout**; left alone when settings cannot load (offline is when
   they are needed). With nothing cached it falls back to the agreed contacts in the loaded settings, and never to one who has not agreed.
+- **Who it goes to is shown before it opens** ("It will be addressed to: Maya, Dad."), and the dashboard re-reads settings on every return to the
+  foreground, which refreshes the copy. A withdrawal the phone has not yet heard of is still possible (KI-128).
 - A phone with no composer is told so, and still has the dialler.
 
 Not built: recording the text on the incident's ledger as a `device_direct_sms` attempt (KI-127).

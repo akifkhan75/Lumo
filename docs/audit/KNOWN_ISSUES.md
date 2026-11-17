@@ -1175,9 +1175,10 @@ endpoint that writes an attempt whose ceiling is SENT and never DELIVERED (the c
 
 ### 🟠 KI-128 — A withdrawal made while the phone is offline is not yet known to it
 
+_Update: mitigated, not eliminated. The screen now shows **who the text will be addressed to before it opens**, and the dashboard re-reads settings (which refreshes this copy) every time the app returns to the foreground with a signal. What remains: a contact who withdraws while this phone has had no signal since is unknowable to it, and is still shown by name until it has._
+
 The cached contacts follow the server whenever settings load. A contact who withdraws consent while this phone has no signal is still in the
-cache, so the text can be addressed to them. The person must still press send, and the names are shown, but consent is the contact's: shorten
-this by refreshing at every app open that has a signal (it does when settings load), and consider showing who it is addressed to before it opens.
+cache, so the text can be addressed to them. The person must still press send, and the names are shown, but consent is the contact's: the mitigation above shortens the window and makes it visible.
 
 ### 🟡 KI-129 — The text's map link is Google's, and the position's age is the phone's own clock
 

@@ -316,6 +316,18 @@ describe('the pre-filled text (the person sends it; Lumo cannot)', () => {
     expect(textButton()).toBeDefined();
   });
 
+  it('shows who the text will be addressed to BEFORE it opens, and nobody when there is no one', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(down());
+    await press();
+    expect(text()).toContain('It will be addressed to: Maya, Dad.');
+    expect(sms.sendSMSAsync).not.toHaveBeenCalled(); // seeing it opens nothing
+    act(() => tree.unmount());
+    api.loadOfflineContacts.mockResolvedValue([] as never);
+    await press();
+    expect(text()).not.toContain('It will be addressed to');
+  });
+
   it('opens the composer addressed to the cached contacts, with the written text and the position', async () => {
     api.loadOfflineContacts.mockResolvedValue(cached as never);
     api.raiseSos.mockRejectedValue(down());

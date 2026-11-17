@@ -300,6 +300,8 @@ const EmergencyScreen = () => {
         <ButtonText>{TEXT_BUTTON}</ButtonText>
       </BottomButton>
       <Note>{TEXT_EXPLAINER}</Note>
+      {/* Who it will be addressed to, BEFORE it opens: the person can see it, and a contact they know has withdrawn is not a surprise. */}
+      {textContacts.length > 0 ? <Note accessibilityLiveRegion="polite">{`It will be addressed to: ${textContacts.map(c => c.name).join(', ')}.`}</Note> : null}
       {textNote ? <Note accessibilityLiveRegion="polite">{textNote}</Note> : null}
     </>
   ) : null;

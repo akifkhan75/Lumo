@@ -192,6 +192,15 @@ const DashboardScreen = () => {
   }, []);
   const location = useLocation(focused && appActive);
 
+  // Back in the foreground: re-read the settings, quietly. Loading them is also what keeps this phone's offline copy of the contacts who agreed
+  // in step with the server (a contact who withdraws must not stay addressable by the pre-filled text for longer than the phone has had no
+  // signal). A failure changes nothing on screen: the last settings stay.
+  const wasActive = useRef(appActive);
+  useEffect(() => {
+    if (appActive && !wasActive.current) apiService.getSettings().then(setUserSettings).catch(() => undefined);
+    wasActive.current = appActive;
+  }, [appActive]);
+
   return (
     <Container>
       <MapViewContainer>
