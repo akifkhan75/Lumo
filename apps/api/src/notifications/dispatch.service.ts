@@ -28,11 +28,15 @@ export function ttlSeconds(channel: Channel): number {
       return 15 * MINUTE;
     case 'email':
       return 60 * MINUTE;
+    case 'push':
+      // Longer than the receipt check (15 minutes): Expo advises checking receipts about then, and
+      // the check must be able to run BEFORE the attempt is settled as not confirmed.
+      return 20 * MINUTE;
     case 'voice':
     case 'device_direct_sms':
       return 5 * MINUTE;
     default:
-      return 10 * MINUTE; // push, web
+      return 10 * MINUTE; // web
   }
 }
 
@@ -61,8 +65,10 @@ export interface PlannedAttempt {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Channels the worker can send today. Push and web have no address for a contact yet. */
-const SENDABLE: ReadonlySet<Channel> = new Set<Channel>(['sms', 'voice']);
+/** When to ask the push service whether it handed the message on (Expo: about 15 minutes). */
+export const PUSH_RECEIPT_CHECK_SECONDS = 15 * 60;
+/** Channels the worker can send today. Web has no sender yet; push needs a linked contact (checked at send time). */
+const SENDABLE: ReadonlySet<Channel> = new Set<Channel>(['sms', 'voice', 'push']);
 
 @Injectable()
 export class DispatchService {
@@ -84,6 +90,13 @@ export class DispatchService {
     if (profile) return dailyCapFor(profile, channel);
     const caps = this.regions.profiles.map(p => dailyCapFor(p, channel)).filter((c): c is number => c !== null);
     return caps.length > 0 ? Math.min(...caps) : null;
+  }
+
+  /** Does this contact have a claimed account with at least one live push device? */
+  private async hasPushAddress(tx: Tx, contactId: string): Promise<boolean> {
+    const link = await tx.trustedContact.findUnique({ where: { id: contactId }, select: { linkedUserId: true } });
+    if (!link?.linkedUserId) return false;
+    return (await tx.device.count({ where: { userId: link.linkedUserId, revokedAt: null, pushToken: { not: null } } })) > 0;
   }
 
   /** Plan inside the caller's transaction, so an incident and its attempts commit together. */
@@ -138,8 +151,11 @@ export class DispatchService {
         if (!gate.allowed) {
           await settle(contact.id, channel, 'NOT_ATTEMPTED', 'policy', gate.reason);
         } else if (!SENDABLE.has(channel)) {
-          // No address: a Device belongs to a user and a contact is not linked to one (and is never
-          // matched by email or number). Push and web arrive with the contact-claim flow.
+          // No sender for this channel yet (web).
+          await settle(contact.id, channel, 'NOT_ATTEMPTED', 'system', 'NO_ADDRESS');
+        } else if (channel === 'push' && !(await this.hasPushAddress(tx, contact.id))) {
+          // No claimed account or no live device: nothing to send to, so nothing is reserved. The
+          // worker checks again at send time (a device can be revoked in between).
           await settle(contact.id, channel, 'NOT_ATTEMPTED', 'system', 'NO_ADDRESS');
         } else if (remaining.get(channel) === 0) {
           await settle(contact.id, channel, 'SPEND_CAP_REACHED', 'system', 'SPEND_CAP');
@@ -149,6 +165,7 @@ export class DispatchService {
           const attemptId = await create(contact.id, channel, true);
           await this.queue.enqueueSend(tx, attemptId);
           await this.queue.enqueueExpiry(tx, attemptId, ttlSeconds(channel));
+          if (channel === 'push') await this.queue.enqueueReceipts(tx, attemptId, PUSH_RECEIPT_CHECK_SECONDS);
           planned.push({ attemptId, recipientId: contact.id, channel, outcome: 'queued' });
         }
       }

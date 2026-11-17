@@ -14,6 +14,11 @@ export function voiceScript(senderName: string): string {
   return `This is an automated call from Lumo. ${senderName} asked Lumo to alert you. Please check your messages or call them. This message is automated and cannot take a reply.`;
 }
 
+/** The push notification text. Ids and the sender's name only: it crosses third parties and shows on a lock screen. */
+export function pushBody(senderName: string): string {
+  return `${senderName} asked Lumo to alert you.`;
+}
+
 export function alertBody(senderName: string): string {
   return `${senderName} asked Lumo to alert you. This is an automated message and replies are not read.`;
 }

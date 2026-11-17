@@ -5,7 +5,7 @@
 > [`SAFETY_STATE_MACHINES.md`](SAFETY_STATE_MACHINES.md) §6a; consent in
 > [`TRUSTED_CONTACTS.md`](TRUSTED_CONTACTS.md). **Milestone 1.7a: SMS, the queue, the ledger writer, the Twilio
 > webhook. 1.7b-1 (this file's _Region gating_, _The daily cap_ and _Voice_ sections): region gating, the spend cap
-> and voice. Push, contact device linking and the device-side receipt are 1.7b-2** (see _Limits_).
+> and voice. **1.7b-2 (this revision): push, contact device linking, and the device-side receipt.**
 
 ## The four-part contract
 
@@ -116,12 +116,61 @@ own words). **Answered is a fact about the call, never an acknowledgement** and 
 `SENT`, so it settles `UNKNOWN` at its time-to-live. `providerStatus` is where "answered" lives, because
 no state changed.
 
-### Push has no address for a contact
+### Push
 
-`Device` belongs to a **user**; a `TrustedContact` is not linked to one. The link is **never inferred** from a
-matching email or phone number — that would deliver one person's emergency alerts to whoever registers that
-address. It can exist only when a contact **claims their invite while signed in** (not built). Until then a
-push attempt for a contact is ledgered `NOT_ATTEMPTED / NO_ADDRESS`.
+**Who has a push address.** A `Device` belongs to a user; a `TrustedContact` is not one. A contact has a push
+address only if their **Lumo account is linked** to the contact, and the link exists only when they **claim their
+invite while signed in** (`POST /api/v1/contacts/invites/:token/claim`, authenticated). It is **never inferred** from
+a matching phone number or email: that would deliver one person's emergency alerts to whoever registers that
+address (tested with a look-alike account).
+
+- The claim agrees to the role if they had not (like the page does) and links their account. **First claim wins**;
+  the same account may claim again; another account gets 409; **the account that added the contact cannot claim
+  it** (it would route your own alerts to your own phone).
+- The link is **cleared** when the contact withdraws, is removed, or their number or email changes (the account
+  was the person at the old number). It is **never returned** to the user who added the contact.
+- A contact with no link or no live device: `NOT_ATTEMPTED / NO_ADDRESS`, decided at plan time (nothing reserved)
+  and again at send time (a device can be revoked in between).
+
+**Tokens.** `POST /api/v1/devices` registers an Expo push token. A token belongs to **one user at a time**:
+registering one that another account holds first revokes that row, and the database refuses two live owners
+(partial unique index). `DELETE /api/v1/devices/:id` is logout. The token is never echoed or logged. A token the
+service reports dead (`DeviceNotRegistered`) is revoked.
+
+**Several devices, one attempt.** One send per attempt, to every live token. The ticket ids are stored together in
+`providerMessageId`; the attempt is `SENT` if the service accepted **at least one** — which says nothing about any
+device.
+
+**What each signal means.**
+
+| Signal                                  | Ledger                                                                                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ticket `ok`                             | `PROVIDER_ACCEPTED` → `SENT`: Expo accepted it                                                                                                                      |
+| receipt `ok` (~15 min later)            | **no state change**, `providerStatus = push_service_accepted`: FCM/APNs accepted it. Expo's docs: this "doesn't guarantee that the device has received the message" |
+| every receipt an error                  | `PROVIDER_REPORTED_FAILURE` → `FAILED`                                                                                                                              |
+| **the device posts a delivery receipt** | `RECEIPT_DELIVERED` (evidence: **device**) → `DELIVERED`                                                                                                            |
+| the contact taps "I'm responding"       | `ACK` → `ACKNOWLEDGED` (halts escalation)                                                                                                                           |
+| **nothing from the device by the TTL**  | `CHANNEL_CANNOT_REPORT` → **`UNKNOWN`** — "sent, not confirmed"                                                                                                     |
+
+**Silent push is `UNKNOWN`, not `EXPIRED`** (owner's decision). A handset that is off, or an app that is backgrounded
+and cannot post a receipt (iOS needs the 1.16 extension), looks exactly like one that never got the message, so the
+honest state is "unconfirmed", the same as an SMS with no receipt. The rollup counts it as reached-but-unconfirmed,
+not "couldn't reach"; **escalation and fallback (1.9, 2.4) still advance by their own timeouts**, so a silent push
+never blocks the next channel. The push TTL is 20 minutes so the 15-minute receipt check can run first.
+
+**A late acknowledgement is accepted from `UNKNOWN`** (where a person can acknowledge): "I'm responding" an hour
+later is the one signal that means help knows. A late _delivered_ receipt is not recorded (it adds nothing).
+
+**The device-side endpoint** `POST /api/v1/notifications/:attemptId/receipt` `{ kind: "delivered" | "acknowledged" }`
+accepts only the **account linked to that attempt's recipient**, on a **push** attempt. An unknown attempt, someone
+else's, another channel, or a contact no longer linked all return **the same 404**. A duplicate or late report is a
+200 `{ recorded: false }`, never an error.
+
+**Payload.** Title "Lumo alert", body "`<sender> asked Lumo to alert you.`", data `{ attemptId }`. Ids and the sender's
+name only: it crosses third parties and shows on a lock screen.
+
+**Configuration.** `EXPO_PUSH_ENABLED=true` (explicit, so a development machine never pushes by accident); optional
+`EXPO_ACCESS_TOKEN`. Without it every push is `NOT_ATTEMPTED / PROVIDER_NOT_CONFIGURED`.
 
 ### SMS, and what each Twilio signal means
 
@@ -176,10 +225,9 @@ test alert.**
   tested against a fake HTTP server; **"a real SMS to a real phone with receipts disabled is recorded
   `UNKNOWN`" — the plan's exit — is not met** and stays open until credentials exist.
 - US delivery needs A2P 10DLC registration, which takes weeks and can be refused.
-- **Push, contact device linking and the device-side receipt are 1.7b-2.** The owner chose **claim while
-  signed in**: a contact who already has Lumo opens their consent link inside the app while signed in, and only
-  then is their account linked. Until it is built, no contact has a push address and nothing here can reach
-  `DELIVERED` by push. Nothing creates an incident yet (1.8), so nothing is sent to anyone.
+- **The mobile half of push is not built**: the app does not yet register a push token, offer "claim this invite",
+  or post device receipts. Until it ships, **no contact can have a push address and nothing can reach `DELIVERED` or be
+  acknowledged by push** (KI-78). Nothing creates an incident yet (1.8), so nothing is sent to anyone.
 - At-most-once has a crash window (above).
 - `costMinorUnits` stays 0: the cap is a count, not money; recording real cost (Twilio reports price after the fact) is
   unit-economics work for Phase 2.

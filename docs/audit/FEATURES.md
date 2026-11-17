@@ -214,7 +214,7 @@ fact on the attempt, never an acknowledgement).
 
 **What it does not do:** nothing creates an incident yet (1.8), so nothing is sent to anyone. It has **never
 run against real Twilio** (no account), so the plan's exit — a real SMS recorded as UNKNOWN with receipts
-disabled — is **not met**. Push, contact device linking and the device-side receipt are 1.7b-2, so no contact can be reached by push and nothing can reach "delivered" that way yet. At-most-once has a crash window (KI-67). Spec: `docs/specs/NOTIFICATIONS.md`; gaps KI-67 – KI-77.
+disabled — is **not met**. **Push (1.7b-2, server side):** a contact who claims their invite while signed in is linked to their account (never inferred from a phone or email); a push token belongs to one user at a time; push goes to the linked account's devices; a push nobody confirms is "sent, not confirmed"; only the linked account's device can report delivery or acknowledge. **The app does not do its half yet** (no token registration, no claim screen, no receipts), so in practice no contact can be reached by push and nothing can reach "delivered" that way. At-most-once has a crash window (KI-67). Spec: `docs/specs/NOTIFICATIONS.md`; gaps KI-67 – KI-82.
 
 ### Device location
 

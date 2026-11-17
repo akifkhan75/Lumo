@@ -19,6 +19,7 @@ import { NotificationQueue } from '../src/notifications/queue';
 import { SendWorker } from '../src/notifications/send-worker';
 import { SMS_PROVIDER, type SmsOutcome, type SmsProvider } from '../src/notifications/sms/sms-provider';
 import { VOICE_PROVIDER, type VoiceOutcome, type VoiceProvider } from '../src/notifications/voice/voice-provider';
+import { PUSH_PROVIDER, type PushOutcome, type PushProvider, type PushReceipt } from '../src/notifications/push/push-provider';
 import { TrustedContactsService } from '../src/trusted-contacts/trusted-contacts.service';
 import { rollupIncident } from '@lumo/safety-domain';
 
@@ -48,6 +49,20 @@ class FakeVoice implements VoiceProvider {
   async call(r: { to: string; script: string; attemptId: string }) { this.calls.push(r); return this.next; }
 }
 const fakeVoice = new FakeVoice();
+
+class FakePush implements PushProvider {
+  isConfigured = true;
+  next: PushOutcome | null = null; // null: accept every token with a fresh ticket
+  receiptMap: ReadonlyMap<string, PushReceipt> | null = new Map();
+  calls: { tokens: readonly string[]; title: string; body: string; attemptId: string }[] = [];
+  configured() { return this.isConfigured; }
+  async send(r: { tokens: readonly string[]; title: string; body: string; attemptId: string }): Promise<PushOutcome> {
+    this.calls.push(r);
+    return this.next ?? { kind: 'accepted', tickets: r.tokens.map((token, i) => ({ token, id: `T${i}_${randomUUID().slice(0, 6)}` })), deadTokens: [] };
+  }
+  async receipts() { return this.receiptMap; }
+}
+const fakePush = new FakePush();
 
 let app: INestApplication;
 let prisma: PrismaClient;
@@ -99,6 +114,7 @@ beforeAll(async () => {
     .overrideProvider(getOptionsToken()).useValue([{ name: 'short', ttl: 1000, limit: 1_000_000 }])
     .overrideProvider(SMS_PROVIDER).useValue(fake)
     .overrideProvider(VOICE_PROVIDER).useValue(fakeVoice)
+    .overrideProvider(PUSH_PROVIDER).useValue(fakePush)
     .compile();
   app = moduleRef.createNestApplication({ logger: new Capturing() });
   configureApp(app);
@@ -116,8 +132,12 @@ beforeEach(() => {
   fakeVoice.isConfigured = true;
   fakeVoice.next = { kind: 'accepted', providerMessageId: `CA_${randomUUID().slice(0, 8)}`, status: 'queued' };
   fakeVoice.calls = [];
+  fakePush.isConfigured = true;
+  fakePush.next = null;
+  fakePush.receiptMap = new Map();
+  fakePush.calls = [];
   // Deterministic: jobs are drained by hand unless a test wants the real queue.
-  queue.setHandlers({ send: async () => {}, expire: async () => {} });
+  queue.setHandlers({ send: async () => {}, expire: async () => {}, receipts: async () => {} });
 });
 
 afterAll(async () => {
@@ -168,6 +188,7 @@ describe('planning: an attempt and its jobs exist together or not at all', () =>
     // Someone registers a device under the contact's own phone/email identity: must change nothing.
     const p = (await plan(s, ['sms', 'push'])).find((x) => x.channel === 'push')!;
     expect(p).toMatchObject({ outcome: 'not_attempted', reason: 'NO_ADDRESS' });
+    expect((await attempt(p.attemptId)).reservedAt).toBeNull(); // nothing to send to, so no budget spent
     expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:NO_ADDRESS']);
   });
 
@@ -254,7 +275,7 @@ describe('sending', () => {
     const s = await scenario('realqueue', { agree: true });
     // Earlier tests left their (no-op'd) jobs queued; drain them so this one is not waiting in line.
     await prisma.$executeRawUnsafe(`DELETE FROM pgboss_notifications_e2e.job WHERE name IN ('notify.send','notify.expire') AND state = 'created'`);
-    queue.setHandlers({ send: (id) => worker.send(id), expire: (id) => worker.expire(id) });
+    queue.setHandlers({ send: (id) => worker.send(id), expire: (id) => worker.expire(id), receipts: (id) => worker.checkReceipts(id) });
     const [p] = await plan(s);
     for (let i = 0; i < 40 && (await attempt(p.attemptId)).state === 'QUEUED'; i++) await new Promise((r) => setTimeout(r, 250));
     expect((await attempt(p.attemptId)).state).toBe('SENT');
@@ -645,5 +666,316 @@ describe('voice', () => {
     const path = `/api/v1/webhooks/twilio/voice-status?attempt=${id}`;
     await api().post(path).type('form').send({ CallSid: 'x', CallStatus: 'busy' }).expect(403);
     expect((await attempt(id)).state).toBe('SENT');
+  });
+});
+
+
+// ===================================================================== milestone 1.7b (part 2): push
+
+const expoToken = () => `ExponentPushToken[${randomUUID().replace(/-/g, '').slice(0, 22)}]`;
+
+/** A second Lumo user who will be the contact. Returns their login. */
+async function signedUp(label: string) {
+  const s = await api().post('/api/v1/auth/signup').send({ name: `Contact ${label}`, email: `${RUN}_${label}@example.com`, password: 'password123' }).expect(201);
+  return { token: s.body.token as string, id: s.body.user.id as string };
+}
+async function registerDevice(token: string, pushToken = expoToken()) {
+  const r = await api().post('/api/v1/devices').set(auth(token)).send({ platform: 'android', osVersion: '14', pushToken }).expect(201);
+  return { deviceId: r.body.id as string, pushToken };
+}
+/** An owner with an agreed contact who has claimed their invite from a signed-in account. */
+async function claimed(label: string, opts: { devices?: number; region?: string } = {}) {
+  const s = await scenario(label, { agree: false, region: opts.region });
+  const inv = await api().post(`/api/v1/trusted-contacts/${s.contactId}/invite`).set(auth(s.token)).expect(201);
+  const claimer = await signedUp(`${label}_c`);
+  await api().post(`${inv.body.path}/claim`).set(auth(claimer.token)).expect(200);
+  const tokens: string[] = [];
+  for (let i = 0; i < (opts.devices ?? 1); i++) tokens.push((await registerDevice(claimer.token)).pushToken);
+  return { ...s, inviteToken: (inv.body.path as string).split('/').pop()!, invitePath: inv.body.path as string, claimer, tokens };
+}
+const postReceipt = (token: string, attemptId: string, kind: 'delivered' | 'acknowledged') =>
+  api().post(`/api/v1/notifications/${attemptId}/receipt`).set(auth(token)).send({ kind });
+
+describe('devices: a push token belongs to one user at a time', () => {
+  it('registers a device and never echoes the token', async () => {
+    const u = await signedUp('dev1');
+    const r = await api().post('/api/v1/devices').set(auth(u.token)).send({ platform: 'ios', osVersion: '17.2', pushToken: expoToken() }).expect(201);
+    expect(Object.keys(r.body)).toEqual(['id']);
+  });
+
+  it('a second account registering the same token takes it, and the first loses it', async () => {
+    const a = await signedUp('dev_a');
+    const b = await signedUp('dev_b');
+    const token = expoToken();
+    const first = await registerDevice(a.token, token);
+    await registerDevice(b.token, token);
+    expect((await prisma.device.findUniqueOrThrow({ where: { id: first.deviceId } })).revokedAt).not.toBeNull();
+    expect(await prisma.device.count({ where: { pushToken: token, revokedAt: null } })).toBe(1);
+  });
+
+  it('the database refuses two live owners of one token, whatever the service does', async () => {
+    const a = await signedUp('dev_idx_a');
+    const b = await signedUp('dev_idx_b');
+    const token = expoToken();
+    const row = (userId: string) => prisma.device.create({ data: { userId, platform: 'android', osVersion: '14', pushToken: token, capabilities: {} } });
+    await row(a.id);
+    await expect(row(b.id)).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('logout: a user revokes their own device, and not anyone else’s', async () => {
+    const a = await signedUp('dev_out_a');
+    const b = await signedUp('dev_out_b');
+    const d = await registerDevice(a.token);
+    await api().delete(`/api/v1/devices/${d.deviceId}`).set(auth(b.token)).expect(404);
+    await api().delete(`/api/v1/devices/${d.deviceId}`).set(auth(a.token)).expect(204);
+    expect((await prisma.device.findUniqueOrThrow({ where: { id: d.deviceId } })).revokedAt).not.toBeNull();
+  });
+
+  it('refuses anything that is not an Expo push token, and needs a login', async () => {
+    const u = await signedUp('dev_bad');
+    await api().post('/api/v1/devices').set(auth(u.token)).send({ platform: 'ios', osVersion: '17', pushToken: 'fcm:abc' }).expect(400);
+    await api().post('/api/v1/devices').send({ platform: 'ios', osVersion: '17', pushToken: expoToken() }).expect(401);
+  });
+});
+
+describe('claiming a contact while signed in', () => {
+  it('links the claimer’s account to the contact, accepting the role if they had not yet', async () => {
+    const c = await claimed('cl_ok');
+    const row = await prisma.trustedContact.findUniqueOrThrow({ where: { id: c.contactId } });
+    expect(row.linkedUserId).toBe(c.claimer.id);
+    expect(row.consentId).not.toBeNull(); // claiming agreed to the role, like the page does
+  });
+
+  it('works after the contact already agreed in the browser', async () => {
+    const s = await scenario('cl_after', { agree: true });
+    const inv = await api().post(`/api/v1/trusted-contacts/${s.contactId}/invite`).set(auth(s.token));
+    expect([201, 409]).toContain(inv.status); // already agreed: no new link is minted
+    const link = await prisma.contactInvite.findFirstOrThrow({ where: { contactId: s.contactId } });
+    expect(link.acceptedAt).not.toBeNull();
+  });
+
+  it('the first claim wins: another account is refused, the same account is idempotent', async () => {
+    const c = await claimed('cl_first');
+    const other = await signedUp('cl_first_other');
+    await api().post(`${c.invitePath}/claim`).set(auth(other.token)).expect(409);
+    await api().post(`${c.invitePath}/claim`).set(auth(c.claimer.token)).expect(200);
+    expect((await prisma.trustedContact.findUniqueOrThrow({ where: { id: c.contactId } })).linkedUserId).toBe(c.claimer.id);
+  });
+
+  it('the account that added the contact cannot claim it', async () => {
+    const s = await scenario('cl_self');
+    const inv = await api().post(`/api/v1/trusted-contacts/${s.contactId}/invite`).set(auth(s.token)).expect(201);
+    await api().post(`${inv.body.path}/claim`).set(auth(s.token)).expect(409);
+    expect((await prisma.trustedContact.findUniqueOrThrow({ where: { id: s.contactId } })).linkedUserId).toBeNull();
+  });
+
+  it('needs a login, and an unknown or dead link is the same 404', async () => {
+    const c = await claimed('cl_dead');
+    await api().post(`${c.invitePath}/claim`).expect(401);
+    const other = await signedUp('cl_dead_other');
+    await api().post(`/api/v1/contacts/invites/${'x'.repeat(43)}/claim`).set(auth(other.token)).expect(404);
+  });
+
+  it.each([
+    ['the contact withdraws', async (c: Awaited<ReturnType<typeof claimed>>) => { await api().post(`${c.invitePath}/revoke`).expect(200); }],
+    ['their number changes', async (c: Awaited<ReturnType<typeof claimed>>) => { await api().put('/api/v1/settings').set(auth(c.token)).send({ trustedContacts: [{ id: c.contactId, name: 'Ayesha', phone: '+923009990000' }] }).expect(200); }],
+    ['they are removed', async (c: Awaited<ReturnType<typeof claimed>>) => { await api().put('/api/v1/settings').set(auth(c.token)).send({ trustedContacts: [] }).expect(200); }],
+  ])('the link is cleared when %s', async (_name, act) => {
+    const c = await claimed(`cl_clear_${_name.replace(/\W/g, '').slice(0, 8)}`);
+    await act(c);
+    expect((await prisma.trustedContact.findUniqueOrThrow({ where: { id: c.contactId } })).linkedUserId).toBeNull();
+  });
+
+  it('is never shown to the account that added the contact', async () => {
+    const c = await claimed('cl_hidden');
+    const settings = await api().get('/api/v1/settings').set(auth(c.token)).expect(200);
+    expect(JSON.stringify(settings.body)).not.toContain(c.claimer.id);
+    expect(JSON.stringify(settings.body)).not.toMatch(/linked/i);
+  });
+});
+
+describe('sending push', () => {
+  it('a contact who has not claimed their invite has no address: NO_ADDRESS, nothing sent', async () => {
+    const s = await scenario('pu_none', { agree: true });
+    const [p] = await plan(s, ['push']);
+    await worker.send(p.attemptId);
+    expect(p).toMatchObject({ outcome: 'not_attempted', reason: 'NO_ADDRESS' }); // decided at plan time: no budget spent
+    await worker.send(p.attemptId);
+    expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:NO_ADDRESS']);
+    expect(fakePush.calls).toHaveLength(0);
+  });
+
+  it('a device registered under the contact’s own email or phone is NOT an address', async () => {
+    const s = await scenario('pu_infer', { agree: true });
+    const lookalike = await api().post('/api/v1/auth/signup').send({ name: 'Ayesha', email: `${RUN}_pu_infer_lookalike@example.com`, password: 'password123' }).expect(201);
+    await registerDevice(lookalike.body.token);
+    const [p] = await plan(s, ['push']);
+    expect(p).toMatchObject({ outcome: 'not_attempted', reason: 'NO_ADDRESS' });
+    expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:NO_ADDRESS']);
+  });
+
+  it('a device revoked between planning and sending is caught at send time', async () => {
+    const c = await claimed('pu_late_revoke');
+    const [p] = await plan(c, ['push']);
+    await prisma.device.updateMany({ where: { pushToken: { in: c.tokens } }, data: { revokedAt: new Date() } });
+    await worker.send(p.attemptId);
+    expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:NO_ADDRESS']);
+    expect(fakePush.calls).toHaveLength(0);
+  });
+
+  it('sends to the linked account’s live devices with ids and the sender’s name only; SENT, never DELIVERED', async () => {
+    const c = await claimed('pu_ok', { devices: 2 });
+    const [p] = await plan(c, ['push']);
+    await worker.send(p.attemptId);
+    const a = await attempt(p.attemptId);
+    expect(a.state).toBe('SENT');
+    expect(a.providerMessageId!.split(',')).toHaveLength(2); // both devices' tickets, one attempt
+    expect(a.deliveredAt).toBeNull();
+    expect(fakePush.calls).toHaveLength(1);
+    expect(new Set(fakePush.calls[0].tokens)).toEqual(new Set(c.tokens));
+    expect(fakePush.calls[0]).toMatchObject({ attemptId: p.attemptId, title: 'Lumo alert', body: expect.stringContaining('Owner pu_ok') });
+    expect(JSON.stringify(fakePush.calls[0])).not.toContain('923001234567'); // no number in the payload
+  });
+
+  it('a revoked device is not sent to', async () => {
+    const c = await claimed('pu_revoked', { devices: 2 });
+    await prisma.device.updateMany({ where: { pushToken: c.tokens[0] }, data: { revokedAt: new Date() } });
+    const [p] = await plan(c, ['push']);
+    await worker.send(p.attemptId);
+    expect(fakePush.calls[0].tokens).toEqual([c.tokens[1]]);
+  });
+
+  it('a dead token is revoked, and the attempt still counts as sent if another ticket was accepted', async () => {
+    const c = await claimed('pu_dead', { devices: 2 });
+    const [p] = await plan(c, ['push']);
+    fakePush.next = { kind: 'accepted', tickets: [{ token: c.tokens[1], id: 'T_ok' }], deadTokens: [c.tokens[0]] };
+    await worker.send(p.attemptId);
+    expect((await attempt(p.attemptId)).state).toBe('SENT');
+    expect((await prisma.device.findFirstOrThrow({ where: { pushToken: c.tokens[0] } })).revokedAt).not.toBeNull();
+    expect((await prisma.device.findFirstOrThrow({ where: { pushToken: c.tokens[1] } })).revokedAt).toBeNull();
+  });
+
+  it('every ticket refused → FAILED with the service’s reason', async () => {
+    const c = await claimed('pu_refused');
+    const [p] = await plan(c, ['push']);
+    fakePush.next = { kind: 'rejected', reason: 'EXPO_DeviceNotRegistered', deadTokens: c.tokens };
+    await worker.send(p.attemptId);
+    expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:EXPO_DeviceNotRegistered']);
+  });
+
+  it('not configured → NOT_ATTEMPTED, never accepted; and at most one send per attempt', async () => {
+    const c = await claimed('pu_conf');
+    const [p] = await plan(c, ['push']);
+    fakePush.isConfigured = false;
+    await worker.send(p.attemptId);
+    expect(await events(p.attemptId)).toEqual(['QUEUED:PLANNED', 'FAILED:PROVIDER_NOT_CONFIGURED']);
+    fakePush.isConfigured = true;
+    const c2 = await claimed('pu_once');
+    const [p2] = await plan(c2, ['push']);
+    await Promise.all([worker.send(p2.attemptId), worker.send(p2.attemptId)]);
+    expect(fakePush.calls.filter((x) => x.attemptId === p2.attemptId)).toHaveLength(1);
+  });
+
+  it('planning a push reserves budget like any send, and queues a receipt check', async () => {
+    const c = await claimed('pu_plan');
+    const [p] = await plan(c, ['push']);
+    expect((await attempt(p.attemptId)).reservedAt).not.toBeNull();
+    const jobs = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM pgboss_notifications_e2e.job WHERE data->>'attemptId' = $1 ORDER BY name`, p.attemptId);
+    expect(jobs.map((j) => j.name)).toEqual(['notify.expire', 'notify.receipts', 'notify.send']);
+  });
+});
+
+describe('push: what the service and the device each tell us', () => {
+  async function sentPush(label: string) {
+    const c = await claimed(label);
+    const [p] = await plan(c, ['push']);
+    await worker.send(p.attemptId);
+    return { c, id: p.attemptId, ids: (await attempt(p.attemptId)).providerMessageId!.split(',') };
+  }
+
+  it('an ok receipt from the service is a fact, never delivery: the attempt stays SENT', async () => {
+    const { id, ids } = await sentPush('pr_ok');
+    fakePush.receiptMap = new Map(ids.map((i) => [i, { status: 'ok' as const }]));
+    await worker.checkReceipts(id);
+    const a = await attempt(id);
+    expect(a.state).toBe('SENT');
+    expect(a.providerStatus).toBe('push_service_accepted');
+    expect(a.deliveredAt).toBeNull();
+  });
+
+  it('every receipt an error → FAILED with the service’s reason; a mix is left alone', async () => {
+    const { id, ids } = await sentPush('pr_err');
+    fakePush.receiptMap = new Map(ids.map((i) => [i, { status: 'error' as const, error: 'MessageRateExceeded' }]));
+    await worker.checkReceipts(id);
+    expect(await events(id)).toEqual(['QUEUED:PLANNED', 'SENT:PROVIDER_ACCEPTED', 'FAILED:EXPO_MessageRateExceeded']);
+  });
+
+  it('no receipt yet changes nothing; an unavailable service throws so the queue retries', async () => {
+    const { id } = await sentPush('pr_wait');
+    await worker.checkReceipts(id);
+    expect((await attempt(id)).state).toBe('SENT');
+    fakePush.receiptMap = null;
+    await expect(worker.checkReceipts(id)).rejects.toThrow();
+  });
+
+  it('a push that nobody confirms settles UNKNOWN — "sent, not confirmed" — not EXPIRED', async () => {
+    const { id } = await sentPush('pr_silent');
+    await worker.expire(id);
+    expect(await events(id)).toEqual(['QUEUED:PLANNED', 'SENT:PROVIDER_ACCEPTED', 'UNKNOWN:NO_RECEIPT_BY_TTL']);
+  });
+
+  it('the linked contact’s device reports delivery: DELIVERED, by the device', async () => {
+    const { c, id } = await sentPush('pr_dev');
+    expect((await postReceipt(c.claimer.token, id, 'delivered').expect(200)).body).toEqual({ recorded: true });
+    expect(await events(id)).toEqual(['QUEUED:PLANNED', 'SENT:PROVIDER_ACCEPTED', 'DELIVERED:DEVICE_RECEIPT']);
+  });
+
+  it('"I’m responding" acknowledges, and so does a LATE one after the ledger settled UNKNOWN', async () => {
+    const { c, id } = await sentPush('pr_ack');
+    await worker.expire(id);
+    expect((await postReceipt(c.claimer.token, id, 'acknowledged').expect(200)).body).toEqual({ recorded: true });
+    expect((await attempt(id)).state).toBe('ACKNOWLEDGED');
+  });
+
+  it('a late DELIVERED after UNKNOWN is not recorded (it adds nothing), and a duplicate is harmless', async () => {
+    const { c, id } = await sentPush('pr_late');
+    await worker.expire(id);
+    expect((await postReceipt(c.claimer.token, id, 'delivered').expect(200)).body).toEqual({ recorded: false });
+    expect((await attempt(id)).state).toBe('UNKNOWN');
+    const d = await sentPush('pr_dup');
+    await postReceipt(d.c.claimer.token, d.id, 'delivered').expect(200);
+    expect((await postReceipt(d.c.claimer.token, d.id, 'delivered').expect(200)).body).toEqual({ recorded: false });
+  });
+
+  it('only the linked account may report; everything else is one 404', async () => {
+    const { c, id } = await sentPush('pr_who');
+    const stranger = await signedUp('pr_who_stranger');
+    const bodies = [
+      await postReceipt(stranger.token, id, 'delivered'),          // not the contact
+      await postReceipt(c.token, id, 'delivered'),                  // the owner, not the contact
+      await postReceipt(c.claimer.token, randomUUID(), 'delivered'), // no such attempt
+    ];
+    for (const r of bodies) expect(r.status).toBe(404);
+    // Same answer for all three (the per-request `reference` id differs, by design).
+    expect(new Set(bodies.map((r) => `${r.status} ${r.body.message}`)).size).toBe(1);
+    await api().post(`/api/v1/notifications/${id}/receipt`).send({ kind: 'delivered' }).expect(401);
+    expect((await attempt(id)).state).toBe('SENT');
+  });
+
+  it('a contact who withdrew can no longer report', async () => {
+    const { c, id } = await sentPush('pr_withdrawn');
+    await api().post(`${c.invitePath}/revoke`).expect(200);
+    await postReceipt(c.claimer.token, id, 'acknowledged').expect(404);
+  });
+
+  it('only a push attempt can be reported by a device', async () => {
+    const c = await claimed('pr_sms');
+    const [p] = await plan(c, ['sms']);
+    await postReceipt(c.claimer.token, p.attemptId, 'delivered').expect(404);
+  });
+
+  it('rejects any other kind of report', async () => {
+    const { c, id } = await sentPush('pr_kind');
+    await api().post(`/api/v1/notifications/${id}/receipt`).set(auth(c.claimer.token)).send({ kind: 'failed' }).expect(400);
   });
 });
