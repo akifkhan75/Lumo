@@ -7,6 +7,8 @@ import PracticeScreen from '../components/PracticeScreen';
 import JourneyScreen from '../components/JourneyScreen';
 import ContactAlertScreen from '../components/ContactAlert';
 import BootScreen from '../components/BootScreen';
+import HistoryScreen from '../components/HistoryScreen';
+import IncidentTimelineScreen from '../components/IncidentTimelineScreen';
 import AuthScreen from '../components/auth/AuthScreen';
 import SettingsScreen from '../components/settings/SettingsModal';
 import AlertSettingsScreen from '../components/settings/AlertSettings';
@@ -84,5 +86,9 @@ describe('the accessibility floor on the safety path (PLAT-2)', () => {
     await act(async () => { start!.props.onPress(); });
     report('Sign in');
   });
+
+  const summary: any = { id: 'i1', mode: 'real', state: 'CLOSED', outcome: 'CLOSED', triggerType: 'manual', triggeredAt: T, createdAt: T, lateBySeconds: 0, locationAvailable: false, contactsTried: 2, contactsReached: 1, contactsFailed: 1, resolvedAt: null, closedAt: null };
+  it('past alerts', async () => { (api as any).listIncidents.mockResolvedValue({ incidents: [summary], nextCursor: 'c' }); await show(<HistoryScreen />); report('History'); });
+  it('a timeline', async () => { (api as any).getIncidentTimeline.mockResolvedValue({ incident: summary, entries: [{ at: T, kind: 'attempt', event: 'ATTEMPT_SENT', from: null, to: 'SENT', actor: null, reason: null, recipient: 'Maya', channel: 'sms', purpose: 'ALERT', simulated: false }] }); await show(<IncidentTimelineScreen />, { id: 'i1' }); report('Timeline'); });
 });
 
