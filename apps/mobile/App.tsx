@@ -16,6 +16,7 @@ import { UserSettings, RootStackParamList, SettingsStackParamList } from './type
 import AuthScreen from './components/auth/AuthScreen';
 import BootScreen from './components/BootScreen';
 import EmergencyScreen from './components/EmergencyModal';
+import PracticeScreen from './components/PracticeScreen';
 import FakeCallScreen from './components/FakeCallScreen';
 import SettingsScreen from './components/settings/SettingsModal';
 import ProfileSettingsScreen from './components/settings/ProfileSettings';
@@ -385,6 +386,7 @@ const App = () => {
                             <MainStack.Screen name="Settings" component={SettingsNavigator} />
                             <MainStack.Screen name="CommunitySafety" component={CommunitySafetyScreen} />
                             <MainStack.Screen name="Journey" component={JourneyScreen} />
+                            <MainStack.Screen name="Practice" component={PracticeScreen} />
                             <MainStack.Screen name="FakeCall" component={FakeCallScreen} />
                             <MainStack.Screen name="ReportHazard" component={ReportHazardScreen} />
                             <MainStack.Screen name="SafetyAssistant" component={SafetyAssistantScreen} />

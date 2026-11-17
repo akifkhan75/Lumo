@@ -61,4 +61,20 @@ countdown, cancel and resolve work; only the sending is different.
   the same thing. Push shows DELIVERED (a device receipt), other channels SENT (all they can say). With two or more attempts the last is a
   simulated failure; a contact who may not be alerted is shown as not tried, with the real reason.
 - No position is kept (only that one was available), no journey is linked, resolving tells nobody, and a contact cannot see a rehearsal.
-- Not yet: the app entry, banner and offline run (1.12b), and onboarding step 4 and the activation metric (KI-118).
+- Not yet: onboarding step 4 and the activation measure (KI-118), and an entry point beyond Settings (KI-119).
+
+## As built (1.12b: the app)
+
+**Settings → Practise an emergency** opens its own screen (`PracticeScreen`), not the SOS screen with a flag, so nothing real can leak into it.
+
+- **The banner "Practice — nobody will be contacted"** (the spec's words) is on screen in every state: before starting, counting down, the
+  result, offline and signed out. The screen is deliberately not the emergency screen's colour.
+- **No dialler.** The screen has no control that opens the phone dialler, so a rehearsal cannot place a call. A plainly labelled red
+  button, "Need real help? Open the emergency screen", opens the REAL screen (which starts nothing by itself).
+- **It never touches the saved "SOS in progress" record** (`useSos` with `practice`): a rehearsal cannot be resumed as a real alert and
+  cannot clear a real one.
+- **A 3 s countdown with Cancel**, as a real manual SOS has, then the simulated ledger. Every row is marked "(practice)", the headline is
+  "Practice: …", and the example failure is explained in words.
+- **Offline.** If Lumo cannot be reached, the same run happens on the phone from the saved contacts, using the SAME `simulatePractice` as
+  the server and no network call at all; the screen says it ran on the phone and what that would mean for a real alert. Signed out, it says
+  practice needs an account and invents nothing. With no contact who agreed, it shows "nobody to try", as a real SOS would, not a success.

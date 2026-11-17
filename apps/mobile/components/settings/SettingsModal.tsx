@@ -126,6 +126,7 @@ const SettingsScreen = () => {
                     onToggleChange={handleToggleLocation}
                 />
                 <SettingItem icon={<IconAlert size={24} color="#16a34a" />} title="Setup Alert" description="Configure alert settings" onPress={() => navigation.navigate('AlertSettings', { currentSettings, onSave })} />
+                <SettingItem icon={<IconAlert size={24} color="#16a34a" />} title="Practise an emergency" description="Try the SOS path. Nobody is contacted" onPress={() => (navigation as any).navigate('Practice', { settings: currentSettings })} />
                 <View style={{marginTop: 16, borderTopWidth: 1, borderColor: '#e5e7eb', paddingTop: 8}} />
                 <SettingItem icon={<IconLogout size={24} color="#16a34a" />} title="Logout" description="Click here to logout" onPress={() => {
                     onClose();
