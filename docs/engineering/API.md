@@ -363,3 +363,9 @@ from `EXPO_PUBLIC_WEB_URL` + the returned `path`.
 `POST /api/v1/sos` accepts `mode: "practice"`. The incident it returns has `mode: "practice"` and every attempt has `simulated: true`; nothing
 is sent, queued or costed, and the ledger is the simulated one (`SIMULATED_FAILURE` marks the example failure). `duress: true` is still refused.
 Every incident view now carries `mode` and each attempt `simulated` (false for a real one).
+
+## Late SOS (1.13a)
+
+`POST /api/v1/sos` accepts `elapsedSeconds` (integer ≥ 0): how long ago the press was, measured on the device. The server derives the press
+time from its own clock. If the countdown has already passed it dispatches at once. Over 6 hours: `400 { message, tooLate: true }`, nothing
+sent. The incident view carries `lateBySeconds` (0 for an ordinary SOS), and any message to a contact says so from two minutes.

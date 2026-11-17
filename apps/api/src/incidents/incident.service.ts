@@ -50,10 +50,21 @@ export function clampCountdown(trigger: SosTrigger, requested: number | undefine
   }
 }
 
+/**
+ * The longest ago a press may have been and still be sent (docs/specs/OFFLINE_SOS.md). Same window as resuming a shown SOS. Beyond it the
+ * request is refused and NOTHING is sent: an alert that old is more likely stale than urgent, and the contact cannot tell.
+ */
+export const MAX_LATE_SOS_SECONDS = 6 * 60 * 60;
+
 export interface SosInput {
   readonly triggerType: SosTrigger;
   readonly triggeredAt: Date;
   readonly countdownSeconds?: number;
+  /**
+   * How long ago the person pressed, measured ON THE DEVICE (docs/specs/OFFLINE_SOS.md). The server derives the press time from its own
+   * clock minus this, so a wrong phone clock cannot make a late alert read as on time, or the reverse. Absent: the press is now.
+   */
+  readonly elapsedSeconds?: number;
   readonly location?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number } | null;
   readonly place?: { country: string; subdivision?: string | null } | null;
   /** The journey this SOS belongs to, if any. Honoured only if it is the caller's own, live journey. */
@@ -77,6 +88,8 @@ export interface IncidentView {
   readonly mode: 'real' | 'practice';
   readonly triggerType: string;
   readonly countdownEndsAt: Date | null;
+  /** Seconds between when the alert should have gone and when the server got it. 0 for an ordinary SOS. */
+  readonly lateBySeconds: number;
   readonly locationAvailable: boolean;
   readonly outcome: string;
   /** The ladder: which step is in flight, of how many, and when it gives way to the next. */
@@ -190,6 +203,11 @@ export class IncidentService implements OnModuleInit {
     // Dispatch needs the queue. Refuse LOUDLY rather than record an alert that can never be sent.
     const practice = input.mode === 'practice';
     const seconds = clampCountdown(input.triggerType, input.countdownSeconds);
+    const elapsed = Math.max(0, Math.trunc(input.elapsedSeconds ?? 0));
+    if (elapsed > MAX_LATE_SOS_SECONDS) {
+      // Said plainly, and nothing was sent: the device shows it and offers the dialler.
+      throw new BadRequestException({ message: 'This was triggered too long ago to alert your contacts. Nothing was sent. Call your local emergency number.', tooLate: true });
+    }
     // A rehearsal sends nothing, so it needs the queue only for a countdown. A real alert needs it always.
     if (!this.queue.running && (!practice || seconds > 0)) throw new ServiceUnavailableException(practice ? 'Practice cannot run right now.' : 'Alerts cannot be sent right now. Call your local emergency number.');
 
@@ -201,20 +219,25 @@ export class IncidentService implements OnModuleInit {
     const linked = input.sessionId && !practice
       ? await this.prisma.safetySession.findFirst({ where: { id: input.sessionId, userId: caller.id, state: { notIn: ['CLOSED', 'CANCELLED', 'EXPIRED'] } }, select: { id: true } })
       : null;
-    const countdownEndsAt = seconds > 0 ? new Date(now.getTime() + seconds * 1000) : null;
+    // The press, by the SERVER's clock minus the device's elapsed time. Its countdown is measured from the press, so a request that arrives
+    // late finds the deadline already passed and dispatches at once ("a late alert beats no alert"), saying how late it is.
+    const pressedAt = input.elapsedSeconds !== undefined ? new Date(now.getTime() - elapsed * 1000) : input.triggeredAt;
+    const countdownEndsAt = seconds > 0 ? new Date(pressedAt.getTime() + seconds * 1000) : null;
+    const deadlinePassed = countdownEndsAt !== null && countdownEndsAt.getTime() <= now.getTime();
+    const lateBySeconds = input.elapsedSeconds !== undefined ? Math.max(0, elapsed - seconds) : 0;
 
     let incidentId: string;
     try {
       incidentId = await this.prisma.$transaction(async tx => {
         const created = await tx.emergencyIncident.create({
           data: {
-            userId: caller.id, idempotencyKey: key, triggerType: input.triggerType, triggeredAt: input.triggeredAt,
-            countdownEndsAt, regionProfileId: this.regionFor(input, user?.regionProfileId ?? null, now), mode: practice ? 'practice' : 'real', isDuress: false,
+            userId: caller.id, idempotencyKey: key, triggerType: input.triggerType, triggeredAt: pressedAt,
+            countdownEndsAt, lateBySeconds, regionProfileId: this.regionFor(input, user?.regionProfileId ?? null, now), mode: practice ? 'practice' : 'real', isDuress: false,
             ...(linked ? { sessionId: linked.id } : {}),
           },
         });
         await tx.incidentEvent.create({ data: { incidentId: created.id, fromState: null, toState: 'CREATED', event: 'CREATED', actor: 'user', reason: input.triggerType, occurredAt: now } });
-        if (seconds > 0) await this.queue.enqueueCountdown(tx, created.id, seconds);
+        if (seconds > 0 && !deadlinePassed) await this.queue.enqueueCountdown(tx, created.id, Math.max(1, Math.ceil((countdownEndsAt!.getTime() - now.getTime()) / 1000)));
         return created.id;
       });
     } catch (e) {
@@ -240,7 +263,7 @@ export class IncidentService implements OnModuleInit {
       }
     }
 
-    if (seconds === 0) await this.dispatch(incidentId, now);
+    if (seconds === 0 || deadlinePassed) await this.dispatch(incidentId, now);
     if (linked) await this.sessionHooks?.sosRaised(linked.id, incidentId, now).catch(() => undefined);
     return { replay: false, incident: await this.view(caller, incidentId) };
   }
@@ -448,7 +471,7 @@ export class IncidentService implements OnModuleInit {
       for (const c of contacts) names.set(c.id, c.name);
     }
     return {
-      id: inc.id, state: inc.state, mode: inc.mode, triggerType: inc.triggerType, countdownEndsAt: inc.countdownEndsAt, locationAvailable: inc.locationAvailable,
+      id: inc.id, state: inc.state, mode: inc.mode, triggerType: inc.triggerType, countdownEndsAt: inc.countdownEndsAt, lateBySeconds: inc.lateBySeconds, locationAvailable: inc.locationAvailable,
       outcome: INCIDENT_TERMINAL.includes(inc.state) ? inc.state : roll.outcome,
       escalation: EscalationService.view(inc.ladder, inc.policySnapshot),
       reached: roll.reached, acknowledged: roll.acknowledged, failed: roll.failed, pending: roll.pending,

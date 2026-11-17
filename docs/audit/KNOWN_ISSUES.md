@@ -1113,3 +1113,23 @@ that keeps rehearsals out of the metrics when there is one; the app does not yet
 
 There is no prompt after adding a first contact and no dashboard shortcut, so a person who never opens Settings never practises. The
 bottom bar has no room for it; a one-time nudge after the first agreed contact is the likely fix.
+
+## Found while building milestone 1.13a — 2026-11-17
+
+_The design is `docs/specs/OFFLINE_SOS.md`. 1.13a is the server half only: until 1.13b the app still queues and retries nothing (KI-87, KI-91 stay open)._
+
+### 🟠 KI-120 — An SOS older than 6 hours is refused
+
+`MAX_LATE_SOS_SECONDS` is a judgment, not a law: past it a press is more likely stale than urgent and a contact woken by it cannot tell.
+The server refuses it, says so, and the person is offered the dialler. If a real case shows an older press should still go, the cap moves;
+it should not be removed.
+
+### 🟡 KI-121 — The device's elapsed time is trusted, within bounds
+
+The server believes `elapsedSeconds`. A hostile client can claim 0 to look on time, or up to 6 hours to look late; neither gets an alert to
+anyone it could not already alert, and the contact is told only a stated age. The press time shown is the server's clock less the claim.
+
+### 🟡 KI-122 — A position's age is still by the device's clock
+
+`locationLine` words "N min before this was sent" from the fix's `capturedAt` (the phone's clock) and the server's `now`. A wrong phone
+clock skews that figure. Fixing it needs the fix's own elapsed time sent with it, as the press has now.
