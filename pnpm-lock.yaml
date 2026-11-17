@@ -215,6 +215,9 @@ importers:
       expo-sensors:
         specifier: ~58.0.4
         version: 58.0.4(expo@58.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))
+      expo-sms:
+        specifier: ~58.0.3
+        version: 58.0.3(expo@58.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3))
       expo-system-ui:
         specifier: ^58.0.6
         version: 58.0.6(expo@58.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))
@@ -4564,6 +4567,11 @@ packages:
   expo-server@58.0.5:
     resolution: {integrity: sha512-FHYecxfGOuAhacHcanR6qCN8Cln9S+FFulcYetLu3ddDg55ohuCsMZ9U4Egzwdm+A2o6N+MdSoJKquBC5F9NIg==}
     engines: {node: ^22.13.0 || ^24.3.0 || ^26.0.0 || >=27.0.0}
+
+  expo-sms@58.0.3:
+    resolution: {integrity: sha512-Gx8/hvtGjZfdJ+m6eKSVzMAZ8OeVa87J7pYIS6e2Tb4gKKO919CLyo2y1bQXr2btB8TnKEwYP4o6XV5oqvTZ+g==}
+    peerDependencies:
+      expo: '*'
 
   expo-system-ui@58.0.6:
     resolution: {integrity: sha512-K1+GIYhNDc4J0lJAL0m8giesP1dgfavhN+joA6FQ45r1FXAWwS1PaueCiCJaq5hB6z5iAYT7b9XqYp76UU65yw==}
@@ -12645,6 +12653,10 @@ snapshots:
       react-native: 0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)
 
   expo-server@58.0.5: {}
+
+  expo-sms@58.0.3(expo@58.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)):
+    dependencies:
+      expo: 58.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
 
   expo-system-ui@58.0.6(expo@58.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3))(react-native@0.88.0(@babel/core@7.29.7)(@react-native-community/cli@19.0.0(typescript@6.0.3))(@react-native/metro-config@0.80.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)):
     dependencies:

@@ -2,6 +2,7 @@ import React from 'react';
 import { AppState, Linking } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import * as Notifications from 'expo-notifications';
+import * as SMS from 'expo-sms';
 import { ApiError } from '@lumo/api-client';
 import type { Incident, IncidentAttempt } from '@lumo/types';
 import EmergencyScreen from '../components/EmergencyModal';
@@ -11,6 +12,7 @@ import * as apiService from '../services/apiService';
 jest.mock('../services/apiService');
 const api = apiService as jest.Mocked<typeof apiService>;
 const notif = Notifications as jest.Mocked<typeof Notifications>;
+const sms = SMS as jest.Mocked<typeof SMS>;
 
 const mockGoBack = jest.fn();
 let mockParams: any = {};
@@ -52,6 +54,9 @@ beforeEach(() => {
   api.saveActiveSos.mockResolvedValue(undefined as never);
   api.clearActiveSos.mockResolvedValue(undefined as never);
   api.loadActiveSos.mockResolvedValue(null as never);
+  api.loadOfflineContacts.mockResolvedValue([] as never);
+  (sms.isAvailableAsync as jest.Mock).mockResolvedValue(true);
+  (sms.sendSMSAsync as jest.Mock).mockResolvedValue({ result: 'unknown' });
   (notif.scheduleNotificationAsync as jest.Mock).mockResolvedValue('reminder-1');
 });
 afterEach(() => { act(() => tree?.unmount()); openURL.mockRestore(); jest.useRealTimers(); });
@@ -273,5 +278,112 @@ describe('the app was closed and reopened', () => {
     await open({ resume: true });
     expect(text()).toContain('Too long ago to send');
     expect(api.clearActiveSos).toHaveBeenCalled();
+  });
+});
+
+describe('the pre-filled text (the person sends it; Lumo cannot)', () => {
+  const cached = [{ id: 'c1', name: 'Maya', phone: '+923001234500' }, { id: 'c2', name: 'Dad', phone: '+923001234501' }];
+  const textButton = () => control(/Open a text to your contacts/);
+  const compose = async () => { await act(async () => { textButton().props.onPress(); }); await flush(); };
+
+  it('is offered while Lumo does not have the alert, with the honest explanation that the person presses send', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(down());
+    await press();
+    expect(textButton()).toBeDefined();
+    expect(text()).toContain('You press send, from your own phone and credit. Lumo cannot send it for you.');
+  });
+
+  it('is NOT offered while Lumo has the alert and is working, nor while counting down on the server', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockResolvedValue(inc('NOTIFYING', [att()]));
+    await press();
+    expect(textButton()).toBeUndefined();
+  });
+
+  it('is offered when every channel failed, next to the dialler', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockResolvedValue(inc('ALL_CHANNELS_FAILED', []));
+    await press();
+    expect(textButton()).toBeDefined();
+    expect(control(/Open the phone dialler to call/)).toBeDefined();
+  });
+
+  it('is offered when the login was rejected: the cached contacts are still the person\'s', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(new ApiError('Unauthorized', 'http', 401));
+    await press();
+    expect(textButton()).toBeDefined();
+  });
+
+  it('opens the composer addressed to the cached contacts, with the written text and the position', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(down());
+    await press();
+    await compose();
+    const [phones, body] = (sms.sendSMSAsync as jest.Mock).mock.calls[0];
+    expect(phones).toEqual(['+923001234500', '+923001234501']);
+    expect(body).toContain('I pressed SOS in the Lumo app');
+    expect(body).toContain('I do not have a location'); // no fix in this test: it says so rather than guess
+  });
+
+  it('falls back to the agreed contacts in the loaded settings when nothing is cached, and never to a contact who has not agreed', async () => {
+    api.raiseSos.mockRejectedValue(down());
+    const settings: any = { trustedContacts: [
+      { id: 'a', name: 'Maya', phone: '+111', consentStatus: 'agreed' },
+      { id: 'b', name: 'Dad', phone: '+222', consentStatus: 'waiting' },
+    ] };
+    await open({ trigger: 'manual', settings });
+    await compose();
+    expect((sms.sendSMSAsync as jest.Mock).mock.calls[0][0]).toEqual(['+111']);
+  });
+
+  it('with no contact who agreed, opens nothing and says so', async () => {
+    api.raiseSos.mockRejectedValue(down());
+    await press();
+    await compose();
+    expect(sms.sendSMSAsync).not.toHaveBeenCalled();
+    expect(text()).toContain('no saved number for a contact who has agreed');
+  });
+
+  it('after the composer: says what it said, and never that anyone received it', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(down());
+    (sms.sendSMSAsync as jest.Mock).mockResolvedValue({ result: 'sent' });
+    await press();
+    await compose();
+    expect(text()).toContain('Your messages app says you sent the text to Maya, Dad');
+    expect(text()).toContain("can't tell whether it arrived");
+    expect(text().toLowerCase()).not.toMatch(/\bdelivered\b|has received|notified/);
+  });
+
+  it('a cancelled composer says nothing was sent', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(down());
+    (sms.sendSMSAsync as jest.Mock).mockResolvedValue({ result: 'cancelled' });
+    await press();
+    await compose();
+    expect(text()).toContain("You didn't send the text");
+  });
+
+  it('on a phone with no composer, says so and still offers the dialler', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(down());
+    (sms.isAvailableAsync as jest.Mock).mockResolvedValue(false);
+    await press();
+    await compose();
+    expect(text()).toContain("can't open a text from Lumo");
+    expect(control(/Open the phone dialler to call/)).toBeDefined();
+  });
+
+  it('opening the text does not start, cancel or change the alert', async () => {
+    api.loadOfflineContacts.mockResolvedValue(cached as never);
+    api.raiseSos.mockRejectedValue(down());
+    await press();
+    const calls = api.raiseSos.mock.calls.length;
+    await compose();
+    expect(api.raiseSos.mock.calls.length).toBe(calls);
+    expect(api.cancelSosByKey).not.toHaveBeenCalled();
+    expect(text()).toContain('Nothing has been sent'); // the alert's own state is unchanged
   });
 });

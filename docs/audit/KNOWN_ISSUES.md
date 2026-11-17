@@ -949,7 +949,7 @@ clock's error and the request's latency.
 
 ### 🟠 KI-91 — A press while offline sends nothing, and nothing queues it
 
-_Update: built in 1.13b (automatic retry, the offline states and the reminder). The pre-filled device text is 1.13c; nothing is sent while the app is closed — see KI-123._
+_Update: built in 1.13b (automatic retry, the offline states and the reminder) and 1.13c (the pre-filled text, which the person sends). Nothing is sent while the app is closed — see KI-123._
 
 The screen says nothing was sent and offers the dialler and "try again" (user-initiated, same key). There is no
 automatic send on reconnect, and the pre-filled device SMS fallback is not built (1.13).
@@ -1164,3 +1164,27 @@ moment. Whether to ask at the first contact is a product decision.
 If Lumo is unreachable for a long time the screen keeps saying it will keep trying. The saved cancel survives a restart and is finished on the
 next open, but a person who never reopens Lumo has an unconfirmed cancel. It cannot send (the press is marked cancelled), but a request that
 reached Lumo before the cancel may still alert contacts.
+
+## Found while building milestone 1.13c — 2026-11-17
+
+### 🟠 KI-127 — The pre-filled text is not on the incident's ledger
+
+The text is composed with no incident to attach it to, and nothing records it afterwards. The incident view never shows a `device_direct_sms`
+attempt, so a contact list read later does not say that the person texted them. Recording it needs the result kept until Lumo is reachable, and an
+endpoint that writes an attempt whose ceiling is SENT and never DELIVERED (the channel has no receipt path at all).
+
+### 🟠 KI-128 — A withdrawal made while the phone is offline is not yet known to it
+
+The cached contacts follow the server whenever settings load. A contact who withdraws consent while this phone has no signal is still in the
+cache, so the text can be addressed to them. The person must still press send, and the names are shown, but consent is the contact's: shorten
+this by refreshing at every app open that has a signal (it does when settings load), and consider showing who it is addressed to before it opens.
+
+### 🟡 KI-129 — The text's map link is Google's, and the position's age is the phone's own clock
+
+Same as KI-88: opening the link tells Google where the person was. The age ("about 12 min ago") is the fix's age by the phone's clock, consistently
+(both ends are on the device), so it is only as wrong as the phone's own sense of elapsed time. A Lumo-hosted position page would replace it.
+
+### 🟡 KI-130 — The composer's answer is weak on some platforms
+
+`expo-sms` can say "sent", "cancelled" or "unknown", and on some it is always "unknown". The screen reports exactly that and never more.
+`expo-sms` is a native module: a dev-build rebuild is needed before this works on a device (KI-124), and it has not run on one.

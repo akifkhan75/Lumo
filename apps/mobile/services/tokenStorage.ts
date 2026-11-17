@@ -105,6 +105,24 @@ export const loadActiveSos = async (): Promise<ActiveSos | null> => {
 };
 export const clearActiveSos = () => deleteKey(ACTIVE_KEY);
 
+const CONTACTS_KEY = 'lumo.offline.contacts';
+/**
+ * The contacts who AGREED, kept encrypted on this phone (the platform keychain/keystore) so the pre-filled text can be addressed with no
+ * signal (docs/specs/OFFLINE_SOS.md). Personal data at rest: only agreed contacts, only name and number, refreshed whenever settings load,
+ * and removed on logout.
+ */
+export const saveOfflineContacts = (list: ReadonlyArray<{ id: string; name: string; phone: string }>) =>
+  list.length === 0 ? deleteKey(CONTACTS_KEY) : writeKey(CONTACTS_KEY, JSON.stringify(list));
+export const loadOfflineContacts = async (): Promise<{ id: string; name: string; phone: string }[]> => {
+  const raw = await readKey(CONTACTS_KEY);
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter(c => typeof c?.id === 'string' && typeof c?.name === 'string' && typeof c?.phone === 'string') : [];
+  } catch { return []; }
+};
+export const clearOfflineContacts = () => deleteKey(CONTACTS_KEY);
+
 const PUSH_DEVICE_KEY = 'lumo.push.deviceId';
 /** The server-side id of THIS phone's push registration, so logout can revoke it. Not the push token itself. */
 export const savePushDeviceId = (id: string) => writeKey(PUSH_DEVICE_KEY, id);

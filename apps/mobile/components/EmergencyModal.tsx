@@ -10,6 +10,9 @@ import { useLocation } from '../hooks/useLocation';
 import { useSos } from '../hooks/useSos';
 import { contactRows, headline, reasonText } from '../services/sosLedger';
 import { secondsLeft, type SosTrigger } from '../services/sosCountdown';
+import { openOfflineText } from '../services/deviceText';
+import { agreedForCache, offlineTextBody, textStatusLine, TEXT_BUTTON, TEXT_BUTTON_LABEL, TEXT_EXPLAINER, type CachedContact } from '../services/offlineText';
+import { loadOfflineContacts } from '../services/apiService';
 
 const Container = styled(View)`
   flex: 1;
@@ -275,6 +278,32 @@ const EmergencyScreen = () => {
 
   const incident = state.incident;
 
+  // ----- The pre-filled text (docs/specs/OFFLINE_SOS.md): offered exactly when Lumo does not have the alert, so there is something the person can
+  // do with no signal. Lumo writes and addresses it; the PERSON presses send, from their own phone. It is never described as Lumo sending.
+  const [cached, setCached] = useState<CachedContact[]>([]);
+  const [textNote, setTextNote] = useState<string | null>(null);
+  useEffect(() => {
+    let off = false;
+    Promise.resolve(loadOfflineContacts()).then(c => { if (!off && Array.isArray(c)) setCached(c); }).catch(() => undefined);
+    return () => { off = true; };
+  }, []);
+  const textContacts = cached.length > 0 ? cached : agreedForCache(settings?.trustedContacts);
+  const offerText = state.phase === 'unreachable' || state.phase === 'cannot' || incident?.state === 'ALL_CHANNELS_FAILED';
+  const composeText = async () => {
+    const fix = location.fix ? { latitude: location.fix.latitude, longitude: location.fix.longitude, accuracyM: location.fix.accuracyM, capturedAt: location.fix.capturedAt } : null;
+    const status = await openOfflineText(textContacts, offlineTextBody(fix, Date.now()));
+    setTextNote(textStatusLine(status, textContacts.map(c => c.name)));
+  };
+  const TextBlock = offerText ? (
+    <>
+      <BottomButton onPress={composeText} accessibilityRole="button" accessibilityLabel={TEXT_BUTTON_LABEL}>
+        <ButtonText>{TEXT_BUTTON}</ButtonText>
+      </BottomButton>
+      <Note>{TEXT_EXPLAINER}</Note>
+      {textNote ? <Note accessibilityLiveRegion="polite">{textNote}</Note> : null}
+    </>
+  ) : null;
+
   // ----- Nothing got out: a full screen, with the next action, never a toast.
   if (incident?.state === 'ALL_CHANNELS_FAILED') {
     return (
@@ -290,6 +319,7 @@ const EmergencyScreen = () => {
           ))}
           {incident.attempts.length === 0 ? <Note>You have no contact who has agreed to be alerted.</Note> : null}
         </ScrollView>
+        {TextBlock}
         {DialButtons}
         <BottomButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close the emergency screen"><ButtonText>Close</ButtonText></BottomButton>
       </FailedScreen>
@@ -414,6 +444,7 @@ const EmergencyScreen = () => {
             <Text style={styles.defenseLabel}>Defense</Text>
           </TouchableOpacity>
         </View>
+        {TextBlock}
         {DialButtons}
         <BottomButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close the emergency screen">
           <ButtonText>Close</ButtonText>
