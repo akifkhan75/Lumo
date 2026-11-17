@@ -1,5 +1,9 @@
 # Web App (`apps/web`)
 
+> **Status (1.11):** built, not yet verified end to end or deployed. The page is a server component that calls `GET /api/v1/j/:token`
+> from the server (token never reaches browser script); a PIN is held in an httpOnly cookie scoped to that link's path. The app's share control and indicator are built (KI-109). Gaps: KI-108, KI-110 – KI-115.
+> Run: `LUMO_API_URL=http://localhost:3005 pnpm --filter web dev` (port 3006).
+
 > **Phase 1, deliberately minimal:** the tokenised journey page and nothing else.
 > Implements RES-11. Next.js + TypeScript.
 

@@ -264,6 +264,33 @@ describe('ApiClient', () => {
     }));
   });
 
+  describe('journey links', () => {
+    it('mints a link with the options given and returns the path once', async () => {
+      const made = { id: 'l1', path: '/j/tok', expiresAt: '2026-01-01T00:00:00Z', hasPin: true, sentByLumo: false };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(made) });
+      client.setToken('t');
+      expect(await client.createJourneyLink('j 1', { pin: '1234' })).toEqual(made);
+      expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/safety-sessions/j%201/links`, expect.objectContaining({ method: 'POST', body: JSON.stringify({ pin: '1234' }) }));
+    });
+
+    it('lists links for one journey', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+      expect(await client.listJourneyLinks('j1')).toEqual([]);
+      expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/safety-sessions/j1/links`, expect.anything());
+    });
+
+    it('revokes with DELETE and reads no body (the server answers 204)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 204, json: () => Promise.reject(new Error('no body')) });
+      await expect(client.revokeJourneyLink('j1', 'l1')).resolves.toBeUndefined();
+      expect(global.fetch).toHaveBeenCalledWith(`${baseUrl}/api/v1/safety-sessions/j1/links/l1`, expect.objectContaining({ method: 'DELETE' }));
+    });
+
+    it('surfaces a refusal (409: too many links) as an http error with the server words', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 409, json: () => Promise.resolve({ message: 'This journey already has several links. Revoke one first.' }) });
+      await expect(client.createJourneyLink('j1')).rejects.toMatchObject({ kind: 'http', status: 409, message: 'This journey already has several links. Revoke one first.' });
+    });
+  });
+
   describe('failure kinds', () => {
     it('carries the HTTP status so a caller can tell a rejected credential from an outage', async () => {
       global.fetch = vi.fn().mockResolvedValue({

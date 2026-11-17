@@ -23,6 +23,8 @@ import ProfileSettingsScreen from './components/settings/ProfileSettings';
 import ContactSettingsScreen from './components/settings/ContactSettings';
 import AlertSettingsScreen from './components/settings/AlertSettings';
 import JourneyScreen from './components/JourneyScreen';
+import SharingStrip from './components/SharingStrip';
+import { useSharingIndicator } from './hooks/useSharingIndicator';
 import ContactRoleScreen from './components/settings/ContactRole';
 import ContactAlertScreen from './components/ContactAlert';
 import { lastAlertTap, listenForAlerts, prepareNotifications, reportReceived } from './services/pushService';
@@ -138,6 +140,8 @@ const DashboardScreen = () => {
     }
   }, []);
 
+  const sharing = useSharingIndicator(true);
+
   const shakeEnabled = userSettings?.security.shakeToSosEnabled ?? false;
   const voiceEnabled = userSettings?.security.voiceActivationEnabled ?? false;
   const accidentEnabled = userSettings?.security.accidentDetectionEnabled ?? false;
@@ -239,6 +243,7 @@ const DashboardScreen = () => {
           )}
         </SettingsStatusStrip>
       )}
+      <SharingStrip count={sharing.count} onPress={() => navigation.navigate('Journey')} />
       <BottomNavContainer>
             <NavItemContainer onPress={() => navigation.navigate('CommunitySafety')}>
                 <IconShield size={28} color="#4b5563" />

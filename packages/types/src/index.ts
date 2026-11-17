@@ -235,5 +235,23 @@ export interface CreateJourneyInput {
   shareLocation?: boolean;
 }
 
+/** A link someone can follow a journey by, as the OWNER sees it. Never carries the token: that is shown once, at creation. */
+export interface JourneyLinkInfo {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  hasPin: boolean;
+  viewCount: number;
+  lastViewedAt: string | null;
+  /** Not revoked and not expired: someone holding it can see the journey right now. */
+  live: boolean;
+}
+
+export interface CreateJourneyLinkInput { expiresInMinutes?: number; pin?: string }
+
+/** `path` is `/j/<token>` and is returned ONCE. Lumo sends it to nobody (`sentByLumo` is always false): the person passes it on. */
+export interface CreatedJourneyLink { id: string; path: string; expiresAt: string; hasPin: boolean; sentByLumo: false }
+
 export interface JourneyFix { latitude: number; longitude: number; accuracyM: number; capturedAt: number; batteryPct?: number | null; source: string }
 

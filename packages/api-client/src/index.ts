@@ -1,4 +1,4 @@
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken, Journey, CreateJourneyInput, JourneyFix } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken, Journey, CreateJourneyInput, JourneyFix, JourneyLinkInfo, CreateJourneyLinkInput, CreatedJourneyLink } from '@lumo/types';
 
 export interface AuthResponse {
   user: PersonalInfo;
@@ -211,6 +211,21 @@ export class ApiClient {
     return this.send(`/api/v1/safety-sessions/${encodeURIComponent(id)}/location`, {
       method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ snapshots }),
     });
+  }
+
+  // Journey links: who could be looking. The token comes back once, at creation (docs/engineering/WEB.md). Login only.
+  async createJourneyLink(journeyId: string, input: CreateJourneyLinkInput = {}): Promise<CreatedJourneyLink> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(journeyId)}/links`, {
+      method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(input),
+    });
+  }
+
+  async listJourneyLinks(journeyId: string): Promise<JourneyLinkInfo[]> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(journeyId)}/links`, { headers: this.getHeaders() });
+  }
+
+  async revokeJourneyLink(journeyId: string, linkId: string): Promise<void> {
+    await this.sendNoBody(`/api/v1/safety-sessions/${encodeURIComponent(journeyId)}/links/${encodeURIComponent(linkId)}`, { method: 'DELETE', headers: this.getHeaders() });
   }
 
   // The contact side: a push address, joining as someone's contact, and the device's own report back.
