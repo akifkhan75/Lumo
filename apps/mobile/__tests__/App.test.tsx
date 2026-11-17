@@ -17,6 +17,7 @@ import renderer, { act, ReactTestRenderer } from 'react-test-renderer';
 import { ApiError } from '@lumo/api-client';
 import App from '../App';
 import * as apiService from '../services/apiService';
+import { auditPressables, pressables } from '../test-utils/a11yAudit';
 
 jest.mock('../services/apiService');
 
@@ -331,6 +332,13 @@ describe('App: the dashboard map', () => {
     await act(async () => { onFix({ coords: { latitude: 31.5, longitude: 74.3, accuracy: 18 }, timestamp: Date.now() }); });
     expect(byId(tree, 'map-marker').length).toBe(1);
     expect(byId(tree, 'map-circle')[0].props.radius).toBe(18);
+    act(() => { tree.unmount(); });
+  });
+
+  it('the dashboard meets the accessibility floor: every control has a role, an action label and a 44 pt target (PLAT-2)', async () => {
+    const tree = await mountSignedIn();
+    const found = auditPressables(tree);
+    expect({ controls: pressables(tree).length > 0, violations: found }).toEqual({ controls: true, violations: [] });
     act(() => { tree.unmount(); });
   });
 

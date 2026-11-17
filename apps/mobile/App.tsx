@@ -216,12 +216,15 @@ const DashboardScreen = () => {
                 {isListening && <VoiceGuardText><IconMic size={12} color="#16a34a" /> Voice Guard Active</VoiceGuardText>}
             </HeaderTextContainer>
             <HeaderActions>
-                <ActionButton onPress={() => navigation.navigate('ReportHazard')}>
+                <ActionButton onPress={() => navigation.navigate('ReportHazard')} accessibilityRole="button" accessibilityLabel="Report a hazard. Opens a screen that explains reporting is not available yet">
                     <IconAlert size={24} color="#f97316" />
                 </ActionButton>
                  <ActionButton
                     // Settings need the loaded settings to edit; without them there is nothing to open.
                     disabled={!userSettings}
+                    accessibilityRole="button"
+                    accessibilityLabel={userSettings ? 'Open settings, contacts and alerts' : 'Settings are not available until they have loaded'}
+                    accessibilityState={{ disabled: !userSettings }}
                     onPress={() => userSettings && navigation.navigate('Settings', { onLogout: onLogout, currentSettings: userSettings, onSave: handleSaveSettings })}
                 >
                     <IconSettings size={24} color="#4b5563" />
@@ -254,11 +257,11 @@ const DashboardScreen = () => {
       )}
       <SharingStrip count={sharing.count} onPress={() => navigation.navigate('Journey')} />
       <BottomNavContainer>
-            <NavItemContainer onPress={() => navigation.navigate('CommunitySafety')}>
+            <NavItemContainer onPress={() => navigation.navigate('CommunitySafety')} accessibilityRole="button" accessibilityLabel="Open community safety reports">
                 <IconShield size={28} color="#4b5563" />
                 <NavItemLabel>Community</NavItemLabel>
             </NavItemContainer>
-            <NavItemContainer onPress={() => navigation.navigate('Journey')}>
+            <NavItemContainer onPress={() => navigation.navigate('Journey')} accessibilityRole="button" accessibilityLabel="Start or view a journey">
                 <IconWalk size={28} color="#4b5563" />
                 <NavItemLabel>Journey</NavItemLabel>
             </NavItemContainer>
@@ -272,16 +275,16 @@ const DashboardScreen = () => {
                     <SOSText>SOS</SOSText>
                 </SOSButton>
             </SOSButtonContainer>
-            <NavItemContainer onPress={() => navigation.navigate('Journey', { kind: 'custom' })}>
+            <NavItemContainer onPress={() => navigation.navigate('Journey', { kind: 'custom' })} accessibilityRole="button" accessibilityLabel="Start a check-in timer">
                 <IconTimer size={28} color="#4b5563" />
                 <NavItemLabel>Check-In</NavItemLabel>
             </NavItemContainer>
-            <NavItemContainer onPress={() => navigation.navigate('FakeCall')}>
+            <NavItemContainer onPress={() => navigation.navigate('FakeCall')} accessibilityRole="button" accessibilityLabel="Start a fake call">
                 <IconFakeCall size={28} color="#4b5563" />
                 <NavItemLabel>Fake Call</NavItemLabel>
             </NavItemContainer>
       </BottomNavContainer>
-      <SafetyAssistantButton onPress={() => navigation.navigate('SafetyAssistant')}>
+      <SafetyAssistantButton onPress={() => navigation.navigate('SafetyAssistant')} accessibilityRole="button" accessibilityLabel="Open the safety assistant">
           <IconBot size={32} color="white" />
       </SafetyAssistantButton>
     </Container>

@@ -5,7 +5,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { ConsentStatus, TrustedContact, UserSettings } from '../../types';
 import * as apiService from '../../services/apiService';
 import { consentLabel, inviteMessage } from '../../services/consentStatus';
-import { IconUser, IconPhoneCall, IconArrowLeft } from '../../constants';
+import { IconUser, IconPhoneCall, IconArrowLeft, IconTrash } from '../../constants';
 
 const Container = styled(SafeAreaView)`
   flex: 1;
@@ -24,6 +24,10 @@ const Header = styled(View)`
 `;
 
 const BackButton = styled(TouchableOpacity)`
+  min-width: 48px;
+  min-height: 48px;
+  justify-content: center;
+  align-items: center;
   padding: 8px;
 `;
 
@@ -31,7 +35,7 @@ const Title = styled(Text)`
   font-size: 24px;
   font-weight: bold;
   color: #1f2937;
-  margin-left: 16px;
+  margin-start: 16px;
 `;
 
 const ContactCard = styled(View)`
@@ -46,9 +50,13 @@ const ContactCard = styled(View)`
 
 const RemoveButton = styled(TouchableOpacity)`
     position: absolute;
-    top: 8px;
-    right: 8px;
-    padding: 4px;
+    top: 0;
+    end: 0;
+    min-width: 48px;
+    min-height: 48px;
+    justify-content: center;
+    align-items: center;
+    z-index: 2;
 `;
 
 const InputContainer = styled(View)`
@@ -63,7 +71,7 @@ const InputContainer = styled(View)`
 const StyledInput = styled(TextInput)`
   flex: 1;
   font-size: 16px;
-  padding-left: 12px;
+  padding-start: 12px;
   color: #1f2937;
 `;
 
@@ -73,11 +81,13 @@ const AddButton = styled(TouchableOpacity)`
     border-color: #d1d5db;
     padding: 16px;
     border-radius: 8px;
+    min-height: 56px;
+    justify-content: center;
     align-items: center;
 `;
 
 const AddButtonText = styled(Text)`
-    color: #10b981;
+    color: #047857;
     font-weight: 600;
 `;
 
@@ -111,6 +121,8 @@ const Note = styled(Text)`
 
 const SubmitButton = styled(TouchableOpacity)`
   background-color: #1f2937;
+  min-height: 56px;
+  justify-content: center;
   padding: 16px;
   border-radius: 9999px;
   align-items: center;
@@ -203,7 +215,7 @@ const ContactSettingsScreen = () => {
     <Container>
         <InnerContainer>
             <Header>
-                <BackButton onPress={onBack}>
+                <BackButton onPress={onBack} accessibilityRole="button" accessibilityLabel="Go back to settings">
                 <IconArrowLeft size={24} color="#1f2937" />
                 </BackButton>
                 <Title>Trusted contacts</Title>
@@ -211,13 +223,14 @@ const ContactSettingsScreen = () => {
             <ScrollView>
                 {contacts.map((contact, index) => (
                 <ContactCard key={contact.id}>
-                    <RemoveButton onPress={() => removeContact(contact.id)}>
-                        <IconArrowLeft size={20} color="#ef4444" />
+                    <RemoveButton onPress={() => removeContact(contact.id)} accessibilityRole="button" accessibilityLabel={`Remove ${contact.name.trim() || 'this contact'} from your trusted contacts`}>
+                        <IconTrash size={20} color="#ef4444" />
                     </RemoveButton>
                     <InputContainer>
                         <IconUser size={20} color="#9ca3af" />
                         <StyledInput 
-                            placeholder="Contact Name" 
+                            placeholder="Contact Name"
+                            accessibilityLabel="Contact name"
                             value={contact.name}
                             onChangeText={(val) => handleContactChange(index, 'name', val)}
                         />
@@ -225,7 +238,8 @@ const ContactSettingsScreen = () => {
                     <InputContainer>
                         <IconPhoneCall size={20} color="#9ca3af" />
                         <StyledInput
-                            placeholder="Phone Number" 
+                            placeholder="Phone Number"
+                            accessibilityLabel="Contact phone number"
                             keyboardType="phone-pad"
                             value={contact.phone}
                             onChangeText={(val) => handleContactChange(index, 'phone', val)}
@@ -239,11 +253,11 @@ const ContactSettingsScreen = () => {
                   A contact is only ever alerted if they agree. Lumo does not message them:
                   you send them a link yourself. Lumo does not send alerts to contacts yet.
                 </Note>
-                <AddButton onPress={addContact}>
+                <AddButton onPress={addContact} accessibilityRole="button" accessibilityLabel="Add another trusted contact">
                     <AddButtonText>+ Add Another Contact</AddButtonText>
                 </AddButton>
             </ScrollView>
-            <SubmitButton onPress={handleSave} disabled={isSaving}>
+            <SubmitButton onPress={handleSave} disabled={isSaving} accessibilityRole="button" accessibilityLabel={isSaving ? 'Saving your contacts' : 'Save your contacts'} accessibilityState={{ busy: isSaving, disabled: isSaving }}>
                 <ButtonText>{isSaving ? 'Saving...' : 'Save & Update'}</ButtonText>
             </SubmitButton>
         </InnerContainer>

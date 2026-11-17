@@ -12,6 +12,10 @@ const HeaderContainer = styled(View)`
 `;
 
 const BackButton = styled(TouchableOpacity)`
+  min-width: 48px;
+  min-height: 48px;
+  justify-content: center;
+  align-items: center;
   padding: 8px;
 `;
 
@@ -28,7 +32,7 @@ interface SettingsHeaderProps {
 
 export const SettingsHeader: React.FC<SettingsHeaderProps> = ({ title, onBack }) => (
     <HeaderContainer>
-        <BackButton onPress={onBack}>
+        <BackButton onPress={onBack} accessibilityRole="button" accessibilityLabel={`Go back from ${title}`}>
           <IconArrowLeft size={24} color="#1f2937" />
         </BackButton>
         <HeaderTitle>{title}</HeaderTitle>

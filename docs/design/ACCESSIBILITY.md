@@ -49,3 +49,34 @@ statement.
 
 Screen reader on both platforms · 200% text · contrast both themes · one-handed reach
 · RTL · automated axe pass on web · **every trigger has a manual equivalent**.
+
+## As built (1.14a): what is checked by a machine, and what is not
+
+**Mechanically checked, in CI** (`apps/mobile/__tests__/a11yAudit.test.tsx`, `rtl.test.tsx`, `contrast.test.ts`):
+
+- Every pressable control on the **SOS screen** (idle, counting, live, nobody reached, no signal), **Practice**, **Journey** (setup, running with a
+  link live), the **dashboard**, a **contact's alert**, **Settings** (root, alerts, contacts), the **boot screen** and the **signed-out login
+  screens** has a role, a label of at least two words that names the action, and a **stated** touch target of at least 44 pt. A target nobody
+  wrote down cannot be verified, so an unstated one fails.
+- **Layout mirrors**: no screen uses a physical `margin-left/right`, `padding-left/right`, absolute `left:`/`right:` or `text-align: left/right`
+  (use `start`/`end`); the back and forward icons mirror when the layout is RTL.
+- **Contrast** of the pairs the safety screens use, from the same hex values (4.5:1 text, 3:1 components), and a colour found to fail (`#10b981`,
+  2.5:1) is forbidden.
+- One screen-reader stop per switch row (the row is the control and says whether it is on); the inner switch is hidden from the reader.
+
+**Found and fixed by it:** a 40 pt close button; unstated targets on the action bar and Defense control; unlabelled dashboard navigation and
+header buttons; unlabelled switches for shake, voice and crash detection; a "remove contact" button drawn as a left arrow with no label; a
+"Get Started" button with no role and a left arrow meaning "forward"; and two uses of a green that is 2.5:1 on white.
+
+**NOT checked, and so not yet claimed** (see KI-131 to KI-135):
+
+- Screen-reader order and wording, start to finish, on a real iOS and Android device.
+- Text at 200% (a fixed-width label such as "Community" in the bottom bar may wrap or clip).
+- One-handed reach.
+- A real layout in Urdu on a device (strings are not translated, KI-134).
+- Haptic confirmation (no haptics module, KI-132).
+- Screens that are not on the emergency path (hazard reporting, fake call, the assistant, profile).
+- A dark theme: the app is light-only (`userInterfaceStyle: "light"`), so "both themes" is one theme today.
+
+**DET-9** (every automatic trigger has a manual equivalent): shake, voice and crash all open the same SOS screen the dashboard's SOS button
+opens, and that button is on the audit above. Practice and the pre-filled text (1.12, 1.13) need no speech or gesture.

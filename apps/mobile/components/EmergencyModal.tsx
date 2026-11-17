@@ -26,8 +26,8 @@ const Header = styled(View)`
 `;
 
 const BackButton = styled(TouchableOpacity)`
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   justify-content: center;
   align-items: center;
   background-color: rgba(255, 255, 255, 0.2);
@@ -70,6 +70,8 @@ const Footer = styled(View)`
 
 const BottomButton = styled(TouchableOpacity)`
     width: 100%;
+    min-height: 56px;
+    justify-content: center;
     background-color: black;
     color: white;
     font-weight: bold;
@@ -186,7 +188,7 @@ const styles = StyleSheet.create({
   failedList: { marginVertical: 12 },
   ledger: { alignSelf: 'stretch' },
   defenseRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginVertical: 8 },
-  defenseItem: { alignItems: 'center' },
+  defenseItem: { alignItems: 'center', minHeight: 64, minWidth: 64, justifyContent: 'center' },
   defenseBadge: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#f59e0b', justifyContent: 'center', alignItems: 'center' },
   defenseLabel: { color: 'white', fontSize: 12, fontWeight: '600', marginTop: 4 },
 });
