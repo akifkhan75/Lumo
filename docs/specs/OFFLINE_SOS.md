@@ -101,7 +101,7 @@ user · the composer is never reported as sent · no screen says "queued" or "wi
 
 - **1.13a** server: late dispatch from `elapsedSeconds`, the cap, `lateBySeconds`, and the delay in every message.
 - **1.13b** app: the durable press, retry with the same key, the offline states and copy, the reminder notification, cancel offline.
-- **1.13c** the pre-filled text: the contact cache, the composer, the attempt record. Gated on the native module decision.
+- **1.13c** the pre-filled text: the contact cache and the composer (built, with `expo-sms`). The attempt record on the ledger is not built (KI-127).
 
 ## As built (1.13b: the app, and cancel-by-key on the server)
 
@@ -124,3 +124,22 @@ user · the composer is never reported as sent · no screen says "queued" or "wi
 - A saved press older than 6 hours is dropped at launch, not offered and not sent.
 
 Not in this slice: the pre-filled text (1.13c), a background send, journey queues. See Limits.
+
+## As built (1.13c: the pre-filled text)
+
+- **"Text my contacts"** appears on the SOS screen exactly when Lumo does not have the alert: no signal, the login rejected, or every
+  channel failed. It opens the phone's own composer (`expo-sms`), **addressed** to the contacts who agreed and **written** for the person, who
+  presses send. It is never described as Lumo sending, and the screen says so beside it.
+- **The text** is in the first person ("I pressed SOS in the Lumo app, but my phone has no signal, so Lumo could not alert you
+  automatically"), with the last known position, **when it was and how precise**, "I may have moved" if it is old, or "I do not have a
+  location" rather than a guess. It never says help is coming.
+- **After the composer** the screen says only what the composer said: "Your messages app says you sent the text to Maya, Dad. Lumo can't tell
+  whether it arrived", or "You didn't send the text. Nothing has been sent", or that it can't tell. No outcome says delivered.
+- **Contacts on the device**: the agreed contacts, as id, name and number only (at most 10), in the platform's encrypted store. Refreshed
+  whenever settings load or are saved, so a withdrawal removes them; **removed on logout**; left alone when settings cannot load (offline is when
+  they are needed). With nothing cached it falls back to the agreed contacts in the loaded settings, and never to one who has not agreed.
+- **Who it goes to is shown before it opens** ("It will be addressed to: Maya, Dad."), and the dashboard re-reads settings on every return to the
+  foreground, which refreshes the copy. A withdrawal the phone has not yet heard of is still possible (KI-128).
+- A phone with no composer is told so, and still has the dialler.
+
+Not built: recording the text on the incident's ledger as a `device_direct_sms` attempt (KI-127).
