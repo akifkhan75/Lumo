@@ -143,3 +143,57 @@ export interface CreateHazardReportInput {
   longitude: number;
   accuracyMetres?: number;
 }
+
+
+/** What the server says about an incident (docs/specs/INCIDENTS.md). Dates arrive as ISO strings. */
+export type IncidentState =
+  | 'CREATED' | 'LOCATING' | 'DISPATCHING' | 'NOTIFYING' | 'PARTIALLY_NOTIFIED' | 'NOTIFIED'
+  | 'ALL_CHANNELS_FAILED' | 'ACKNOWLEDGED' | 'RESOLVING' | 'CLOSED' | 'CANCELLED';
+
+export type AttemptStateName = 'QUEUED' | 'SENT' | 'DELIVERED' | 'ACKNOWLEDGED' | 'FAILED' | 'EXPIRED' | 'UNKNOWN';
+
+export interface IncidentAttempt {
+  id: string;
+  recipientId: string;
+  /** Present for a login, absent for an emergency token. */
+  recipientName?: string;
+  channel: 'push' | 'sms' | 'voice' | 'device_direct_sms' | 'email' | 'web';
+  purpose: 'ALERT' | 'RESOLVED';
+  state: AttemptStateName;
+  reason: string | null;
+  queuedAt: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  acknowledgedAt: string | null;
+  failedAt: string | null;
+}
+
+export interface Incident {
+  id: string;
+  state: IncidentState;
+  triggerType: string;
+  countdownEndsAt: string | null;
+  locationAvailable: boolean;
+  outcome: string;
+  reached: string[];
+  acknowledged: string[];
+  failed: string[];
+  pending: string[];
+  /** Contacts the daily limit stopped. The person must be told. */
+  capped: string[];
+  attempts: IncidentAttempt[];
+}
+
+export interface RaiseSosInput {
+  triggerType: 'manual' | 'shake' | 'voice' | 'safeword' | 'crash' | 'fall';
+  triggeredAt: string;
+  countdownSeconds?: number;
+  location?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number };
+  place?: { country: string; subdivision?: string | null };
+}
+
+export interface EmergencyToken {
+  id: string;
+  token: string;
+  expiresAt: string;
+}

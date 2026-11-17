@@ -2,8 +2,8 @@
 
 > **Safety-critical.** Implements `DET-1` `DET-2` `RES-1` `RES-2` `RES-6` `PLAT-4` (server side). State machine:
 > [`SAFETY_STATE_MACHINES.md`](SAFETY_STATE_MACHINES.md) §6a. Delivery: [`NOTIFICATIONS.md`](NOTIFICATIONS.md).
-> Workflow: [`EMERGENCY_WORKFLOWS.md`](EMERGENCY_WORKFLOWS.md). **Milestone 1.8a is the server.** The app (countdown
-> UI, live ledger, trigger wiring, region-correct dialling) is 1.8b.
+> Workflow: [`EMERGENCY_WORKFLOWS.md`](EMERGENCY_WORKFLOWS.md). **Milestone 1.8a is the server; 1.8b (below, _The app_)
+> is the screen.**
 
 ## The four-part contract
 
@@ -99,6 +99,25 @@ No coordinate is ever logged.
   their own delivery is ledgered under `RESOLVED`.
 - **A cap hit comes back as `capped`** in the response so the app can say so. This is the caller that must.
 - The response never contains a contact's name or number for an emergency-token caller.
+
+## The app (1.8b)
+
+- **A press navigates to the SOS screen with its trigger** (`manual` 3 s; `shake`, `voice`, `crash` 10 s). The screen's own
+  first act is to persist `{key, startedAt, trigger}` (ids and a time, no position or name) and then call `POST /sos`;
+  nothing waits for anything else. Opened with no trigger (from the login or boot screens) it starts nothing and says so.
+- **Phases:** requesting · counting · live · unreachable · cannot. **unreachable** (timeout, no connection, server
+  error, unreadable answer) and **cannot** (credential rejected) both say "Nothing has been sent" and lead with the
+  dialler. **Retry reuses the same key.** A failed refresh of an incident that exists keeps the last ledger and says how
+  old it is; it is never blanked or invented.
+- **Credentials:** the emergency token is tried first for raising an SOS, so it never depends on the login; on a 401 it
+  falls back to the login. It is re-minted whenever the app opens signed in and removed on logout.
+- **Wording** (`services/sosLedger.ts`, pure and tested): a text is "sent — not confirmed"; a push nobody confirmed is
+  "we couldn't confirm it arrived"; "delivered" only on a delivery receipt; "responding" only on a person's tap. No
+  aggregate tick; failures are rows of their own with a reason in words; the headline is "Sent to N · no response yet",
+  never "notified".
+- **Dialling:** the number resolves from the device's fix and place (not the account); an unverified one says so; a
+  regional number that may not apply is "might work where you are".
+- **Resume:** an SOS in progress when the app was closed is shown again on the next launch (≤ 6 hours old).
 
 ## Limits
 

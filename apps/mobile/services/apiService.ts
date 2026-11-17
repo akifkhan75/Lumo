@@ -1,5 +1,5 @@
 import { NativeModules } from 'react-native';
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, Incident, RaiseSosInput } from '@lumo/types';
 import { ApiClient } from '@lumo/api-client';
 import * as tokenStorage from './tokenStorage';
 
@@ -67,8 +67,52 @@ export const restoreSession = async (): Promise<boolean> => {
  */
 export const signOut = async (): Promise<void> => {
     setAuthToken(null);
+    // The emergency token is revoked on the server by logging out elsewhere; here it simply stops being kept.
+    await tokenStorage.clearEmergencyToken();
+    await tokenStorage.clearActiveSos();
     await tokenStorage.clearToken();
 };
+
+// Incidents (docs/specs/INCIDENTS.md). The emergency token is tried FIRST for raising an SOS, so it never
+// depends on the login being valid; reading falls back the other way to get contact names when a login exists.
+export interface SosCredential { bearer: string | null; }
+
+export const mintEmergencyToken = async (): Promise<boolean> => {
+    try {
+        const deviceKey = await tokenStorage.loadOrCreateDeviceKey();
+        const minted = await apiClient.mintEmergencyToken(deviceKey);
+        await tokenStorage.saveEmergencyToken(minted);
+        return true;
+    } catch {
+        // Not fatal and not loud: the existing token (if any) keeps working until it expires.
+        return false;
+    }
+};
+
+export const clearEmergencyCredentials = async (): Promise<void> => { await tokenStorage.clearEmergencyToken(); };
+
+const withCredentials = async <T>(call: (bearer: string | null | undefined) => Promise<T>): Promise<T> => {
+    const stored = await tokenStorage.loadEmergencyToken();
+    const emergency = stored && new Date(stored.expiresAt).getTime() > Date.now() ? stored.token : null;
+    if (emergency) {
+        try {
+            return await call(emergency);
+        } catch (e) {
+            // A rejected emergency token falls back to the login; any other failure is the caller's to see.
+            if (!(e instanceof Error && (e as { status?: number }).status === 401)) throw e;
+        }
+    }
+    return call(undefined); // the stored login, if any
+};
+
+export const raiseSos = (key: string, input: RaiseSosInput): Promise<Incident> =>
+    withCredentials(b => apiClient.raiseSos(key, input, b)).then(r => r.incident);
+export const getIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.getIncident(id, b === undefined ? undefined : b));
+export const cancelIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.cancelIncident(id, b));
+export const resolveIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.resolveIncident(id, b));
+export const loadActiveSos = tokenStorage.loadActiveSos;
+export const saveActiveSos = tokenStorage.saveActiveSos;
+export const clearActiveSos = tokenStorage.clearActiveSos;
 
 // Auth
 export const login = async (email: string, password: string): Promise<{user: PersonalInfo; token: string}> => {

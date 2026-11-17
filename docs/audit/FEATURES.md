@@ -35,7 +35,7 @@ Verified by reading the code on 2026-10-26.
 | Device location (read-only)    | `RES-10`    | 🟨 Partial | foreground only, shown with age and accuracy; shared with no one    |
 | Report a hazard                | `PREV-1`    | ⛔ Blocked | location now readable, but no submit UI yet                         |
 | Map                            | `PREV-2`    | 🟨 Partial | real map, shows only your own fix; no hazard pins                   |
-| SOS / Emergency                | `RES-1/2/3` | ⛔ Mock    | notifies nobody                                                     |
+| SOS / Emergency                | `RES-1/2/3` | 🟨 Partial | real incident, countdown, ledger; never sent to a real person yet   |
 | Shake to SOS                   | `DET-3`     | ✅ Real    | `useShakeDetector`                                                  |
 | Voice activation               | `DET-5`     | ✅ Real    | `useVoiceActivation` (dev build only)                               |
 | Crash detection                | `DET-4`     | 🟨 Partial | single 6 G threshold, no sequence analysis                          |
@@ -144,18 +144,26 @@ feature; it belongs on the server.
 
 ## ⛔ Mock
 
-### SOS / Emergency — the big one
+### SOS / Emergency — built, never run against a real person
 
-`EmergencyModal.tsx` shows "Emergency Calling…", "Notifying your contacts,
-emergency services, and sharing your location", a ring of contacts, and
-"Notifying Nearby Volunteers…".
+_(Listed under Mock because the rest of this section still is. This one is no longer a screenshot.)_
 
-**No call is placed. No SMS is sent. No push is sent. No location is uploaded. No
-server is contacted** (beyond the optional AI tips). `isRecording` is a literal
-`false`.
+A press goes **straight to the server**, which owns the countdown (3 s for the button, 10 s for shake, voice and
+crash; it is clamped server-side) and dispatches even if the app is killed. The screen says **"Nothing has been
+sent"** until the server says otherwise, shows the seconds and a large **Cancel**, then lists **each contact on their
+own** with the most that is true (a text is "sent — not confirmed", never "delivered"; only a person's tap is
+"responding"). If the request does not complete it says nothing was sent, puts the **dialler first**, and retries with
+the same key so a request that did get through is not duplicated. **Nobody reached** is a full screen. A daily-limit
+hit is said out loud. "I'm safe" ends the alert and the contacts who were actually alerted are told. The number to
+dial follows where the **device** is (911 in the US, 15 in Punjab, with the regional number marked "might work"), and
+an unverified number says so. The app keeps a fresh emergency token whenever it opens signed in, and shows an SOS that
+was in progress when it was last closed.
 
-This is the product's entire reason to exist, and it is a screenshot. Until it
-works, the screen should be labelled a demo. ([KI-3](KNOWN_ISSUES.md))
+**What it does not do:** nothing has been sent to a real person (no Twilio or Expo account), the app cannot yet
+register for push or claim a contact invite (KI-78), so **with default settings (SMS off) a typical SOS ends "nobody
+was reached"** (KI-83). No retry ladder (1.9), no offline queue (1.13), no duress or practice mode, no recording,
+nothing on a device (Jest only). Copy has had no screen-reader or text-scaling pass (1.14). Spec:
+`docs/specs/INCIDENTS.md`; gaps KI-83 – KI-92.
 
 ### Follow Me
 

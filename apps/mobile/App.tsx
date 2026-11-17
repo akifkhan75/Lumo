@@ -73,9 +73,29 @@ const DashboardScreen = () => {
 
   // Works with or without settings. It used to return early when they had not
   // loaded, which made the button and every automatic trigger do nothing.
-  const handleActivateEmergency = useCallback(() => {
-    navigation.navigate('Emergency', { settings: userSettings ?? undefined });
+  const activate = useCallback((trigger: 'manual' | 'shake' | 'voice' | 'crash') => {
+    navigation.navigate('Emergency', { settings: userSettings ?? undefined, trigger });
   }, [userSettings, navigation]);
+  const handleActivateEmergency = useCallback(() => activate('manual'), [activate]);
+  const handleShake = useCallback(() => activate('shake'), [activate]);
+  const handleVoice = useCallback(() => activate('voice'), [activate]);
+  const handleCrash = useCallback(() => activate('crash'), [activate]);
+
+  // Keep the emergency token fresh whenever the app opens signed in (PLAT-4), so an SOS never depends on the
+  // login still being valid. A failure here is silent and not fatal. And an SOS that was in progress when the
+  // app was last closed is shown again: the server dispatches it whether or not this app is ever reopened.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try { await apiService.mintEmergencyToken(); } catch { /* not fatal */ }
+      try {
+        const active = await apiService.loadActiveSos();
+        if (!cancelled && active) navigation.navigate('Emergency', { resume: true });
+      } catch { /* nothing to resume */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSaveSettings = useCallback(async (newSettings: UserSettings) => {
     try {
@@ -91,9 +111,9 @@ const DashboardScreen = () => {
   const voiceEnabled = userSettings?.security.voiceActivationEnabled ?? false;
   const accidentEnabled = userSettings?.security.accidentDetectionEnabled ?? false;
 
-  useShakeDetector(handleActivateEmergency, shakeEnabled);
-  const { error: voiceError, isListening, clearError: clearVoiceError } = useVoiceActivation(handleActivateEmergency, voiceEnabled);
-  useAccidentDetector(handleActivateEmergency, accidentEnabled);
+  useShakeDetector(handleShake, shakeEnabled);
+  const { error: voiceError, isListening, clearError: clearVoiceError } = useVoiceActivation(handleVoice, voiceEnabled);
+  useAccidentDetector(handleCrash, accidentEnabled);
 
   // Read inside the effect below without making it a dependency. Saving
   // settings replaces this object, and an effect that both depends on it and

@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Linking } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Linking, ScrollView } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { UserSettings } from '../types';
 import { getSelfDefenseTips } from '../services/apiService';
-import { IconArrowLeft, IconVolumeUp, IconZap, IconMic } from '../constants';
-import DemoBanner from './common/DemoBanner';
+import { IconArrowLeft, IconVolumeUp, IconZap } from '../constants';
+import { emergencyNumbersFor, PROFILES, resolveRegion } from '@lumo/region-profiles';
+import { useLocation } from '../hooks/useLocation';
+import { useSos } from '../hooks/useSos';
+import { contactRows, headline, reasonText } from '../services/sosLedger';
+import { secondsLeft, type SosTrigger } from '../services/sosCountdown';
 
 const Container = styled(View)`
   flex: 1;
@@ -57,29 +61,6 @@ const MainContent = styled(View)`
   margin-vertical: 8px;
 `;
 
-const ContactsRing = styled(View)`
-    width: 256px;
-    height: 256px;
-    align-items: center;
-    justify-content: center;
-`;
-
-const LumoLogoContainer = styled(View)`
-    position: absolute;
-    align-items: center;
-`;
-
-const LumoText = styled(Text)`
-    font-size: 24px;
-    font-weight: bold;
-    color: white;
-`;
-
-const LumoSubtext = styled(Text)`
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.8);
-`;
-
 const Footer = styled(View)`
   gap: 12px;
 `;
@@ -100,20 +81,18 @@ const ButtonText = styled(Text)`
     font-weight: bold;
 `;
 
-const BannerSpacer = styled(View)`
-    margin-top: 16px;
-`;
-
 const CallButton = styled(TouchableOpacity)`
     width: 100%;
+    min-height: 56px;
     background-color: #dc2626; /* red-600 */
     padding: 16px 24px;
     border-radius: 9999px;
     align-items: center;
+    justify-content: center;
 `;
 
-// White on the slate screen background is about 7.6:1, and the message is bold
-// and bordered, so it does not rely on colour to read as a problem.
+// White on the slate background is about 7.6:1, and the message is bold and bordered,
+// so it does not rely on colour to read as a problem.
 const DialErrorText = styled(Text)`
     color: white;
     font-size: 16px;
@@ -125,45 +104,54 @@ const DialErrorText = styled(Text)`
     border-radius: 12px;
 `;
 
-// --- Components --- //
-
-import Feather from '@expo/vector-icons/Feather';
-
-const ContactCircle = ({role, icon, angle}: {role: string, icon: string, angle: number}) => (
-    <View style={{ position: 'absolute', top: '50%', left: '50%', marginTop: -32, marginLeft: -32, transform: [{ rotate: `${angle}deg` }, { translateX: 110 }, { rotate: `-${angle}deg` }] }}>
-        <View style={{
-            width: 64,
-            height: 64,
-            borderRadius: 32,
-            borderWidth: 3,
-            borderColor: 'rgba(255,255,255,0.5)',
-            backgroundColor: '#64748b', /* slate-500 — placeholder, not a live recipient */
-            alignItems: 'center',
-            justifyContent: 'center',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.35,
-            shadowRadius: 6,
-            elevation: 8,
-        }}>
-            <Feather name={icon as any} size={22} color="#ffffff" />
-            <Text style={{ color: '#ffffff', fontSize: 10, fontWeight: '800', marginTop: 2, letterSpacing: 0.5 }}>{role}</Text>
-        </View>
-    </View>
-);
-
-// Illustration, not data. These are not the user's contacts and none of them
-// is contacted. The ring is kept because the layout is the one Phase 1 fills
-// with real recipients and real per-channel delivery state; it is rendered
-// greyed out and captioned so it cannot be read as "these people know".
-const placeholderContacts = [
-    { name: "Police", role: "POLICE", icon: "shield" },
-    { name: "EMS", role: "EMS", icon: "activity" },
-    { name: "Mom", role: "MOM", icon: "heart" },
-    { name: "Security", role: "SEC", icon: "lock" },
-    { name: "Dad", role: "DAD", icon: "phone" },
-    { name: "Guard", role: "GUARD", icon: "users" },
-];
+const CancelButton = styled(TouchableOpacity)`
+    width: 100%;
+    min-height: 56px;
+    background-color: white;
+    padding: 16px 24px;
+    border-radius: 9999px;
+    align-items: center;
+    justify-content: center;
+`;
+const CancelText = styled(Text)`
+    color: #0f172a;
+    font-size: 20px;
+    font-weight: bold;
+`;
+const Big = styled(Text)`
+    font-size: 64px;
+    font-weight: bold;
+    color: white;
+    text-align: center;
+`;
+const Note = styled(Text)`
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 15px;
+    margin-top: 8px;
+`;
+const RowCard = styled(View)`
+    padding: 12px;
+    margin-top: 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    background-color: rgba(255, 255, 255, 0.08);
+`;
+const RowName = styled(Text)`
+    color: white;
+    font-size: 17px;
+    font-weight: bold;
+`;
+const RowLine = styled(Text)`
+    color: white;
+    font-size: 15px;
+    margin-top: 2px;
+`;
+const FailedScreen = styled(View)`
+    flex: 1;
+    padding: 24px;
+    justify-content: center;
+    background-color: #7f1d1d;
+`;
 
 const DefenseGuide = ({ onFinish }: { onFinish: () => void }) => {
     const [tips, setTips] = useState<string[]>([]);
@@ -189,100 +177,211 @@ const DefenseGuide = ({ onFinish }: { onFinish: () => void }) => {
 };
 
 
+
+const styles = StyleSheet.create({
+  possible: { minHeight: 44, justifyContent: 'center' },
+  failedList: { marginVertical: 12 },
+  ledger: { alignSelf: 'stretch' },
+  defenseRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginVertical: 8 },
+  defenseItem: { alignItems: 'center' },
+  defenseBadge: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#f59e0b', justifyContent: 'center', alignItems: 'center' },
+  defenseLabel: { color: 'white', fontSize: 12, fontWeight: '600', marginTop: 4 },
+});
+
+const dial = (number: string) => Linking.openURL(`tel:${number}`);
+
+const clockOf = (ms: number | null) => (ms ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+
 const EmergencyScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  // Settings are optional. This screen is reachable signed out and before the
-  // settings fetch has finished, and it is the one screen that must never fail
-  // to open because something else has not loaded yet.
-  const settings = (route.params as { settings?: UserSettings } | undefined)?.settings;
+  const params = route.params as { settings?: UserSettings; trigger?: SosTrigger; resume?: boolean } | undefined;
+  const settings = params?.settings;
 
   const [showDefenseGuide, setShowDefenseGuide] = useState(false);
   const [dialError, setDialError] = useState(false);
+  const [tick, setTick] = useState(Date.now());
   const onClose = () => navigation.goBack();
 
-  // Opening the dialler can be refused (a device with no telephony, a locked-
-  // down profile). That must be visible: someone who taps this and sees nothing
-  // happen will assume help was reached.
+  // Position is READ here, never asked for: permission is requested on the dashboard, on a tap. A position helps
+  // the alert and picks the right emergency number; the screen works without one.
+  const location = useLocation(true);
+  const shareLocation = settings?.security?.shareLocationOnSos !== false;
+
+  const buildInput = useCallback(() => {
+    const fix = location.fix;
+    if (!fix || !shareLocation) return {};
+    const place = location.geocoded?.ok && location.geocoded.place.country
+      ? { country: location.geocoded.place.country, subdivision: location.geocoded.place.subdivision ?? null }
+      : undefined;
+    return { location: { latitude: fix.latitude, longitude: fix.longitude, accuracyM: fix.accuracyM, capturedAt: fix.capturedAt }, ...(place ? { place } : {}) };
+  }, [location.fix, location.geocoded, shareLocation]);
+
+  const sos = useSos({ buildInput });
+  const { state } = sos;
+
+  // The number comes from WHERE THE DEVICE IS, not from the account.
+  const numbers = useMemo(() => {
+    const fix = location.fix;
+    const place = location.geocoded?.ok ? location.geocoded.place : null;
+    const resolution = resolveRegion(
+      { now: tick, fix: fix && place?.country ? { country: place.country, subdivision: place.subdivision, capturedAt: fix.capturedAt, accuracyM: fix.accuracyM } : fix ? { country: '', capturedAt: fix.capturedAt, accuracyM: fix.accuracyM } : null },
+      PROFILES,
+    );
+    return emergencyNumbersFor(resolution);
+  }, [location.fix, location.geocoded, tick]);
+  const primary = numbers.numbers[0];
+
+  // The press registers at once and does not wait on anything. A screen opened to LOOK (resume) does not start a new one.
+  useEffect(() => {
+    if (params?.resume) { sos.resume().catch(() => undefined); return; }
+    if (params?.trigger) sos.start(params.trigger);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A clock for the countdown only while there is one.
+  useEffect(() => {
+    if (state.phase !== 'counting') return;
+    const h = setInterval(() => setTick(Date.now()), 250);
+    return () => clearInterval(h);
+  }, [state.phase]);
+
   const openDialler = () => {
     setDialError(false);
-    Linking.openURL('tel:').catch(() => setDialError(true));
+    dial(primary?.number ?? '').catch(() => setDialError(true));
   };
+
+  const dialLabel = primary ? primary.number : 'your local emergency number';
+  const DialButtons = (
+    <>
+      <CallButton onPress={openDialler} accessibilityRole="button" accessibilityLabel={`Open the phone dialler to call ${dialLabel}`}>
+        <ButtonText>{primary ? `Call ${primary.number}` : 'Open phone dialler'}</ButtonText>
+      </CallButton>
+      {numbers.possibleNumbers.map(n => (
+        <TouchableOpacity key={n.number} onPress={() => dial(n.number).catch(() => setDialError(true))} accessibilityRole="button"
+          accessibilityLabel={`Possible local number ${n.number}, ${n.label}. Open the phone dialler`} style={styles.possible}>
+          <Note>Might work where you are: {n.label} {n.number}</Note>
+        </TouchableOpacity>
+      ))}
+      {!numbers.verified ? <Note>This number has not been verified for where you are. Check it before relying on it.</Note> : null}
+      {dialError ? (
+        <DialErrorText accessibilityRole="alert" accessibilityLiveRegion="assertive">
+          Could not open the phone dialler. Open your phone app and dial your local emergency number.
+        </DialErrorText>
+      ) : null}
+    </>
+  );
+
+  const incident = state.incident;
+
+  // ----- Nothing got out: a full screen, with the next action, never a toast.
+  if (incident?.state === 'ALL_CHANNELS_FAILED') {
+    return (
+      <FailedScreen>
+        <Title accessibilityRole="header">Nobody was reached</Title>
+        <Description>Your alert did not get through to any of your contacts. Call for help now.</Description>
+        <ScrollView style={styles.failedList}>
+          {contactRows(incident).map(r => (
+            <RowCard key={r.recipientId}>
+              <RowName>{r.name}</RowName>
+              {r.lines.map(l => <RowLine key={l}>{l}</RowLine>)}
+            </RowCard>
+          ))}
+          {incident.attempts.length === 0 ? <Note>You have no contact who has agreed to be alerted.</Note> : null}
+        </ScrollView>
+        {DialButtons}
+        <BottomButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close the emergency screen"><ButtonText>Close</ButtonText></BottomButton>
+      </FailedScreen>
+    );
+  }
+
+  let title = 'Nothing has been sent';
+  let description = settings?.personalInfo?.bloodType ? `Your saved blood type is ${settings.personalInfo.bloodType}. ` : '';
+  const left = secondsLeft(state.countdownEndsAt, tick);
+
+  if (state.phase === 'idle') {
+    description += 'No alert has been started. If you need help now, call your local emergency number.';
+  } else if (state.phase === 'requesting') {
+    description += 'Starting your alert. Nothing has been sent yet.';
+  } else if (state.phase === 'counting') {
+    title = left !== null ? `Alerting your contacts in ${left}` : 'Alerting your contacts soon';
+    description += 'Nothing has been sent yet. Cancel now to stop it.';
+  } else if (state.phase === 'unreachable') {
+    description += `Lumo could not reach its server, so no alert was started. ${state.error ?? ''}Call your local emergency number now.`;
+  } else if (state.phase === 'cannot') {
+    description += "You're not signed in here, so Lumo cannot alert your contacts. Call your local emergency number now.";
+  } else if (incident) {
+    title = headline(incident);
+    description += incident.locationAvailable ? 'Your last known location was included.' : "Your location was not included.";
+  }
+
+  const rows = incident ? contactRows(incident) : [];
+  const live = state.phase === 'live' && incident;
+  const ended = incident?.state === 'CLOSED' || incident?.state === 'CANCELLED';
 
   return (
     <Container>
-      {showDefenseGuide && <DefenseGuide onFinish={() => setShowDefenseGuide(false)}/>}
+      {showDefenseGuide && <DefenseGuide onFinish={() => setShowDefenseGuide(false)} />}
       <Header>
         <BackButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close the emergency screen">
-          <IconArrowLeft size={24} color="white"/>
+          <IconArrowLeft size={24} color="white" />
         </BackButton>
         <TitleContainer>
-            <Subtitle>SOS</Subtitle>
-            <Title>Nothing has been sent</Title>
-            <Description>
-                Lumo cannot yet contact anyone. No message has gone to your
-                contacts, no emergency service has been called, and your
-                location has not been shared. If you need help now, call your
-                local emergency number.
-                {settings?.personalInfo?.bloodType ? ` Your saved blood type is ${settings.personalInfo.bloodType}.` : null}
-            </Description>
+          <Subtitle>SOS</Subtitle>
+          <Title accessibilityRole="header" accessibilityLiveRegion="polite">{title}</Title>
+          <Description accessibilityLiveRegion="polite">{description}</Description>
         </TitleContainer>
-        <BannerSpacer>
-            <DemoBanner>
-                This screen is a demonstration of the SOS layout. Alerting,
-                location sharing and recording are not built yet.
-            </DemoBanner>
-        </BannerSpacer>
       </Header>
-      
+
       <MainContent>
-        <ContactsRing>
-            {placeholderContacts.map((c, i) => (
-                <ContactCircle key={c.name} {...c} angle={(i * 360 / placeholderContacts.length)} />
+        {state.phase === 'requesting' ? <ActivityIndicator color="white" size="large" /> : null}
+        {state.phase === 'counting' && left !== null ? <Big accessibilityLabel={`${left} seconds`}>{left}</Big> : null}
+        {live ? (
+          <ScrollView style={styles.ledger}>
+            {state.stale ? <Note accessibilityLiveRegion="polite">Can't refresh right now. This was last updated {clockOf(state.lastUpdatedAt)}.</Note> : null}
+            {incident.capped.length > 0 ? (
+              <DialErrorText accessibilityRole="alert">
+                {`Today's limit was reached, so ${incident.capped.length === 1 ? 'one contact was' : `${incident.capped.length} contacts were`} not alerted.`}
+              </DialErrorText>
+            ) : null}
+            {rows.map(r => (
+              <RowCard key={r.recipientId}>
+                <RowName>{r.name}</RowName>
+                {r.lines.map(l => <RowLine key={l}>{l}</RowLine>)}
+              </RowCard>
             ))}
-            <LumoLogoContainer>
-                <LumoText>Lumo</LumoText>
-                <LumoSubtext>Example recipients — not contacted</LumoSubtext>
-            </LumoLogoContainer>
-        </ContactsRing>
-      </MainContent>
-      
-      <Footer>
-        <View style={{flexDirection: 'row', justifyContent: 'center', gap: 16, marginVertical: 8}}>
-            <TouchableOpacity onPress={() => setShowDefenseGuide(true)} style={{alignItems: 'center'}}>
-                <View style={{width: 64, height: 64, borderRadius: 32, backgroundColor: '#f59e0b', justifyContent: 'center', alignItems: 'center'}}>
-                    <IconZap size={32} color="white"/>
-                </View>
-                <Text style={{color: 'white', fontSize: 12, fontWeight: '600', marginTop: 4}}>Defense</Text>
-            </TouchableOpacity>
-            <View style={{alignItems: 'center', opacity: 0.45}} accessibilityState={{disabled: true}}>
-                <View style={{width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center'}}>
-                    <IconMic size={32} color="white"/>
-                </View>
-                <Text style={{color: 'white', fontSize: 12, fontWeight: '600', marginTop: 4}}>Not available</Text>
-            </View>
-        </View>
-        {/*
-          The one thing on this screen that actually works. Opening the dialler
-          is user-initiated, which is the only form of emergency dialling the
-          platforms permit and the only one Lumo should ever perform. It is
-          left empty rather than pre-filled because the correct number depends
-          on where the user physically is, and the region profile that resolves
-          that is Phase 1.
-        */}
-        <CallButton
-          onPress={openDialler}
-          accessibilityRole="button"
-          accessibilityLabel="Open the phone dialler to call your local emergency number"
-        >
-          <ButtonText>Open phone dialler</ButtonText>
-        </CallButton>
-        {dialError ? (
-          <DialErrorText accessibilityRole="alert" accessibilityLiveRegion="assertive">
-            Could not open the phone dialler. Open your phone app and dial your
-            local emergency number.
-          </DialErrorText>
+            {rows.length === 0 ? <Note>{reasonText('NO_ADDRESS')}.</Note> : null}
+          </ScrollView>
         ) : null}
+        {state.tooLateToCancel ? <Note accessibilityLiveRegion="polite">It is too late to cancel: the alert has gone out. End it instead.</Note> : null}
+        {state.error && state.phase === 'live' ? <Note accessibilityLiveRegion="polite">{state.error}</Note> : null}
+      </MainContent>
+
+      <Footer>
+        {state.phase === 'counting' ? (
+          <CancelButton onPress={sos.cancel} accessibilityRole="button" accessibilityLabel="Cancel the alert. Nothing has been sent yet">
+            <CancelText>Cancel</CancelText>
+          </CancelButton>
+        ) : null}
+        {state.phase === 'unreachable' ? (
+          <BottomButton onPress={sos.retry} accessibilityRole="button" accessibilityLabel="Try to start the alert again">
+            <ButtonText>Try again</ButtonText>
+          </BottomButton>
+        ) : null}
+        {live && !ended ? (
+          <BottomButton onPress={sos.resolve} accessibilityRole="button" accessibilityLabel="End the alert. Contacts who were alerted will be told it ended">
+            <ButtonText>I'm safe — end the alert</ButtonText>
+          </BottomButton>
+        ) : null}
+        <View style={styles.defenseRow}>
+          <TouchableOpacity onPress={() => setShowDefenseGuide(true)} style={styles.defenseItem} accessibilityRole="button" accessibilityLabel="Open defense mode">
+            <View style={styles.defenseBadge}>
+              <IconZap size={32} color="white" />
+            </View>
+            <Text style={styles.defenseLabel}>Defense</Text>
+          </TouchableOpacity>
+        </View>
+        {DialButtons}
         <BottomButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close the emergency screen">
           <ButtonText>Close</ButtonText>
         </BottomButton>
