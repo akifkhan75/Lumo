@@ -184,6 +184,33 @@ export class DispatchService {
     return planned;
   }
 
+  /**
+   * Tell contacts an incident ENDED (docs/specs/INCIDENTS.md): one RESOLVED attempt for each contact
+   * whose alert actually went, on the channel it went by. A contact who was never alerted is not told.
+   * Exempt from the daily cap — it is bounded by the alerts already sent, and leaving contacts in the dark is
+   * its own harm — and it never counts in the incident's rollup (purpose RESOLVED).
+   */
+  async planResolutionIn(tx: Tx, incidentId: string, now: Date = new Date()): Promise<PlannedAttempt[]> {
+    const went = await tx.notificationAttempt.findMany({
+      where: { incidentId, purpose: 'ALERT', state: { in: ['SENT', 'DELIVERED', 'ACKNOWLEDGED', 'UNKNOWN'] } },
+      orderBy: { queuedAt: 'asc' },
+    });
+    const best = new Map<string, Channel>();
+    for (const a of went) if (!best.has(a.recipientId) && (a.channel === 'sms' || a.channel === 'push')) best.set(a.recipientId, a.channel);
+
+    const planned: PlannedAttempt[] = [];
+    for (const [recipientId, channel] of best) {
+      const attempt = await tx.notificationAttempt.create({
+        data: { incidentId, recipientId, channel, purpose: 'RESOLVED', escalationStep: 0, queuedAt: now },
+      });
+      await tx.notificationEvent.create({ data: { attemptId: attempt.id, toState: 'QUEUED', reason: 'PLANNED', occurredAt: now } });
+      await this.queue.enqueueSend(tx, attempt.id);
+      await this.queue.enqueueExpiry(tx, attempt.id, ttlSeconds(channel));
+      planned.push({ attemptId: attempt.id, recipientId, channel, outcome: 'queued' });
+    }
+    return planned;
+  }
+
   plan(input: PlanInput): Promise<PlannedAttempt[]> {
     return this.prisma.$transaction(tx => this.planIn(tx, input));
   }

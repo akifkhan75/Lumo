@@ -70,7 +70,18 @@ export class LedgerService {
   /** Counts only; no identifiers of people. Replaced by real metrics in 1.15. */
   readonly counters = new Map<string, number>();
 
+  private readonly listeners: ((attemptId: string, result: Applied) => Promise<void>)[] = [];
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Told AFTER an attempt's state changed and its transaction committed (never for a caller that
+   * supplied its own transaction: that caller recomputes itself). The incident rollup listens here.
+   * A listener failing is logged and never undoes or blocks the ledger write.
+   */
+  onApplied(listener: (attemptId: string, result: Applied) => Promise<void>) {
+    this.listeners.push(listener);
+  }
 
   private count(name: string) {
     this.counters.set(name, (this.counters.get(name) ?? 0) + 1);
@@ -87,7 +98,14 @@ export class LedgerService {
 
   /** Apply one or more steps atomically. A refused step stops the run; earlier steps stand. */
   async apply(attemptId: string, steps: readonly Step[], now: Date = new Date(), tx?: Tx): Promise<LedgerResult> {
-    return tx ? this.run(tx, attemptId, steps, now) : this.prisma.$transaction(t => this.run(t, attemptId, steps, now));
+    if (tx) return this.run(tx, attemptId, steps, now);
+    const result = await this.prisma.$transaction(t => this.run(t, attemptId, steps, now));
+    if (result.applied) {
+      for (const listener of this.listeners) {
+        await listener(attemptId, result).catch(() => this.count('listener.failed'));
+      }
+    }
+    return result;
   }
 
   private async run(tx: Tx, attemptId: string, steps: readonly Step[], now: Date): Promise<LedgerResult> {
