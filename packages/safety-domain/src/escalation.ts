@@ -284,6 +284,12 @@ export type LadderEvent =
   | { readonly type: 'START' }
   /** Carries which step's timer fired, so a stale job from before an ack/resume is ignored. */
   | { readonly type: 'STEP_TIMEOUT'; readonly stepOrder: number }
+  /**
+   * Every attempt of the step in flight has FAILED or EXPIRED: nobody was reached and nobody will answer, so
+   * waiting out the timeout only delays the next person. Advances at once, like a step whose recipients were all
+   * skipped. NOT raised for a message that was sent and is unconfirmed — that one may yet arrive.
+   */
+  | { readonly type: 'STEP_ALL_FAILED'; readonly stepOrder: number }
   | { readonly type: 'ACK' }
   | { readonly type: 'UNACK' };
 
@@ -399,6 +405,15 @@ export function stepLadder(state: LadderState, event: LadderEvent, input: Ladder
       // A timer from a step that is no longer in flight, or one that fired early,
       // changes nothing.
       if (event.stepOrder !== step.order || state.deadline === null || now < state.deadline) return done(state);
+      const r = advance(state, state.stepIndex + 1, input);
+      return done(r.state, r.decisions);
+    }
+
+    case 'STEP_ALL_FAILED': {
+      if (state.phase === 'IDLE') return fail('NOT_STARTED');
+      if (state.phase !== 'RUNNING') return fail('NOT_RUNNING');
+      // Only for the step actually in flight; no deadline guard, because the point is not to wait for it.
+      if (event.stepOrder !== policy.steps[state.stepIndex].order) return done(state);
       const r = advance(state, state.stepIndex + 1, input);
       return done(r.state, r.decisions);
     }

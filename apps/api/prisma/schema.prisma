@@ -414,6 +414,10 @@ model EmergencyIncident {
   // this deadline and dispatches when it passes, so an app killed mid-countdown still alerts. A
   // device-only countdown would dispatch nothing if the app were never reopened. Null = no countdown.
   countdownEndsAt   DateTime?
+  // The escalation ladder (docs/specs/ESCALATION_POLICY.md): its state, and the policy AS IT WAS when this
+  // incident started, so editing a policy mid-incident cannot change what a running incident does.
+  ladder            Json?
+  policySnapshot    Json?
   dispatchedAt      DateTime?
   acknowledgedAt    DateTime?
   resolvedAt        DateTime?

@@ -175,6 +175,8 @@ export interface Incident {
   countdownEndsAt: string | null;
   locationAvailable: boolean;
   outcome: string;
+  /** The escalation ladder: the step in flight, of how many, and when it gives way to the next. */
+  escalation?: { phase: string; stepOrder: number | null; steps: number; nextStepAt: number | null } | null;
   reached: string[];
   acknowledged: string[];
   failed: string[];

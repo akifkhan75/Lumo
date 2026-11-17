@@ -241,6 +241,20 @@ there is no escalation ladder (1.9), and practice and duress are refused. **With
 who has not opted in and has no contact who claimed their invite gets "all channels failed"** (KI-83). Spec:
 `docs/specs/INCIDENTS.md`; gaps KI-83 – KI-88.
 
+### Escalation ladder (milestone 1.9, server)
+
+An SOS now follows a plan rather than alerting everyone at once: the first contact, then, if the step times out or every
+attempt in it failed, the next, and so on, within a limit on how many people are alerted. A step that only failed does not
+wait out its timer; one that was **sent but unconfirmed does**, because it may yet arrive. An acknowledgement halts the plan;
+"I can't help after all" resumes it from the step in flight without re-alerting anyone; ending the alert stops it for good.
+Without a stored plan one is derived from the person's contacts in priority order. The plan is readable in plain words before
+anything runs (`GET /escalation-policy`) and editable (`PUT`), is frozen onto each incident when it starts, and its timers are
+queue jobs that survive a restart.
+
+**What it does not do:** no screen for the plan in the app (KI-95); never run with real providers; a manual SOS reaches the
+second contact only after the first step gives way (KI-93); per-template defaults wait for sessions (1.10); channels within a
+step go in parallel, not as a fallback chain (2.4). Spec: `docs/specs/ESCALATION_POLICY.md` ("As executed"); gaps KI-93 – KI-96.
+
 ### Device location
 
 `expo-location`, foreground only: permission is read at launch and asked only when
