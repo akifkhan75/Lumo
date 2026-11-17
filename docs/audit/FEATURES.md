@@ -207,11 +207,14 @@ callbacks. Every way a send can fail or be skipped is a ledger row that says why
 credentials", which is never recorded as accepted. An SMS that was accepted but never got a receipt is
 **"delivery unconfirmed" (UNKNOWN)**, not "delivered" and not "failed".
 
+**Also (1.7b-1):** **region gating** (a channel off in a market is ledgered as such; US SMS/voice wait for A2P
+10DLC registration, by the _incident's_ region), a **per-user daily cap per channel** reserved under a lock (the
+rest of a fan-out are "capped", budget going to contacts in priority order), and **voice** calls (answered is a
+fact on the attempt, never an acknowledgement).
+
 **What it does not do:** nothing creates an incident yet (1.8), so nothing is sent to anyone. It has **never
 run against real Twilio** (no account), so the plan's exit — a real SMS recorded as UNKNOWN with receipts
-disabled — is **not met**. Push, voice, device registration, the device-side receipt and the spend cap are
-1.7b; there is no cap yet. At-most-once has a crash window (KI-67). Spec: `docs/specs/NOTIFICATIONS.md`;
-gaps KI-67 – KI-71.
+disabled — is **not met**. Push, contact device linking and the device-side receipt are 1.7b-2, so no contact can be reached by push and nothing can reach "delivered" that way yet. At-most-once has a crash window (KI-67). Spec: `docs/specs/NOTIFICATIONS.md`; gaps KI-67 – KI-77.
 
 ### Device location
 

@@ -456,6 +456,9 @@ model NotificationAttempt {
   // set sends nothing: at most one send per attempt, even if the job is redelivered
   // (docs/specs/NOTIFICATIONS.md, "At most once").
   claimedAt         DateTime?
+  // Set at PLAN time, and only for an attempt that was really queued for sending: the spend
+  // cap counts these (PLAT-5). Skipped and capped attempts never get one, so they cost no budget.
+  reservedAt        DateTime?
   costMinorUnits    Int               @default(0)
   currency          String?
 
@@ -466,6 +469,7 @@ model NotificationAttempt {
   @@index([state])
   // Provider callbacks find their attempt by this id.
   @@index([providerMessageId])
+  @@index([channel, reservedAt])
 }
 
 // APPEND-ONLY. NotificationAttempt.state is a materialised view of the latest

@@ -76,6 +76,15 @@ export class LedgerService {
     this.counters.set(name, (this.counters.get(name) ?? 0) + 1);
   }
 
+  /**
+   * Record a provider's status on the attempt WITHOUT changing its state — e.g. that a call was
+   * answered. It is a fact about the attempt, not a transition; no event is written because
+   * no state changed. Never lowers anything: it only sets the text.
+   */
+  async recordProviderStatus(attemptId: string, providerStatus: string): Promise<void> {
+    await this.prisma.notificationAttempt.updateMany({ where: { id: attemptId }, data: { providerStatus } });
+  }
+
   /** Apply one or more steps atomically. A refused step stops the run; earlier steps stand. */
   async apply(attemptId: string, steps: readonly Step[], now: Date = new Date(), tx?: Tx): Promise<LedgerResult> {
     return tx ? this.run(tx, attemptId, steps, now) : this.prisma.$transaction(t => this.run(t, attemptId, steps, now));

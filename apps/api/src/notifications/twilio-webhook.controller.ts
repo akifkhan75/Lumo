@@ -5,6 +5,7 @@ import twilio from 'twilio';
 import { PrismaService } from '../prisma/prisma.service';
 import { LedgerService, type Step } from './ledger.service';
 import { getTwilioConfig } from './sms/twilio-sms';
+import { getTwilioVoiceConfig } from './voice/twilio-voice';
 
 /**
  * Twilio's delivery-status callbacks (docs/specs/NOTIFICATIONS.md).
@@ -29,6 +30,54 @@ export class TwilioWebhookController {
     private readonly ledger: LedgerService,
   ) {}
 
+  /** The signature is the gate. The URL it covers comes from config, never from the request's Host. */
+  private verify(req: Request, signature: string | undefined, body: Record<string, string>) {
+    // SMS and voice share one account, so either configuration can vouch for the account's token.
+    const config = getTwilioConfig() ?? getTwilioVoiceConfig();
+    if (!config || !signature) throw new ForbiddenException();
+    const url = `${config.publicApiUrl}${req.originalUrl}`;
+    if (!twilio.validateRequest(config.authToken, signature, url, body ?? {})) {
+      this.ledger.counters.set('webhook.bad_signature', (this.ledger.counters.get('webhook.bad_signature') ?? 0) + 1);
+      throw new ForbiddenException();
+    }
+  }
+
+  @Post('voice-status')
+  @SkipThrottle()
+  @HttpCode(200)
+  async voiceStatus(
+    @Req() req: Request,
+    @Headers('x-twilio-signature') signature: string | undefined,
+    @Query('attempt') attemptId: string | undefined,
+    @Body() body: Record<string, string>,
+  ) {
+    this.verify(req, signature, body);
+    const sid = body?.CallSid;
+    const status = body?.CallStatus;
+    if (!attemptId || !sid || !status) return { ok: true };
+
+    const attempt = await this.prisma.notificationAttempt.findUnique({ where: { id: attemptId } });
+    if (!attempt || attempt.channel !== 'voice' || (attempt.providerMessageId && attempt.providerMessageId !== sid)) {
+      this.ledger.counters.set('webhook.unmatched', (this.ledger.counters.get('webhook.unmatched') ?? 0) + 1);
+      return { ok: true };
+    }
+
+    const inferAccepted: Step = {
+      event: 'PROVIDER_ACCEPTED', by: 'system', reason: 'INFERRED_FROM_CALLBACK', onlyFrom: 'QUEUED', providerMessageId: sid, providerStatus: status,
+    };
+    if (['busy', 'no-answer', 'failed', 'canceled'].includes(status)) {
+      // Nobody picked up (or the number was bad): the call did not reach a person.
+      await this.ledger.apply(attempt.id, [inferAccepted, { event: 'PROVIDER_REPORTED_FAILURE', by: 'system', reason: `VOICE_${status.toUpperCase().replace('-', '_')}`, providerStatus: status }]);
+    } else {
+      await this.ledger.apply(attempt.id, [inferAccepted]);
+      // "Answered" is a FACT about the call, recorded on the attempt, and nothing more: a voicemail
+      // answers too, answered is not understood, and a call is never an acknowledgement. The
+      // channel stops at SENT, so the attempt settles UNKNOWN at its time-to-live.
+      if (status === 'in-progress' || status === 'completed') await this.ledger.recordProviderStatus(attempt.id, status);
+    }
+    return { ok: true };
+  }
+
   @Post('status')
   @SkipThrottle()
   @HttpCode(200)
@@ -38,13 +87,7 @@ export class TwilioWebhookController {
     @Query('attempt') attemptId: string | undefined,
     @Body() body: Record<string, string>,
   ) {
-    const config = getTwilioConfig();
-    if (!config || !signature) throw new ForbiddenException();
-    const url = `${config.publicApiUrl}${req.originalUrl}`;
-    if (!twilio.validateRequest(config.authToken, signature, url, body ?? {})) {
-      this.ledger.counters.set('webhook.bad_signature', (this.ledger.counters.get('webhook.bad_signature') ?? 0) + 1);
-      throw new ForbiddenException();
-    }
+    this.verify(req, signature, body);
 
     const sid = body?.MessageSid;
     const status = body?.MessageStatus;
