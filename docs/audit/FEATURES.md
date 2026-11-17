@@ -237,6 +237,18 @@ there is no escalation ladder (1.9), and practice and duress are refused. **With
 who has not opted in and has no contact who claimed their invite gets "all channels failed"** (KI-83). Spec:
 `docs/specs/INCIDENTS.md`; gaps KI-83 – KI-88.
 
+### Push and joining as a contact (milestone 1.8c, app)
+
+A person can now be the contact: **Settings → Being a contact** lets them paste the link (or the whole message) they were sent
+and join from their signed-in account, and turn on alerts on their phone (a button; nothing prompts by itself). An alert tapped
+opens a screen with one decision, **I'm responding**, reported to the server, and it says only what the server answered. A
+notification that arrives while Lumo is open, or is tapped, is reported as received; one that arrives while it is closed is not
+and will read "sent, not confirmed" to the sender. Logging out revokes the phone's registration.
+
+**What it does not do:** never run on a device or with a real push project (KI-97); no background or killed-app receipts, and no
+iOS notification extension (1.16); "I can't help after all" has no button (the alert carries no incident id, KI-98); a link
+followed while signed out is lost (KI-99). Spec: `docs/specs/NOTIFICATIONS.md` ("The app's half of push"); gaps KI-97 – KI-100.
+
 ### Escalation ladder (milestone 1.9, server)
 
 An SOS now follows a plan rather than alerting everyone at once: the first contact, then, if the step times out or every

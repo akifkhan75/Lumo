@@ -66,7 +66,20 @@ export const restoreSession = async (): Promise<boolean> => {
  * it), then the stored copy. Logout used to do neither.
  */
 export const signOut = async (): Promise<void> => {
+    // Stop this phone receiving the account's contacts' alerts: revoke its push registration. The in-memory login is
+    // cleared FIRST and synchronously (no further request may carry it), so the revoke uses a copy of it, is bounded to
+    // two seconds, and can never hold up or fail a logout.
+    const jwt = currentToken;
     setAuthToken(null);
+    try {
+        const id = await tokenStorage.loadPushDeviceId();
+        if (id && jwt) {
+            await Promise.race([
+                new ApiClient(API_BASE_URL, jwt).revokeDevice(id).then(() => tokenStorage.clearPushDeviceId()),
+                new Promise(resolve => setTimeout(resolve, 2000)),
+            ]);
+        }
+    } catch { /* best effort: the server also drops a token the push service reports dead */ }
     // The emergency token is revoked on the server by logging out elsewhere; here it simply stops being kept.
     await tokenStorage.clearEmergencyToken();
     await tokenStorage.clearActiveSos();
@@ -80,6 +93,22 @@ export const checkInJourney = (id: string, expectedArrivalAt: string) => apiClie
 export const arriveJourney = (id: string) => apiClient.arriveJourney(id);
 export const cancelJourney = (id: string) => apiClient.cancelJourney(id);
 export const postJourneyLocation = (id: string, snapshots: JourneyFix[]) => apiClient.postJourneyLocation(id, snapshots);
+// The contact side (docs/specs/NOTIFICATIONS.md): a push address, joining as someone's contact, and the phone's own report back.
+export const registerPushDevice = async (input: { platform: 'ios' | 'android'; osVersion: string; pushToken: string }): Promise<string> => {
+    const { id } = await apiClient.registerDevice(input);
+    await tokenStorage.savePushDeviceId(id);
+    return id;
+};
+export const loadPushDeviceId = tokenStorage.loadPushDeviceId;
+export const forgetPushDevice = tokenStorage.clearPushDeviceId;
+export const revokePushDevice = async (): Promise<void> => {
+    const id = await tokenStorage.loadPushDeviceId();
+    if (!id) return;
+    await apiClient.revokeDevice(id);
+    await tokenStorage.clearPushDeviceId();
+};
+export const claimContactInvite = (token: string) => apiClient.claimContactInvite(token);
+export const postNotificationReceipt = (attemptId: string, kind: 'delivered' | 'acknowledged') => apiClient.postNotificationReceipt(attemptId, kind);
 
 // Incidents (docs/specs/INCIDENTS.md). The emergency token is tried FIRST for raising an SOS, so it never
 // depends on the login being valid; reading falls back the other way to get contact names when a login exists.

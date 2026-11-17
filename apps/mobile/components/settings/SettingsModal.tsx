@@ -116,6 +116,7 @@ const SettingsScreen = () => {
                 <View>
                 <SettingItem icon={<IconProfile size={24} color="#16a34a" />} title="Update Profile" description="View and edit your profile" onPress={() => navigation.navigate('ProfileSettings', { currentSettings, onSave })} />
                 <SettingItem icon={<IconContact size={24} color="#16a34a" />} title="Contact" description="Emergency Contact" onPress={() => navigation.navigate('ContactSettings', { currentSettings, onSave })} />
+                <SettingItem icon={<IconContact size={24} color="#16a34a" />} title="Being a contact" description="Alerts on this phone, and join someone's link" onPress={() => navigation.navigate('ContactRole', {})} />
                 <SettingItem 
                     icon={<IconLocation size={24} color="#16a34a" />} 
                     title="Show My Location" 
