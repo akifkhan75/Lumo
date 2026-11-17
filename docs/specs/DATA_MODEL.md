@@ -201,6 +201,7 @@ model LocationSnapshot {
 }
 
 model EmergencyIncident {
+  // lateBySeconds Int @default(0): how late the alert is, worked out by the SERVER from the device's elapsed time (docs/specs/OFFLINE_SOS.md)
   id             String  @id @default(uuid())
   userId         String
   user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)

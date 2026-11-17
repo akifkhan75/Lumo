@@ -25,6 +25,8 @@ export class SosDto {
   @IsIn(SOS_TRIGGERS as unknown as string[]) triggerType!: (typeof SOS_TRIGGERS)[number];
   @IsISO8601() triggeredAt!: string;
   @IsOptional() @IsInt() @Min(0) @Max(60) countdownSeconds?: number;
+  // How long ago the press was, measured on the device (docs/specs/OFFLINE_SOS.md). The service refuses one over the cap, with a plain message.
+  @IsOptional() @IsInt() @Min(0) elapsedSeconds?: number;
   @IsOptional() @ValidateNested() @Type(() => LocationDto) location?: LocationDto;
   @IsOptional() @ValidateNested() @Type(() => PlaceDto) place?: PlaceDto;
   // The journey this SOS happens during, if any; ignored unless it is the caller's own live journey.
@@ -54,6 +56,7 @@ export class IncidentsController {
       triggerType: body.triggerType,
       triggeredAt: new Date(body.triggeredAt),
       countdownSeconds: body.countdownSeconds,
+      elapsedSeconds: body.elapsedSeconds,
       location: body.location ? { latitude: body.location.latitude, longitude: body.location.longitude, accuracyM: body.location.accuracyM ?? null, capturedAt: body.location.capturedAt } : null,
       place: body.place ?? null,
       sessionId: body.sessionId ?? null,

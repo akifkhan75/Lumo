@@ -416,6 +416,9 @@ model EmergencyIncident {
   // this deadline and dispatches when it passes, so an app killed mid-countdown still alerts. A
   // device-only countdown would dispatch nothing if the app were never reopened. Null = no countdown.
   countdownEndsAt   DateTime?
+  // How late the alert is (docs/specs/OFFLINE_SOS.md): seconds between when it SHOULD have gone (the press plus its countdown) and when the
+  // server got it. 0 for an ordinary SOS. Computed by the SERVER from the device's elapsed time, never from the device's clock.
+  lateBySeconds     Int            @default(0)
   // The escalation ladder (docs/specs/ESCALATION_POLICY.md): its state, and the policy AS IT WAS when this
   // incident started, so editing a policy mid-incident cannot change what a running incident does.
   ladder            Json?
@@ -427,11 +430,11 @@ model EmergencyIncident {
   regionProfileId   String
   createdAt         DateTime       @default(now())
 
-  attempts  NotificationAttempt[]
+  attempts         NotificationAttempt[]
   // Practice Mode only (docs/specs/PRACTICE_MODE.md): the SIMULATED ledger. A practice incident has no NotificationAttempt: a trigger forbids it.
   practiceAttempts PracticeAttempt[]
-  events    IncidentEvent[]
-  locations LocationSnapshot[]
+  events           IncidentEvent[]
+  locations        LocationSnapshot[]
   // evidence EvidenceAsset[] — arrives with the model, in Phase 2.
 
   @@index([userId, createdAt])
