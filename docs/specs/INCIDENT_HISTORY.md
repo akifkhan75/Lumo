@@ -59,3 +59,18 @@ Newest first and own only · rehearsals never in the history, and alone when ask
 over-large page and an unknown mode are `400` · a token cannot read either route · the timeline's order, names, and that it carries no
 coordinate or number in JSON or CSV · another user's incident is a `404` · a rehearsal is marked on every entry and every row · CSV shape and
 headers · a formula-shaped name is neutralised · exports are audited and views are not.
+
+## As built (1.15b: the app)
+
+**Settings → Past alerts** opens the list; a tap opens one incident's timeline.
+
+- **The list** is "Alerts" by default and "Practice runs" on the other toggle, so a rehearsal is never among the real ones. Each row says what
+  it was, when, and how it went **in the ledger's words** ("Sent to 1 of 2 · couldn't reach 1", never "notified"), marks a rehearsal
+  ("Practice: nobody was contacted."), and says how late an alert was and why. It pages ("Show older"), says plainly when there is nothing yet,
+  and says when it could not load, with a retry, rather than show an empty list as if nothing had happened.
+- **The timeline** lists every entry in order with its time, in words: "Text to Maya: sent, not confirmed", "App alert to Maya: delivered", "Alert
+  started (you)". A rehearsal has a banner and every attempt marked "(practice)". It says it never includes a position or a phone number.
+- **Sharing** asks the server for the **audited export form**, then opens the system share sheet with the timeline as text. The share is the act
+  that leaves the app, so that is what is recorded; merely viewing is not. Lumo sends nothing, and says so.
+
+Both screens are on the accessibility audit (role, action label, 44 pt target).
