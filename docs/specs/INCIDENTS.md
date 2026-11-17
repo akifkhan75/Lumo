@@ -81,6 +81,8 @@ No coordinate is ever logged.
 | `POST /api/v1/incidents/:id/cancel`  | login or token     | only while `CREATED` and before the deadline; else 409 "resolve instead" |
 | `POST /api/v1/incidents/:id/resolve` | login or token     | tells the contacts whose alert was sent that it ended                    |
 | `GET /api/v1/incidents/:id`          | login or token     | status and ledger (names only with a login)                              |
+| `GET /api/v1/incidents`              | **login only**     | the person's history, newest first; real only unless `mode=practice` (`INCIDENT_HISTORY.md`) |
+| `GET /api/v1/incidents/:id/timeline` | **login only**     | every event and attempt in order; `?format=csv\|json` downloads it, audited |
 | `POST /api/v1/incidents/:id/ack`     | a linked contact   | "I'm responding": `ACK_RECEIVED`, halts escalation                       |
 | `POST /api/v1/incidents/:id/unack`   | a linked contact   | "I can't help after all": back to the prior state                        |
 

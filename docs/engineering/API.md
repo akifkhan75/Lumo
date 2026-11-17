@@ -374,3 +374,11 @@ sent. The incident view carries `lateBySeconds` (0 for an ordinary SOS), and any
 cancelled while offline. Existing and still counting: cancelled. Not yet arrived: the incident is made already cancelled under that key, so a
 late arrival is a replay of a cancelled incident and sends nothing. Already gone out: **200 with the incident as it really is** (not
 `CANCELLED`), not a 409, because the device has no incident id to ask for. Another user's key: 409.
+
+## Incident history (1.15a)
+
+`GET /api/v1/incidents` (login only): the caller's incidents, newest first. Query: `limit` (1–50, default 20), `cursor` (the `nextCursor` of the
+previous page), `mode` (`real`, the default, or `practice`: rehearsals only). Each row: id, mode, state, outcome, trigger, times,
+`lateBySeconds`, and counts of contacts tried/reached/failed, with **no names**. `GET /api/v1/incidents/:id/timeline` (login only): the
+incident and every state change and attempt event in order, with contact names and **no coordinate or phone number**; `?format=csv` or `json`
+downloads it and is written to `AuditLog`. An emergency token is refused (401) on both. See `docs/specs/INCIDENT_HISTORY.md`.
