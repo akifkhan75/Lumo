@@ -23,6 +23,10 @@ const Header = styled(View)`
 `;
 
 const BackButton = styled(TouchableOpacity)`
+  min-width: 48px;
+  min-height: 48px;
+  justify-content: center;
+  align-items: center;
   padding: 8px;
 `;
 
@@ -30,7 +34,7 @@ const Title = styled(Text)`
   font-size: 24px;
   font-weight: bold;
   color: #1f2937;
-  margin-left: 16px;
+  margin-start: 16px;
 `;
 
 const SettingItemContainer = styled(TouchableOpacity)`
@@ -38,6 +42,7 @@ const SettingItemContainer = styled(TouchableOpacity)`
     align-items: center;
     padding: 12px 4px;
     gap: 16px;
+    min-height: 56px;
     border-radius: 8px;
 `;
 
@@ -73,7 +78,14 @@ const SettingItem: React.FC<{
   isToggleOn?: boolean;
   onToggleChange?: (isOn: boolean) => void;
 }> = ({ icon, title, description, onPress, hasToggle, isToggleOn, onToggleChange }) => (
-  <SettingItemContainer onPress={onPress} disabled={!onPress && !hasToggle}>
+  // One stop for a screen reader and a row-wide target: the whole row is the control, and a switch is one that says whether it is on.
+  <SettingItemContainer
+    onPress={hasToggle ? () => onToggleChange?.(!isToggleOn) : onPress}
+    disabled={!onPress && !hasToggle}
+    accessibilityRole={hasToggle ? 'switch' : 'button'}
+    accessibilityLabel={`${title}. ${description}`}
+    accessibilityState={hasToggle ? { checked: Boolean(isToggleOn) } : undefined}
+  >
     <SettingItemIconContainer>
         {icon}
     </SettingItemIconContainer>
@@ -82,7 +94,7 @@ const SettingItem: React.FC<{
         <SettingDescription>{description}</SettingDescription>
     </SettingTextContainer>
     {hasToggle ? (
-        <Switch value={isToggleOn} onValueChange={onToggleChange} trackColor={{ false: "#767577", true: "#10b981" }} thumbColor={"#f4f3f4"} />
+        <Switch accessibilityElementsHidden importantForAccessibility="no-hide-descendants" value={isToggleOn} onValueChange={onToggleChange} trackColor={{ false: "#767577", true: "#047857" }} thumbColor={"#f4f3f4"} />
       ) : <IconChevronRight size={24} color="#9ca3af" />}
   </SettingItemContainer>
 );
@@ -108,7 +120,7 @@ const SettingsScreen = () => {
         <Container>
             <InnerContainer>
                 <Header>
-                    <BackButton onPress={onClose}>
+                    <BackButton onPress={onClose} accessibilityRole="button" accessibilityLabel="Close settings">
                     <IconArrowLeft size={24} color="#1f2937" />
                     </BackButton>
                     <Title>Settings</Title>

@@ -22,6 +22,10 @@ const Header = styled(View)`
 `;
 
 const BackButton = styled(TouchableOpacity)`
+  min-width: 48px;
+  min-height: 48px;
+  justify-content: center;
+  align-items: center;
   padding: 8px;
 `;
 
@@ -29,7 +33,7 @@ const Title = styled(Text)`
   font-size: 24px;
   font-weight: bold;
   color: #1f2937;
-  margin-left: 16px;
+  margin-start: 16px;
 `;
 
 const ToggleItemContainer = styled(TouchableOpacity)`
@@ -37,6 +41,7 @@ const ToggleItemContainer = styled(TouchableOpacity)`
     align-items: center;
     padding: 12px 4px;
     gap: 16px;
+    min-height: 56px;
 `;
 
 const ToggleTextContainer = styled(View)`
@@ -57,6 +62,8 @@ const ToggleDescription = styled(Text)`
 
 const SubmitButton = styled(TouchableOpacity)`
   background-color: #1f2937;
+  min-height: 56px;
+  justify-content: center;
   padding: 16px;
   border-radius: 9999px;
   align-items: center;
@@ -70,12 +77,12 @@ const ButtonText = styled(Text)`
 `;
 
 const ToggleOption: React.FC<{label: string, description: string, isEnabled: boolean, onToggle: (value: boolean) => void}> = ({label, description, isEnabled, onToggle}) => (
-    <ToggleItemContainer onPress={() => onToggle(!isEnabled)}>
+    <ToggleItemContainer onPress={() => onToggle(!isEnabled)} accessibilityRole="switch" accessibilityLabel={`${label}. ${description}`} accessibilityState={{ checked: isEnabled }}>
         <ToggleTextContainer>
             <ToggleTitle>{label}</ToggleTitle>
             <ToggleDescription>{description}</ToggleDescription>
         </ToggleTextContainer>
-        <Switch value={isEnabled} onValueChange={onToggle} trackColor={{ false: "#767577", true: "#10b981" }} thumbColor={"#f4f3f4"} />
+        <Switch accessibilityElementsHidden importantForAccessibility="no-hide-descendants" value={isEnabled} onValueChange={onToggle} trackColor={{ false: "#767577", true: "#047857" }} thumbColor={"#f4f3f4"} />
     </ToggleItemContainer>
 );
 
@@ -104,7 +111,7 @@ const AlertSettingsScreen = () => {
     <Container>
         <InnerContainer>
             <Header>
-                <BackButton onPress={onBack}>
+                <BackButton onPress={onBack} accessibilityRole="button" accessibilityLabel="Go back to settings">
                     <IconArrowLeft size={24} color="#1f2937" />
                 </BackButton>
                 <Title>Setup Alert</Title>
@@ -142,7 +149,7 @@ const AlertSettingsScreen = () => {
                     onToggle={() => handleToggle('sendSmsOnSos')}
                 />
             </ScrollView>
-            <SubmitButton onPress={handleSave} disabled={isSaving}>
+            <SubmitButton onPress={handleSave} disabled={isSaving} accessibilityRole="button" accessibilityLabel={isSaving ? 'Saving your alert settings' : 'Save your alert settings'} accessibilityState={{ busy: isSaving, disabled: isSaving }}>
                 <ButtonText>{isSaving ? 'Saving...' : 'Save & Update'}</ButtonText>
             </SubmitButton>
         </InnerContainer>

@@ -34,7 +34,7 @@ const Title = styled(Text)`
   font-size: 24px;
   font-weight: bold;
   color: #1f2937;
-  margin-left: 16px;
+  margin-start: 16px;
 `;
 
 const Description = styled(Text)`
@@ -54,7 +54,7 @@ const InputContainer = styled(View)`
 const StyledInput = styled(TextInput)`
   flex: 1;
   font-size: 16px;
-  padding-left: 12px;
+  padding-start: 12px;
   color: #1f2937;
 `;
 

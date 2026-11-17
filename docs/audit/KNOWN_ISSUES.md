@@ -281,6 +281,8 @@ prompt is built from `message` alone. Multi-turn context is silently dropped.
 
 ## ⚪ KI-15 — No accessibility pass
 
+_Update: partly built in 1.14a. A mechanical floor now covers the emergency path, Journey, the dashboard, a contact's alert, Settings and the signed-out screens (role, action label, 44 pt target, contrast, RTL-safe layout), and found and fixed real failures. What a machine cannot judge is KI-131 to KI-135._
+
 No `accessibilityLabel` / `accessibilityRole` anywhere in `apps/mobile`. For an
 app used under stress — and sometimes one-handed, in the dark, or by users with
 impairments — this matters more than average. Add labels to the SOS button, the
@@ -1189,3 +1191,32 @@ Same as KI-88: opening the link tells Google where the person was. The age ("abo
 
 `expo-sms` can say "sent", "cancelled" or "unknown", and on some it is always "unknown". The screen reports exactly that and never more.
 `expo-sms` is a native module: a dev-build rebuild is needed before this works on a device (KI-124), and it has not run on one.
+
+## Found while building milestone 1.14a — 2026-11-18
+
+### 🔴 KI-131 — No screen-reader, 200%-text or one-handed check has been done on a device
+
+Everything above is Jest. Nobody has gone through the emergency path with VoiceOver or TalkBack, with text at 200%, or one-handed. The things
+only that finds: reading order, whether a live region is announced and not repeated, a fixed-width label clipping (the bottom bar's labels are
+64 pt wide), and whether the SOS button is in reach. The floor in `ACCESSIBILITY.md` is not met until this is done on both platforms.
+
+### 🟠 KI-132 — No haptic confirmation
+
+The floor asks for "haptic + visual + audible confirmation of state changes, where permitted". There is no haptics module, so a deaf or
+low-vision person gets the visual and the announced state only. `expo-haptics` is a native module (a rebuild and a mock).
+
+### 🟠 KI-133 — Screens off the emergency path are not audited
+
+Hazard reporting, fake call, the safety assistant, profile, "being a contact", joining a contact and community safety are not in the audit.
+They are not the emergency path, but they are the app.
+
+### 🟠 KI-134 — Layout mirrors; nothing is in Urdu
+
+The RTL work is layout only. There is no message catalogue and no Urdu string anywhere (i18n is 6.1), so "Urdu selected → RTL correct" cannot be
+tested end to end, and every safety string still needs a native-speaker review (KI-48's rule). Mixed-direction text (a name in Latin script in an
+Urdu sentence, a phone number) is untested.
+
+### 🟡 KI-135 — Light theme only
+
+`userInterfaceStyle: "light"`. Contrast is checked for the one theme. A dark theme, if added, needs the whole check again, including the emergency
+screen's own slate background.

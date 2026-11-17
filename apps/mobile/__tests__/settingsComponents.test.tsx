@@ -74,43 +74,35 @@ describe('Settings Screens', () => {
 
       const buttons = getPressableButtons(testRenderer.root);
       expect(buttons.length).toBeGreaterThan(0);
+      // Found by what they SAY, not by where they sit: a screen reader finds them by label, and the order may change.
+      const labelled = (label: RegExp) => testRenderer.root.findAll((x: any) => typeof x.props.onPress === 'function' && label.test(String(x.props.accessibilityLabel)))[0];
+      const press = (label: RegExp) => {
+        const b = labelled(label);
+        expect(b).toBeDefined();
+        act(() => { b.props.onPress(); });
+      };
 
-      // Back button
-      act(() => {
-        buttons[0].props.onPress();
-      });
+      press(/^Close settings$/);
       expect(mockGoBack).toHaveBeenCalled();
-
-      // Navigation buttons
-      act(() => {
-        buttons[1].props.onPress();
-      });
+      press(/^Update Profile\./);
       expect(mockNavigate).toHaveBeenCalledWith('ProfileSettings', expect.any(Object));
-
-      act(() => {
-        buttons[2].props.onPress();
-      });
+      press(/^Contact\./);
       expect(mockNavigate).toHaveBeenCalledWith('ContactSettings', expect.any(Object));
-
-      act(() => {
-        buttons[3].props.onPress();
-      });
+      press(/^Being a contact\./);
       expect(mockNavigate).toHaveBeenCalledWith('ContactRole', expect.anything());
-
-      act(() => {
-        buttons[4].props.onPress();
-      });
+      press(/^Setup Alert\./);
       expect(mockNavigate).toHaveBeenCalledWith('AlertSettings', expect.any(Object));
-
-      act(() => {
-        buttons[5].props.onPress();
-      });
+      press(/^Practise an emergency\./);
       expect(mockNavigate).toHaveBeenCalledWith('Practice', { settings: defaultSettings });
 
-      // Logout button (last)
-      act(() => {
-        buttons[buttons.length - 1].props.onPress();
-      });
+      // The location row is a switch that says whether it is on, and the whole row toggles it.
+      const loc = labelled(/^Show My Location\./);
+      expect(loc.props.accessibilityRole).toBe('switch');
+      expect(loc.props.accessibilityState).toEqual({ checked: defaultSettings.security.locationSharingEnabled });
+      act(() => { loc.props.onPress(); });
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ security: expect.objectContaining({ locationSharingEnabled: !defaultSettings.security.locationSharingEnabled }) }));
+
+      press(/^Logout\./);
       expect(onLogout).toHaveBeenCalled();
     });
   });

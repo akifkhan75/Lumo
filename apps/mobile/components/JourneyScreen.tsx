@@ -15,7 +15,7 @@ import { alertsMayStartAt, clock, contactsTried, durationLabel, endedText, KIND_
 const Container = styled(SafeAreaView)`flex: 1; background-color: white;`;
 const Header = styled(View)`flex-direction: row; align-items: center; padding: 16px;`;
 const Back = styled(TouchableOpacity)`padding: 8px; min-width: 44px; min-height: 44px; justify-content: center;`;
-const Title = styled(Text)`font-size: 24px; font-weight: bold; color: #1f2937; margin-left: 12px;`;
+const Title = styled(Text)`font-size: 24px; font-weight: bold; color: #1f2937; margin-start: 12px;`;
 const H2 = styled(Text)`font-size: 18px; font-weight: bold; color: #111827; margin-top: 20px;`;
 const Body = styled(Text)`font-size: 15px; color: #374151; margin-top: 8px;`;
 const Strong = styled(Text)`font-size: 17px; font-weight: 600; color: #111827; margin-top: 8px;`;

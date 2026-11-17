@@ -33,7 +33,7 @@ const Title = styled(Text)`
   font-size: 24px;
   font-weight: bold;
   color: #1f2937;
-  margin-left: 16px;
+  margin-start: 16px;
 `;
 
 const ScrollContainer = styled(ScrollView).attrs({

@@ -1,6 +1,6 @@
 import React from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { StyleProp, TextStyle } from 'react-native';
+import { I18nManager, StyleProp, TextStyle } from 'react-native';
 
 const Icon = Feather as any;
 
@@ -11,7 +11,13 @@ interface IconProps {
   className?: string;
 }
 
-export const IconArrowLeft: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="arrow-left" size={size} color={color} style={style} />;
+export const IconTrash: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="trash-2" size={size} color={color} style={style} />;
+/**
+ * A "back" arrow points toward where you came from, which is the other way in a right-to-left language. Direction-bearing icons are mirrored
+ * when the layout is RTL (docs/specs/REGION_PROFILES.md: a mirrored SOS button or a wrong-way arrow is a functional failure).
+ */
+const mirrored = (style?: StyleProp<TextStyle>): StyleProp<TextStyle> => (I18nManager.isRTL ? [style, { transform: [{ scaleX: -1 }] }] : style);
+export const IconArrowLeft: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="arrow-left" size={size} color={color} style={mirrored(style)} />;
 export const IconSettings: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="settings" size={size} color={color} style={style} />;
 export const IconShield: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="shield" size={size} color={color} style={style} />;
 export const IconFakeCall: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="phone-off" size={size} color={color} style={style} />;
@@ -23,7 +29,7 @@ export const IconContact: React.FC<IconProps> = ({ size = 24, color = "currentCo
 export const IconLocation: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="map-pin" size={size} color={color} style={style} />;
 export const IconAlert: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="alert-circle" size={size} color={color} style={style} />;
 export const IconLogout: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="log-out" size={size} color={color} style={style} />;
-export const IconChevronRight: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="chevron-right" size={size} color={color} style={style} />;
+export const IconChevronRight: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="chevron-right" size={size} color={color} style={mirrored(style)} />;
 export const IconMail: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="mail" size={size} color={color} style={style} />;
 export const IconLock: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="lock" size={size} color={color} style={style} />;
 export const IconUser: React.FC<IconProps> = ({ size = 24, color = "currentColor", style }) => <Icon name="user" size={size} color={color} style={style} />;

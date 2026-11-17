@@ -42,7 +42,7 @@ const SwitchButton = styled(TouchableOpacity)``;
 
 const SwitchButtonText = styled(Text)`
   font-weight: 600;
-  color: #10b981;
+  color: #047857;
   text-decoration: underline;
 `;
 

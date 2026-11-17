@@ -72,6 +72,6 @@ export default function MapSurface({ fix, now = Date.now }: { fix: Fix | null; n
 }
 
 const styles = StyleSheet.create({
-  note: { position: 'absolute', bottom: 12, left: 16, right: 16, backgroundColor: 'rgba(255,255,255,0.92)', padding: 8, borderRadius: 8 },
+  note: { position: 'absolute', bottom: 12, start: 16, end: 16, backgroundColor: 'rgba(255,255,255,0.92)', padding: 8, borderRadius: 8 },
   noteText: { color: '#1f2937', fontSize: 14 },
 });

@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ImageBackgr
 import styled from 'styled-components/native';
 import EmergencyAffordance from '../common/EmergencyAffordance';
 import * as apiService from '../../services/apiService';
-import { IconMail, IconLock, IconUser, IconArrowLeft } from '../../constants';
+import { IconMail, IconLock, IconUser, IconChevronRight } from '../../constants';
 
 const OnboardingContainer = styled(View)`
     flex: 1;
@@ -26,11 +26,12 @@ const OnboardingTitle = styled(Text)`
 `;
 
 const OnboardingTitleHighlight = styled(Text)`
-    color: #10b981;
+    color: #047857;
 `;
 
 const OnboardingButton = styled(TouchableOpacity)`
     background-color: black;
+    min-height: 56px;
     padding: 16px;
     border-radius: 9999px;
     align-items: center;
@@ -76,16 +77,18 @@ const TabContainer = styled(View)`
 
 const TabButton = styled(TouchableOpacity)<{ active: boolean }>`
   flex: 1;
+  min-height: 48px;
+  justify-content: center;
   padding-vertical: 12px;
   align-items: center;
   border-bottom-width: ${props => (props.active ? '2px' : '0px')};
-  border-bottom-color: ${props => (props.active ? '#10b981' : 'transparent')};
+  border-bottom-color: ${props => (props.active ? '#047857' : 'transparent')};
 `;
 
 const TabText = styled(Text)<{ active: boolean }>`
   font-size: 16px;
   font-weight: 600;
-  color: ${props => (props.active ? '#10b981' : '#6b7280')};
+  color: ${props => (props.active ? '#047857' : '#6b7280')};
 `;
 
 const InputContainer = styled(View)`
@@ -100,12 +103,14 @@ const InputContainer = styled(View)`
 const StyledInput = styled(TextInput)`
   flex: 1;
   font-size: 16px;
-  padding-left: 12px;
+  padding-start: 12px;
   color: #1f2937;
 `;
 
 const SubmitButton = styled(TouchableOpacity)`
   background-color: #1f2937;
+  min-height: 56px;
+  justify-content: center;
   padding: 16px;
   border-radius: 9999px;
   align-items: center;
@@ -130,7 +135,7 @@ const SwitchText = styled(Text)`
 `;
 
 const SwitchButtonText = styled(Text)`
-  color: #10b981;
+  color: #047857;
   font-weight: 600;
 `;
 
@@ -152,9 +157,9 @@ const Onboarding = ({ onGetStarted, onEmergency }: { onGetStarted: () => void; o
         <OnboardingContent>
             <OnboardingTitle>Stay Safe</OnboardingTitle>
             <OnboardingTitle>with <OnboardingTitleHighlight>Lumo</OnboardingTitleHighlight></OnboardingTitle>
-            <OnboardingButton onPress={onGetStarted}>
+            <OnboardingButton onPress={onGetStarted} accessibilityRole="button" accessibilityLabel="Get started: sign in or create an account">
                 <OnboardingButtonText>Get Started</OnboardingButtonText>
-                <IconArrowLeft size={20} color="white" />
+                <IconChevronRight size={20} color="white" />
             </OnboardingButton>
             {/* The first screen a signed-out person sees has to carry this too. */}
             <OnboardingEmergency>
@@ -219,10 +224,10 @@ const AuthScreen = ({ onLoginSuccess, onEmergency }: { onLoginSuccess: () => voi
       <Title>Welcome!</Title>
       <Subtitle>Sign in or create an account to continue.</Subtitle>
       <TabContainer>
-        <TabButton active={mode === 'login'} onPress={() => setMode('login')}>
+        <TabButton active={mode === 'login'} onPress={() => setMode('login')} accessibilityRole="tab" accessibilityLabel="Log in to your account" accessibilityState={{ selected: mode === 'login' }}>
           <TabText active={mode === 'login'}>Login</TabText>
         </TabButton>
-        <TabButton active={mode === 'signup'} onPress={() => setMode('signup')}>
+        <TabButton active={mode === 'signup'} onPress={() => setMode('signup')} accessibilityRole="tab" accessibilityLabel="Create a new account" accessibilityState={{ selected: mode === 'signup' }}>
           <TabText active={mode === 'signup'}>Sign Up</TabText>
         </TabButton>
       </TabContainer>
@@ -232,6 +237,7 @@ const AuthScreen = ({ onLoginSuccess, onEmergency }: { onLoginSuccess: () => voi
           <IconUser size={20} color="#9ca3af" />
           <StyledInput
             placeholder="Full Name"
+            accessibilityLabel="Your full name"
             value={name}
             onChangeText={setName}
             editable={!isLoading}
@@ -243,6 +249,7 @@ const AuthScreen = ({ onLoginSuccess, onEmergency }: { onLoginSuccess: () => voi
         <IconMail size={20} color="#9ca3af" />
         <StyledInput
           placeholder="Email"
+          accessibilityLabel="Your email address"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -254,6 +261,7 @@ const AuthScreen = ({ onLoginSuccess, onEmergency }: { onLoginSuccess: () => voi
         <IconLock size={20} color="#9ca3af" />
         <StyledInput
           placeholder="Password"
+          accessibilityLabel="Your password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -261,9 +269,9 @@ const AuthScreen = ({ onLoginSuccess, onEmergency }: { onLoginSuccess: () => voi
         />
       </InputContainer>
 
-      {error ? <ErrorText>{error}</ErrorText> : null}
+      {error ? <ErrorText accessibilityRole="alert" accessibilityLiveRegion="assertive">{error}</ErrorText> : null}
 
-      <SubmitButton onPress={mode === 'login' ? handleLogin : handleSignup} disabled={isLoading}>
+      <SubmitButton onPress={mode === 'login' ? handleLogin : handleSignup} disabled={isLoading} accessibilityRole="button" accessibilityLabel={isLoading ? 'Signing you in' : mode === 'login' ? 'Log in' : 'Create your account'} accessibilityState={{ busy: isLoading, disabled: isLoading }}>
         {isLoading ? <ActivityIndicator color="white" /> : <ButtonText>{mode === 'login' ? 'Login' : 'Create Account'}</ButtonText>}
       </SubmitButton>
 
@@ -271,7 +279,7 @@ const AuthScreen = ({ onLoginSuccess, onEmergency }: { onLoginSuccess: () => voi
         <SwitchText>
             {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
         </SwitchText>
-        <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'signup' : 'login')}>
+        <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'signup' : 'login')} accessibilityRole="button" accessibilityLabel={mode === 'login' ? 'Switch to creating an account' : 'Switch to logging in'} style={{ minHeight: 44, justifyContent: 'center' }}>
             <SwitchButtonText>{mode === 'login' ? 'Sign up' : 'Log in'}</SwitchButtonText>
         </TouchableOpacity>
       </SwitchTextContainer>
