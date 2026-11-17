@@ -55,6 +55,16 @@ export interface SosInput {
   readonly countdownSeconds?: number;
   readonly location?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number } | null;
   readonly place?: { country: string; subdivision?: string | null } | null;
+  /** The journey this SOS belongs to, if any. Honoured only if it is the caller's own, live journey. */
+  readonly sessionId?: string | null;
+}
+
+/** What a journey needs to hear about its incidents. Registered by the session service. */
+export interface SessionHooks {
+  /** An SOS was raised during the journey. */
+  sosRaised(sessionId: string, incidentId: string, now: Date): Promise<void>;
+  /** The incident that a journey raised (or was linked to) has been resolved. */
+  incidentResolved(sessionId: string, now: Date): Promise<void>;
 }
 
 export interface IncidentView {
@@ -86,6 +96,11 @@ export type ApplyResult =
 @Injectable()
 export class IncidentService implements OnModuleInit {
   private readonly logger = new Logger('Incidents');
+  private sessionHooks: SessionHooks | null = null;
+
+  setSessionHooks(h: SessionHooks) {
+    this.sessionHooks = h;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -171,6 +186,10 @@ export class IncidentService implements OnModuleInit {
     if (existing) return this.replay(caller, existing);
 
     const user = await this.prisma.user.findUnique({ where: { id: caller.id }, select: { regionProfileId: true } });
+    // A journey link is honoured only for the caller's own live journey; anything else is ignored, never an error: an SOS must not fail over it.
+    const linked = input.sessionId
+      ? await this.prisma.safetySession.findFirst({ where: { id: input.sessionId, userId: caller.id, state: { notIn: ['CLOSED', 'CANCELLED', 'EXPIRED'] } }, select: { id: true } })
+      : null;
     const seconds = clampCountdown(input.triggerType, input.countdownSeconds);
     const countdownEndsAt = seconds > 0 ? new Date(now.getTime() + seconds * 1000) : null;
 
@@ -181,6 +200,7 @@ export class IncidentService implements OnModuleInit {
           data: {
             userId: caller.id, idempotencyKey: key, triggerType: input.triggerType, triggeredAt: input.triggeredAt,
             countdownEndsAt, regionProfileId: this.regionFor(input, user?.regionProfileId ?? null, now), mode: 'real', isDuress: false,
+            ...(linked ? { sessionId: linked.id } : {}),
           },
         });
         await tx.incidentEvent.create({ data: { incidentId: created.id, fromState: null, toState: 'CREATED', event: 'CREATED', actor: 'user', reason: input.triggerType, occurredAt: now } });
@@ -207,7 +227,49 @@ export class IncidentService implements OnModuleInit {
     }
 
     if (seconds === 0) await this.dispatch(incidentId, now);
+    if (linked) await this.sessionHooks?.sosRaised(linked.id, incidentId, now).catch(() => undefined);
     return { replay: false, incident: await this.view(caller, incidentId) };
+  }
+
+  /**
+   * A journey's missed check-in becomes an incident (docs/specs/JOURNEY_GUARDIAN.md). Not a person pressing anything: the
+   * grace has run out. Idempotent on `key` (the journey and its due time), so a retried job cannot raise two. The latest position
+   * the journey knows is attached, with its own age and accuracy.
+   */
+  async raiseForSession(userId: string, sessionId: string, key: string, now: Date): Promise<string> {
+    const existing = await this.prisma.emergencyIncident.findUnique({ where: { idempotencyKey: key }, select: { id: true } });
+    if (existing) return existing.id;
+    if (!this.queue.running) throw new ServiceUnavailableException('Alerts cannot be sent right now.');
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { regionProfileId: true } });
+    const last = await this.prisma.locationSnapshot.findFirst({ where: { sessionId }, orderBy: { capturedAt: 'desc' } });
+    let incidentId: string;
+    try {
+      incidentId = await this.prisma.$transaction(async tx => {
+        const created = await tx.emergencyIncident.create({
+          data: {
+            userId, sessionId, idempotencyKey: key, triggerType: 'missed_check_in', triggeredAt: now, countdownEndsAt: null,
+            regionProfileId: user?.regionProfileId && this.regions.profileFor(user.regionProfileId) ? user.regionProfileId : 'UNRESOLVED',
+            mode: 'real', isDuress: false, locationAvailable: last !== null,
+          },
+        });
+        await tx.incidentEvent.create({ data: { incidentId: created.id, fromState: null, toState: 'CREATED', event: 'CREATED', actor: 'system', reason: 'missed_check_in', occurredAt: now } });
+        if (last) {
+          await tx.locationSnapshot.create({
+            data: { incidentId: created.id, latitude: last.latitude, longitude: last.longitude, accuracyM: last.accuracyM, capturedAt: last.capturedAt, batteryPct: last.batteryPct, source: last.source, expiresAt: last.expiresAt },
+          });
+        }
+        return created.id;
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const won = await this.prisma.emergencyIncident.findUnique({ where: { idempotencyKey: key }, select: { id: true } });
+        if (won) return won.id;
+      }
+      throw e;
+    }
+    await this.dispatch(incidentId, now);
+    return incidentId;
   }
 
   private async replay(caller: Caller, existing: { id: string; userId: string }) {
@@ -229,7 +291,10 @@ export class IncidentService implements OnModuleInit {
       if (!inc || inc.state !== 'CREATED') return;
 
       const manualNow = inc.countdownEndsAt === null;
-      const first = manualNow
+      // A missed check-in is the SYSTEM's doing (the person's grace has run out): the timeline must not say the user pressed anything.
+      const first = manualNow && inc.triggerType === 'missed_check_in'
+        ? await this.apply(incidentId, 'COUNTDOWN_ELAPSED', 'system', 'GRACE_EXPIRED', {}, now, tx)
+        : manualNow
         ? await this.apply(incidentId, 'COUNTDOWN_SKIPPED', 'user', 'NO_COUNTDOWN', { manualOrSafeword: true }, now, tx)
         : await this.apply(incidentId, 'COUNTDOWN_ELAPSED', 'system', 'DEADLINE_PASSED', {}, now, tx);
       if (!first.applied) return; // cancelled, or already taken
@@ -302,6 +367,7 @@ export class IncidentService implements OnModuleInit {
       await this.dispatchSvc.planResolutionIn(tx, id, now);
       await this.apply(id, 'CLOSE', 'system', 'RESOLUTION_QUEUED', {}, now, tx);
     });
+    if (inc.sessionId) await this.sessionHooks?.incidentResolved(inc.sessionId, now).catch(() => undefined);
     return this.view(caller, id);
   }
 

@@ -83,9 +83,12 @@ export class EscalationService {
    * The policy an incident will run. The user's stored default if they have one; otherwise one DERIVED from their
    * contacts: one contact per step in priority order, 120 s each, over push (and SMS only if they opted in).
    */
-  async policyFor(tx: Tx, userId: string): Promise<{ policy: EscalationPolicy; stored: boolean }> {
+  async policyFor(tx: Tx, userId: string, sessionPolicyId?: string | null): Promise<{ policy: EscalationPolicy; stored: boolean }> {
     const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { sendSmsOnSos: true } });
-    const row = await tx.escalationPolicy.findFirst({ where: { userId, isDefault: true }, orderBy: { updatedAt: 'desc' } });
+    // An incident raised by a JOURNEY runs that journey's own policy (its template's grace and timeouts), not the person's default.
+    const row = sessionPolicyId
+      ? await tx.escalationPolicy.findFirst({ where: { id: sessionPolicyId, userId } })
+      : await tx.escalationPolicy.findFirst({ where: { userId, isDefault: true }, orderBy: { updatedAt: 'desc' } });
     if (row) {
       const p = policyFromRow(row);
       return { stored: true, policy: { ...p, steps: p.steps.map(s => ({ ...s, channels: allowedChannels(s.channels, user.sendSmsOnSos) })) } };
@@ -188,7 +191,8 @@ export class EscalationService {
   async start(tx: Tx, incidentId: string, now: Date): Promise<{ dispatched: number }> {
     const inc = await this.load(tx, incidentId);
     if (!inc) return { dispatched: 0 };
-    const { policy } = await this.policyFor(tx, inc.userId);
+    const sessionPolicy = inc.sessionId ? (await tx.safetySession.findUnique({ where: { id: inc.sessionId }, select: { escalationPolicyId: true } }))?.escalationPolicyId : null;
+    const { policy } = await this.policyFor(tx, inc.userId, sessionPolicy);
     await tx.emergencyIncident.update({
       where: { id: incidentId },
       data: { policySnapshot: policy as unknown as Prisma.InputJsonValue, ladder: INITIAL_LADDER as unknown as Prisma.InputJsonValue },

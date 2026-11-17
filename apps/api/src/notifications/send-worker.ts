@@ -3,7 +3,7 @@ import { CHANNEL_CAPABILITIES, type AttemptEvent } from '@lumo/safety-domain';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrustedContactsService } from '../trusted-contacts/trusted-contacts.service';
 import { LedgerService, type Step } from './ledger.service';
-import { alertBody, pushBody, resolvedBody, voiceScript, type AlertLocation } from './message-templates';
+import { alertBody, pushBody, resolvedBody, voiceScript, type AlertKind, type AlertLocation } from './message-templates';
 import { NotificationQueue } from './queue';
 import { SMS_PROVIDER, type SmsProvider } from './sms/sms-provider';
 import { VOICE_PROVIDER, type VoiceProvider } from './voice/voice-provider';
@@ -72,6 +72,8 @@ export class SendWorker implements OnModuleInit {
     const owner = await this.prisma.user.findUnique({ where: { id: contact.userId }, select: { fullName: true, shareLocationOnSos: true } });
     const name = owner?.fullName ?? 'Someone';
     const resolved = attempt.purpose === 'RESOLVED';
+    const incident = await this.prisma.emergencyIncident.findUnique({ where: { id: attempt.incidentId }, select: { triggerType: true } });
+    const kind: AlertKind = incident?.triggerType === 'missed_check_in' ? 'missed_check_in' : 'sos';
     // A position goes into a message only if the user allows it, and only for an alert (not for "it ended").
     const location = !resolved && owner?.shareLocationOnSos ? await this.latestLocation(attempt.incidentId) : null;
 
@@ -82,12 +84,12 @@ export class SendWorker implements OnModuleInit {
     });
     if (claimed.count !== 1) return;
 
-    if (attempt.channel === 'push') return this.sendPush(attemptId, tokens.map(t => t.pushToken), name, resolved, now);
+    if (attempt.channel === 'push') return this.sendPush(attemptId, tokens.map(t => t.pushToken), name, resolved, kind, now);
 
     const outcome =
       attempt.channel === 'sms'
-        ? await this.sms.send({ to: contact.phone, body: resolved ? resolvedBody(name) : alertBody(name, location, now.getTime()), attemptId })
-        : await this.voice.call({ to: contact.phone, script: voiceScript(name), attemptId });
+        ? await this.sms.send({ to: contact.phone, body: resolved ? resolvedBody(name) : alertBody(name, location, now.getTime(), kind), attemptId })
+        : await this.voice.call({ to: contact.phone, script: voiceScript(name, kind), attemptId });
 
     if (outcome.kind === 'accepted') {
       await this.ledger.apply(
@@ -110,8 +112,8 @@ export class SendWorker implements OnModuleInit {
     return s ? { latitude: s.latitude, longitude: s.longitude, accuracyM: s.accuracyM, capturedAt: s.capturedAt.getTime() } : null;
   }
 
-  private async sendPush(attemptId: string, tokens: string[], name: string, resolved: boolean, now: Date): Promise<void> {
-    const outcome = await this.push.send({ tokens, title: resolved ? 'Lumo' : 'Lumo alert', body: resolved ? resolvedBody(name) : pushBody(name), attemptId });
+  private async sendPush(attemptId: string, tokens: string[], name: string, resolved: boolean, kind: AlertKind, now: Date): Promise<void> {
+    const outcome = await this.push.send({ tokens, title: resolved ? 'Lumo' : 'Lumo alert', body: resolved ? resolvedBody(name) : pushBody(name, kind), attemptId });
     // A token the service says is dead stops receiving anything.
     for (const dead of outcome.kind === 'ambiguous' ? [] : outcome.deadTokens) await this.devices.revokeToken(dead, now);
 

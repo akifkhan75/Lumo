@@ -357,6 +357,8 @@ model SafetySession {
 // procedure (see the migration). The history is the evidence.
 model SessionEvent {
   id         String        @id @default(uuid())
+  // The order events happened in: several can land in one transaction with one timestamp.
+  seq        Int           @default(autoincrement())
   sessionId  String
   session    SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   fromState  SessionState?

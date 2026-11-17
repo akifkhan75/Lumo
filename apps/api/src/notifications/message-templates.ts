@@ -10,13 +10,14 @@
  * It names who asked and says nothing about what will happen; "answered" is never treated as
  * understood, and nothing here asks the listener to press anything (a call is not an acknowledgement).
  */
-export function voiceScript(senderName: string): string {
-  return `This is an automated call from Lumo. ${senderName} asked Lumo to alert you. Please check your messages or call them. This message is automated and cannot take a reply.`;
+export function voiceScript(senderName: string, kind: AlertKind = 'sos'): string {
+  const what = kind === 'missed_check_in' ? `${senderName} has not answered a Lumo check-in.` : `${senderName} asked Lumo to alert you.`;
+  return `This is an automated call from Lumo. ${what} Please check your messages or call them. This message is automated and cannot take a reply.`;
 }
 
 /** The push notification text. Ids and the sender's name only: it crosses third parties and shows on a lock screen. */
-export function pushBody(senderName: string): string {
-  return `${senderName} asked Lumo to alert you.`;
+export function pushBody(senderName: string, kind: AlertKind = 'sos'): string {
+  return kind === 'missed_check_in' ? `${senderName} has not answered a Lumo check-in.` : `${senderName} asked Lumo to alert you.`;
 }
 
 export interface AlertLocation {
@@ -46,8 +47,16 @@ export function locationLine(loc: AlertLocation, now: number): string {
     : `Location (${how}): ${where}`;
 }
 
-export function alertBody(senderName: string, location: AlertLocation | null = null, now: number = Date.now()): string {
-  const base = `${senderName} asked Lumo to alert you.`;
+export type AlertKind = 'sos' | 'missed_check_in';
+
+/**
+ * A missed check-in is NOT someone asking for help: they had a check-in due and did not answer. The words say exactly that and no
+ * more (they may simply have forgotten, or have no signal), so a contact weighs it as what it is.
+ */
+export function alertBody(senderName: string, location: AlertLocation | null = null, now: number = Date.now(), kind: AlertKind = 'sos'): string {
+  const base = kind === 'missed_check_in'
+    ? `${senderName} had a Lumo check-in due and has not answered it. They may have forgotten or have no signal.`
+    : `${senderName} asked Lumo to alert you.`;
   const where = location ? ` ${locationLine(location, now)}.` : ' Their location was not available.';
   return `${base}${where} This is an automated message and replies are not read.`;
 }

@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Request, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsISO8601, IsNotEmpty, IsNumber, IsOptional, IsString, Length, Max, Min, ValidateNested } from 'class-validator';
+import { IsBoolean, IsUUID, IsIn, IsInt, IsISO8601, IsNotEmpty, IsNumber, IsOptional, IsString, Length, Max, Min, ValidateNested } from 'class-validator';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EmergencyCredentialService } from './emergency-credential.service';
@@ -27,6 +27,8 @@ export class SosDto {
   @IsOptional() @IsInt() @Min(0) @Max(60) countdownSeconds?: number;
   @IsOptional() @ValidateNested() @Type(() => LocationDto) location?: LocationDto;
   @IsOptional() @ValidateNested() @Type(() => PlaceDto) place?: PlaceDto;
+  // The journey this SOS happens during, if any; ignored unless it is the caller's own live journey.
+  @IsOptional() @IsUUID() sessionId?: string;
   // Accepted by the schema only so they can be REFUSED with a clear message (see sos()).
   @IsOptional() @IsIn(['real', 'practice']) mode?: 'real' | 'practice';
   @IsOptional() @IsBoolean() duress?: boolean;
@@ -55,6 +57,7 @@ export class IncidentsController {
       countdownSeconds: body.countdownSeconds,
       location: body.location ? { latitude: body.location.latitude, longitude: body.location.longitude, accuracyM: body.location.accuracyM ?? null, capturedAt: body.location.capturedAt } : null,
       place: body.place ?? null,
+      sessionId: body.sessionId ?? null,
     });
     res.status(replay ? 200 : 201);
     return incident;

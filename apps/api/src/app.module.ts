@@ -9,6 +9,7 @@ import { RegionsModule } from './regions/regions.module';
 import { LocationModule } from './location/location.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { IncidentsModule } from './incidents/incidents.module';
+import { SessionsModule } from './sessions/sessions.module';
 import { SettingsModule } from './settings/settings.module';
 import { HazardReportsModule } from './hazard-reports/hazard-reports.module';
 import { AuthModule } from './auth/auth.module';
@@ -33,6 +34,7 @@ import { AiModule } from './ai/ai.module';
     LocationModule,
     NotificationsModule,
     IncidentsModule,
+    SessionsModule,
     SettingsModule,
     HazardReportsModule,
     AuthModule,
