@@ -44,9 +44,14 @@ const canBeAcknowledged = (c: AttemptContext) => c.capability.humanAck;
 
 // A channel that stops at SENT cannot report further. SMS can also reach this
 // state at runtime: its receipts are provider-dependent, so the provider may tell
-// us this particular destination has none.
+// us this particular destination has none. So can a channel whose delivery only the
+// DEVICE can vouch for (push): a handset that is off, or an app that is backgrounded
+// and cannot post a receipt, looks exactly like one that never got the message. That is
+// "sent, not confirmed" — UNKNOWN — not a failure.
 const cannotReport = (c: AttemptContext) =>
-  c.capability.automaticCeiling === 'SENT' || c.capability.receipts === 'provider-dependent';
+  c.capability.automaticCeiling === 'SENT' ||
+  c.capability.receipts === 'provider-dependent' ||
+  c.capability.deliveredEvidence === 'device';
 
 const mayReachBeyondSent = (c: AttemptContext) => maxState(c.capability) !== 'SENT';
 

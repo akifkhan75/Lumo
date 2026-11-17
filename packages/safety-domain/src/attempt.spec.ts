@@ -92,8 +92,12 @@ describe('UNKNOWN is the honest state', () => {
   it('SMS can too, because its receipts depend on provider and destination network', () => {
     expect(run('SENT', 'CHANNEL_CANNOT_REPORT', 'sms').ok).toBe(true);
   });
-  it('push and web cannot — their evidence comes from the device, so absence is a timeout, not "cannot report"', () => {
-    for (const ch of ['push', 'web'] as const) expect(run('SENT', 'CHANNEL_CANNOT_REPORT', ch)).toMatchObject({ rejection: 'GUARD_FAILED' });
+  it('push and web can too — only the device can vouch for them, and a silent device looks like an absent one: "sent, not confirmed"', () => {
+    for (const ch of ['push', 'web'] as const) {
+      const out = run('SENT', 'CHANNEL_CANNOT_REPORT', ch);
+      expect(out.ok && out.snapshot.state).toBe('UNKNOWN');
+      expect(out.ok && out.record.effects).toEqual([]); // not a failure, so no automatic fallback
+    }
   });
   it('a channel that stops at SENT lets its TTL lapse to UNKNOWN, not EXPIRED', () => {
     for (const ch of ['voice', 'device_direct_sms', 'email'] as const) {
