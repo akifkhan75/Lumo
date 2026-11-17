@@ -1103,7 +1103,13 @@ invent a failure of the only path, so that run shows none. A second contact, or 
 The run resolves who would be tried and over which channels and writes the ledger at once, with fixed offsets. It does not step through the
 escalation timeouts, retries or an acknowledgement, so a person does not yet see what happens when the first contact stays silent.
 
-### 🟠 KI-118 — No way to start a practice run from the app, and no activation record
+### 🟠 KI-118 — No onboarding step and no activation record
 
-The server accepts it; the app has no entry, banner or offline run (1.12b). Onboarding step 4 and the "completed one practice run" activation
-measure (PRD §7) are not built, and there is no metrics pipeline yet: `mode` on the incident is the hook that keeps rehearsals out of it.
+_Update: the app entry, banner and offline run are built (1.12b)._ Onboarding step 4 ("an untested safety device") and the "completed one
+practice run" activation measure (PRD §7) are not: there is no onboarding flow, and no metrics pipeline. `mode` on the incident is the hook
+that keeps rehearsals out of the metrics when there is one; the app does not yet remember that a run was completed.
+
+### 🟡 KI-119 — Practice is reachable only from Settings
+
+There is no prompt after adding a first contact and no dashboard shortcut, so a person who never opens Settings never practises. The
+bottom bar has no room for it; a one-time nudge after the first agreed contact is the likely fix.

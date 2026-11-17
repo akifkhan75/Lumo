@@ -102,6 +102,11 @@ describe('Settings Screens', () => {
       });
       expect(mockNavigate).toHaveBeenCalledWith('AlertSettings', expect.any(Object));
 
+      act(() => {
+        buttons[5].props.onPress();
+      });
+      expect(mockNavigate).toHaveBeenCalledWith('Practice', { settings: defaultSettings });
+
       // Logout button (last)
       act(() => {
         buttons[buttons.length - 1].props.onPress();

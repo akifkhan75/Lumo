@@ -166,11 +166,15 @@ export interface IncidentAttempt {
   deliveredAt: string | null;
   acknowledgedAt: string | null;
   failedAt: string | null;
+  /** True for every row of a practice run: nothing was sent. Absent or false for a real one. */
+  simulated?: boolean;
 }
 
 export interface Incident {
   id: string;
   state: IncidentState;
+  /** `practice`: a rehearsal. Nothing was sent. Absent means real (an older server). */
+  mode?: 'real' | 'practice';
   triggerType: string;
   countdownEndsAt: string | null;
   locationAvailable: boolean;
@@ -190,6 +194,8 @@ export interface RaiseSosInput {
   triggerType: 'manual' | 'shake' | 'voice' | 'safeword' | 'crash' | 'fall';
   triggeredAt: string;
   countdownSeconds?: number;
+  /** A rehearsal: the whole path, and nobody is contacted. */
+  mode?: 'real' | 'practice';
   location?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number };
   place?: { country: string; subdivision?: string | null };
 }

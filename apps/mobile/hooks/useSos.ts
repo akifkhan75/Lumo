@@ -47,10 +47,13 @@ const TERMINAL = new Set(['CLOSED', 'CANCELLED']);
 
 export interface SosOptions {
   readonly now?: () => number;
+  /** A rehearsal (docs/specs/PRACTICE_MODE.md): asks the server for a practice run, and NEVER touches the saved "SOS in progress" record, so a
+   *  rehearsal cannot be resumed as a real alert nor clear a real one. */
+  readonly practice?: boolean;
   readonly buildInput: (trigger: SosTrigger, startedAt: number) => Omit<RaiseSosInput, 'triggerType' | 'triggeredAt' | 'countdownSeconds'>;
 }
 
-export function useSos({ now = Date.now, buildInput }: SosOptions) {
+export function useSos({ now = Date.now, buildInput, practice = false }: SosOptions) {
   const [state, setState] = useState<SosState>(INITIAL);
   const keyRef = useRef<string | null>(null);
   const triggerRef = useRef<SosTrigger>('manual');
@@ -82,8 +85,8 @@ export function useSos({ now = Date.now, buildInput }: SosOptions) {
       lastUpdatedAt: nowRef.current(),
       countdownEndsAt: counting ? (s.countdownEndsAt ?? startedRef.current + countdownFor(triggerRef.current) * 1000) : null,
     }));
-    if (TERMINAL.has(incident.state)) void api.clearActiveSos();
-  }, []);
+    if (TERMINAL.has(incident.state) && !practice) void api.clearActiveSos();
+  }, [practice]);
 
   const send = useCallback(async () => {
     const key = keyRef.current as string;
@@ -94,18 +97,19 @@ export function useSos({ now = Date.now, buildInput }: SosOptions) {
         triggerType: trigger,
         triggeredAt: new Date(startedRef.current).toISOString(),
         countdownSeconds: countdownFor(trigger),
+        ...(practice ? { mode: 'practice' as const } : {}),
         ...buildRef.current(trigger, startedRef.current),
       });
       if (!incident || typeof incident !== 'object' || !('id' in incident)) throw new ApiError('Unreadable answer', 'network');
       if (!aliveRef.current) return;
-      void api.saveActiveSos({ key, incidentId: incident.id, startedAt: startedRef.current, trigger });
+      if (!practice) void api.saveActiveSos({ key, incidentId: incident.id, startedAt: startedRef.current, trigger });
       adopt(incident);
     } catch (e) {
       if (!aliveRef.current) return;
       const refused = e instanceof ApiError && e.kind === 'http' && (e.status === 401 || e.status === 403);
       set({ phase: refused ? 'cannot' : 'unreachable', error: e instanceof ApiError && e.kind === 'http' && !refused ? e.message : null });
     }
-  }, [adopt, set]);
+  }, [adopt, set, practice]);
 
   /** Press. Local feedback is the caller's job and must not wait for this. */
   const start = useCallback((trigger: SosTrigger) => {
@@ -114,9 +118,9 @@ export function useSos({ now = Date.now, buildInput }: SosOptions) {
     triggerRef.current = trigger;
     startedRef.current = nowRef.current();
     // Written BEFORE any network call; ids and a time only.
-    void api.saveActiveSos({ key: keyRef.current, startedAt: startedRef.current, trigger });
+    if (!practice) void api.saveActiveSos({ key: keyRef.current, startedAt: startedRef.current, trigger });
     void send();
-  }, [send]);
+  }, [send, practice]);
 
   /** Retry with the SAME key: a request that did reach the server returns its incident instead of a second one. */
   const retry = useCallback(() => { if (keyRef.current) void send(); }, [send]);
