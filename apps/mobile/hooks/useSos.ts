@@ -137,6 +137,12 @@ export function useSos({ now = Date.now, buildInput }: SosOptions) {
     return true;
   }, [adopt, send, set]);
 
+  /** Look at an incident that something else raised (a journey's missed check-in). Starts nothing. */
+  const watch = useCallback(async (incidentId: string) => {
+    incidentIdRef.current = incidentId;
+    try { adopt(await api.getIncident(incidentId)); } catch { set({ phase: 'unreachable' }); }
+  }, [adopt, set]);
+
   const cancel = useCallback(async () => {
     const id = incidentIdRef.current;
     if (!id) return;
@@ -178,5 +184,5 @@ export function useSos({ now = Date.now, buildInput }: SosOptions) {
     return () => { stopped = true; clearInterval(handle); };
   }, [phase, terminal, adopt, set]);
 
-  return { state, start, retry, resume, cancel, resolve };
+  return { state, start, retry, resume, watch, cancel, resolve };
 }

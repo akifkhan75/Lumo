@@ -1,5 +1,5 @@
 import { NativeModules } from 'react-native';
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, Incident, RaiseSosInput } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, Incident, RaiseSosInput, CreateJourneyInput, JourneyFix } from '@lumo/types';
 import { ApiClient } from '@lumo/api-client';
 import * as tokenStorage from './tokenStorage';
 
@@ -72,6 +72,14 @@ export const signOut = async (): Promise<void> => {
     await tokenStorage.clearActiveSos();
     await tokenStorage.clearToken();
 };
+
+// Journeys (docs/specs/JOURNEYS.md).
+export const createJourney = (input: CreateJourneyInput) => apiClient.createJourney(input);
+export const getActiveJourney = () => apiClient.getActiveJourney();
+export const checkInJourney = (id: string, expectedArrivalAt: string) => apiClient.checkInJourney(id, expectedArrivalAt);
+export const arriveJourney = (id: string) => apiClient.arriveJourney(id);
+export const cancelJourney = (id: string) => apiClient.cancelJourney(id);
+export const postJourneyLocation = (id: string, snapshots: JourneyFix[]) => apiClient.postJourneyLocation(id, snapshots);
 
 // Incidents (docs/specs/INCIDENTS.md). The emergency token is tried FIRST for raising an SOS, so it never
 // depends on the login being valid; reading falls back the other way to get contact names when a login exists.

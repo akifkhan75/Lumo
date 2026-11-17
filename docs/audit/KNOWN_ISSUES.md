@@ -996,3 +996,23 @@ app (reading the journey's `needsAnswer`) asks. A person with the app closed and
 
 If both a timer and the sweep were down for longer than the grace, a journey escalates late, not never. A journey whose escalation
 failed repeatedly stays `ESCALATING` and is retried by the sweep every minute until it works.
+
+## Found while building milestone 1.10b — 2026-11-20
+
+### 🟠 KI-105 — No way to set a destination in the app
+
+The server supports a destination and arrival by a precise fix inside 75 m; the screen has no way to choose one (a map picker or a search
+is its own piece of work). So in practice every journey ends by the person's own confirmation, which is safe (never a timer) but means the
+"you've arrived" automation is unused.
+
+### 🟠 KI-106 — A due check-in reaches the person only through the app and a push
+
+If their phone is off, silent, or the app has no push token (KI-97 means none yet), the question is never seen before the grace runs out.
+The grace is the protection (their contacts are then tried), but a person who was merely busy is alerted about because they were not asked
+in a way they would notice. Louder, repeated local reminders need a scheduled notification (a native module the app lacks).
+
+### 🟡 KI-107 — Positions are saved only while the app is open
+
+A journey with the phone in a pocket and the screen off, which is the usual walk home, saves no positions: foreground only, by decision
+(docs/specs/LOCATION.md). The position an alert carries is therefore the last one saved while Lumo was open, with its age. Background
+location is its own permission, review and promise (milestone 1.16 / a decision).

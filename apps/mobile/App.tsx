@@ -21,8 +21,7 @@ import SettingsScreen from './components/settings/SettingsModal';
 import ProfileSettingsScreen from './components/settings/ProfileSettings';
 import ContactSettingsScreen from './components/settings/ContactSettings';
 import AlertSettingsScreen from './components/settings/AlertSettings';
-import FollowMeScreen from './components/FollowMeModal';
-import CheckInScreen from './components/CheckInModal';
+import JourneyScreen from './components/JourneyScreen';
 import CommunitySafetyScreen from './components/CommunitySafetyModal';
 import ReportHazardScreen from './components/ReportHazardModal';
 import SafetyAssistantScreen from './components/SafetyAssistantModal';
@@ -213,9 +212,9 @@ const DashboardScreen = () => {
                 <IconShield size={28} color="#4b5563" />
                 <NavItemLabel>Community</NavItemLabel>
             </NavItemContainer>
-            <NavItemContainer onPress={() => navigation.navigate('FollowMe')}>
+            <NavItemContainer onPress={() => navigation.navigate('Journey')}>
                 <IconWalk size={28} color="#4b5563" />
-                <NavItemLabel>Follow Me</NavItemLabel>
+                <NavItemLabel>Journey</NavItemLabel>
             </NavItemContainer>
             <SOSButtonContainer>
                 <SOSButton
@@ -227,7 +226,7 @@ const DashboardScreen = () => {
                     <SOSText>SOS</SOSText>
                 </SOSButton>
             </SOSButtonContainer>
-            <NavItemContainer onPress={() => navigation.navigate('CheckIn', { onEmergency: handleActivateEmergency })}>
+            <NavItemContainer onPress={() => navigation.navigate('Journey', { kind: 'custom' })}>
                 <IconTimer size={28} color="#4b5563" />
                 <NavItemLabel>Check-In</NavItemLabel>
             </NavItemContainer>
@@ -353,8 +352,7 @@ const App = () => {
                         <MainStack.Group screenOptions={{ presentation: 'modal' }}>
                             <MainStack.Screen name="Settings" component={SettingsNavigator} />
                             <MainStack.Screen name="CommunitySafety" component={CommunitySafetyScreen} />
-                            <MainStack.Screen name="FollowMe" component={FollowMeScreen} />
-                            <MainStack.Screen name="CheckIn" component={CheckInScreen} />
+                            <MainStack.Screen name="Journey" component={JourneyScreen} />
                             <MainStack.Screen name="FakeCall" component={FakeCallScreen} />
                             <MainStack.Screen name="ReportHazard" component={ReportHazardScreen} />
                             <MainStack.Screen name="SafetyAssistant" component={SafetyAssistantScreen} />

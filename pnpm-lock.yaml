@@ -161,6 +161,9 @@ importers:
       '@lumo/region-profiles':
         specifier: workspace:^
         version: link:../../packages/region-profiles
+      '@lumo/safety-domain':
+        specifier: workspace:^
+        version: link:../../packages/safety-domain
       '@lumo/types':
         specifier: workspace:*
         version: link:../../packages/types

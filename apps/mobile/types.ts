@@ -16,8 +16,7 @@ export type RootStackParamList = {
   Dashboard: { onLogout: () => void; };
   Settings: { onLogout: () => void; currentSettings: UserSettings; onSave: (settings: UserSettings) => Promise<void>; };
   CommunitySafety: undefined;
-  FollowMe: undefined;
-  CheckIn: { onEmergency: () => void; };
+  Journey: { kind?: 'walk_home' | 'date' | 'ride' | 'travel' | 'outdoor' | 'custom' } | undefined;
   FakeCall: undefined;
   // Takes no callback: reporting a hazard needs a real position and Lumo
   // cannot read one yet, so the screen explains that instead of submitting.
@@ -25,7 +24,7 @@ export type RootStackParamList = {
   SafetyAssistant: undefined;
   // Settings are optional: Emergency is reachable signed out and before the
   // settings fetch finishes, and must open either way.
-  Emergency: { settings?: UserSettings; trigger?: 'manual' | 'shake' | 'voice' | 'crash'; resume?: boolean } | undefined;
+  Emergency: { settings?: UserSettings; trigger?: 'manual' | 'shake' | 'voice' | 'crash'; resume?: boolean; incidentId?: string } | undefined;
 };
 
 export type SettingsStackParamList = {
