@@ -32,6 +32,13 @@ optional `sessionId`, `mode: 'real'|'practice'`, `duress: boolean`.
 → `201` (or `200` on replay) with the incident and its initial ledger.
 **Dispatch does not wait on location, the queue, AI, or evidence.**
 
+**Built (milestone 1.8a), see [`INCIDENTS.md`](INCIDENTS.md):** `POST /sos` returns the incident **at once** and the **server owns
+the countdown** (clamped by trigger; a delayed job dispatches, so a killed app still alerts); `POST /emergency-token`
+(opaque, hashed, 30 days, re-minted on use); `POST /incidents/:id/ack` and `/unack` for a linked contact. Practice mode and
+duress are **refused with 400** until their milestones. The emergency token also reads an incident's status (ids and states
+only) and cancels or resolves it, wider than "exactly one action", because a token that could start an alert but not stop it
+would be worse.
+
 - `POST /incidents/:id/resolve` — contacts are told it ended
 - `POST /incidents/:id/cancel` — countdown window only
 - `GET /incidents/:id` — incident + per-channel ledger

@@ -891,3 +891,38 @@ carry only the ticket id), so a token that died after acceptance is revoked at i
 
 No Expo project or credentials. The API is built to Expo's documentation (fetched, not recalled) and tested against a
 stub only.
+
+## Found while building milestone 1.8a — 2026-11-18
+
+### 🔴 KI-83 — With the defaults, an SOS reaches nobody
+
+`sendSmsOnSos` defaults to **off**, and push needs a contact who claimed their invite from a signed-in account (KI-78: the
+app cannot do that yet). So a typical user's SOS ends `ALL_CHANNELS_FAILED`, honestly, and the app must then put the dialler
+first. Whether SMS should be on by default (it costs money and needs the contact's consent, which we have) is a product
+decision, and the answer decides whether the headline feature does anything for most users.
+
+### 🔴 KI-84 — No app side, and nothing sent to anyone real
+
+1.8b (countdown UI, live ledger, trigger wiring, the "all failed" screen, region-correct dialling, emergency-token minting)
+is not built. No Twilio or Expo account exists. The plan's two-device exit is open.
+
+### 🟠 KI-85 — Without the escalation engine, one plan only
+
+No retry, no next contact on silence, no fallback chain: after the single plan nothing more is coming, so `moreStepsRemain`
+is false. A contact who never answers is simply "sent, not confirmed" forever. 1.9 flips this.
+
+### 🟠 KI-86 — The emergency token is wider than the spec's "exactly one action"
+
+It can create, cancel, resolve and read status (ids and states only), because a token that could start an alert but not
+stop it would strand someone. A stolen phone with a live token can raise a false alert for up to 30 days unless the token is
+revoked. It cannot read contacts, history or location.
+
+### 🟠 KI-87 — A countdown killed with the phone offline is not covered
+
+The server owns the countdown only once the request reaches it. A device that is offline when SOS is pressed counts down
+locally and sends on reconnect (1.13); until then it must say so and offer the dialler.
+
+### 🟡 KI-88 — Message times are UTC, and the map link is Google's
+
+A contact's timezone is unknown, so the SMS states UTC. The position is a Google Maps link, which tells Google the
+location when opened. A Lumo-hosted page (1.11) replaces it.

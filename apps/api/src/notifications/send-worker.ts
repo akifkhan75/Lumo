@@ -3,7 +3,7 @@ import { CHANNEL_CAPABILITIES, type AttemptEvent } from '@lumo/safety-domain';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrustedContactsService } from '../trusted-contacts/trusted-contacts.service';
 import { LedgerService, type Step } from './ledger.service';
-import { alertBody, pushBody, voiceScript } from './message-templates';
+import { alertBody, pushBody, resolvedBody, voiceScript, type AlertLocation } from './message-templates';
 import { NotificationQueue } from './queue';
 import { SMS_PROVIDER, type SmsProvider } from './sms/sms-provider';
 import { VOICE_PROVIDER, type VoiceProvider } from './voice/voice-provider';
@@ -69,8 +69,11 @@ export class SendWorker implements OnModuleInit {
     const provider = attempt.channel === 'sms' ? this.sms : attempt.channel === 'voice' ? this.voice : this.push;
     if (!provider.configured()) return void (await this.skip(attemptId, 'PROVIDER_NOT_CONFIGURED', now));
 
-    const owner = await this.prisma.user.findUnique({ where: { id: contact.userId }, select: { fullName: true } });
+    const owner = await this.prisma.user.findUnique({ where: { id: contact.userId }, select: { fullName: true, shareLocationOnSos: true } });
     const name = owner?.fullName ?? 'Someone';
+    const resolved = attempt.purpose === 'RESOLVED';
+    // A position goes into a message only if the user allows it, and only for an alert (not for "it ended").
+    const location = !resolved && owner?.shareLocationOnSos ? await this.latestLocation(attempt.incidentId) : null;
 
     // The claim: from here the provider may be called, so from here a retry must not call it again.
     const claimed = await this.prisma.notificationAttempt.updateMany({
@@ -79,11 +82,11 @@ export class SendWorker implements OnModuleInit {
     });
     if (claimed.count !== 1) return;
 
-    if (attempt.channel === 'push') return this.sendPush(attemptId, tokens.map(t => t.pushToken), name, now);
+    if (attempt.channel === 'push') return this.sendPush(attemptId, tokens.map(t => t.pushToken), name, resolved, now);
 
     const outcome =
       attempt.channel === 'sms'
-        ? await this.sms.send({ to: contact.phone, body: alertBody(name), attemptId })
+        ? await this.sms.send({ to: contact.phone, body: resolved ? resolvedBody(name) : alertBody(name, location, now.getTime()), attemptId })
         : await this.voice.call({ to: contact.phone, script: voiceScript(name), attemptId });
 
     if (outcome.kind === 'accepted') {
@@ -102,8 +105,13 @@ export class SendWorker implements OnModuleInit {
     }
   }
 
-  private async sendPush(attemptId: string, tokens: string[], name: string, now: Date): Promise<void> {
-    const outcome = await this.push.send({ tokens, title: 'Lumo alert', body: pushBody(name), attemptId });
+  private async latestLocation(incidentId: string): Promise<AlertLocation | null> {
+    const s = await this.prisma.locationSnapshot.findFirst({ where: { incidentId }, orderBy: { capturedAt: 'desc' } });
+    return s ? { latitude: s.latitude, longitude: s.longitude, accuracyM: s.accuracyM, capturedAt: s.capturedAt.getTime() } : null;
+  }
+
+  private async sendPush(attemptId: string, tokens: string[], name: string, resolved: boolean, now: Date): Promise<void> {
+    const outcome = await this.push.send({ tokens, title: resolved ? 'Lumo' : 'Lumo alert', body: resolved ? resolvedBody(name) : pushBody(name), attemptId });
     // A token the service says is dead stops receiving anything.
     for (const dead of outcome.kind === 'ambiguous' ? [] : outcome.deadTokens) await this.devices.revokeToken(dead, now);
 

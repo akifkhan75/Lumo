@@ -39,8 +39,9 @@ model User {
   devices            Device[]
   escalationPolicies EscalationPolicy[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  EmergencyCredential EmergencyCredential[]
 
   @@index([regionProfileId])
 }
@@ -409,6 +410,10 @@ model EmergencyIncident {
   priorState        IncidentState?
   locationAvailable Boolean        @default(false)
   triggeredAt       DateTime
+  // The SERVER owns the countdown (docs/specs/INCIDENTS.md): an incident is created CREATED with
+  // this deadline and dispatches when it passes, so an app killed mid-countdown still alerts. A
+  // device-only countdown would dispatch nothing if the app were never reopened. Null = no countdown.
+  countdownEndsAt   DateTime?
   dispatchedAt      DateTime?
   acknowledgedAt    DateTime?
   resolvedAt        DateTime?
@@ -428,6 +433,9 @@ model EmergencyIncident {
 // APPEND-ONLY: the incident timeline.
 model IncidentEvent {
   id         String            @id @default(uuid())
+  // Several transitions can land in one transaction with one timestamp; the timeline is
+  // evidence, so its ORDER is a column, not an inference.
+  seq        Int               @default(autoincrement())
   incidentId String
   incident   EmergencyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   fromState  IncidentState?
@@ -454,6 +462,9 @@ model NotificationAttempt {
   channel           Channel
   attemptNumber     Int               @default(1)
   escalationStep    Int
+  // ALERT: telling a contact it happened. RESOLVED: telling them it ended. A second fan-out must
+  // not collide with the first on the unique key, nor count in the incident's rollup.
+  purpose           String            @default("ALERT")
   state             AttemptState      @default(QUEUED)
   stateReason       String?
   queuedAt          DateTime          @default(now())
@@ -475,7 +486,7 @@ model NotificationAttempt {
 
   events NotificationEvent[]
 
-  @@unique([incidentId, recipientId, channel, attemptNumber])
+  @@unique([incidentId, recipientId, channel, purpose, attemptNumber])
   @@index([incidentId])
   @@index([state])
   // Provider callbacks find their attempt by this id.
@@ -571,4 +582,22 @@ model ContactInvite {
   endedReason String?
 
   @@index([contactId])
+}
+
+// PLAT-4: lets an SOS dispatch when the ordinary login has expired. An OPAQUE random token, only its
+// hash stored, so it is not a JWT and the JWT strategy cannot accept it (nor it the JWT). Scope: act
+// on incidents the user raised — create, cancel, resolve, read their status — and nothing else.
+// 30 days, re-minted on use; revoked per device (docs/specs/INCIDENTS.md).
+model EmergencyCredential {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // At most one live credential per device: minting for a device revokes its previous one.
+  deviceKey String
+  tokenHash String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId, deviceKey])
 }

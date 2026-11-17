@@ -18,6 +18,7 @@ import { requireEnv } from '../config/env';
 export const SEND_QUEUE = 'notify.send';
 export const EXPIRE_QUEUE = 'notify.expire';
 export const RECEIPTS_QUEUE = 'notify.receipts';
+export const COUNTDOWN_QUEUE = 'incident.countdown';
 
 export type Tx = Prisma.TransactionClient;
 
@@ -32,17 +33,19 @@ export interface JobHandlers {
   send(attemptId: string): Promise<void>;
   expire(attemptId: string): Promise<void>;
   receipts(attemptId: string): Promise<void>;
+  /** The incident's countdown deadline has passed: dispatch it. */
+  countdown(incidentId: string): Promise<void>;
 }
 
 @Injectable()
 export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('NotificationQueue');
   private boss: PgBoss | null = null;
-  private handlers: JobHandlers | null = null;
+  private handlers: Partial<JobHandlers> = {};
 
-  /** The worker registers itself here, so the queue has no dependency on what it runs. */
-  setHandlers(handlers: JobHandlers) {
-    this.handlers = handlers;
+  /** Workers register themselves here (merged), so the queue has no dependency on what it runs. */
+  setHandlers(handlers: Partial<JobHandlers>) {
+    this.handlers = { ...this.handlers, ...handlers };
   }
 
   /** NOTIFICATIONS_QUEUE=off keeps the API up without a worker (e.g. a read-only replica). */
@@ -68,14 +71,18 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     // backlog at one job per two seconds (pg-boss's default).
     const opts = { pollingIntervalSeconds: 1, batchSize: 10 };
     await boss.work<{ attemptId: string }>(SEND_QUEUE, opts, async jobs => {
-      for (const job of jobs) await this.handlers?.send(job.data.attemptId);
+      for (const job of jobs) await this.handlers.send?.(job.data.attemptId);
+    });
+    await boss.createQueue(COUNTDOWN_QUEUE, { retryLimit: 10, retryDelay: 2, retryBackoff: true });
+    await boss.work<{ incidentId: string }>(COUNTDOWN_QUEUE, opts, async jobs => {
+      for (const job of jobs) await this.handlers.countdown?.(job.data.incidentId);
     });
     await boss.createQueue(RECEIPTS_QUEUE, { retryLimit: 5, retryDelay: 30, retryBackoff: true });
     await boss.work<{ attemptId: string }>(RECEIPTS_QUEUE, opts, async jobs => {
-      for (const job of jobs) await this.handlers?.receipts(job.data.attemptId);
+      for (const job of jobs) await this.handlers.receipts?.(job.data.attemptId);
     });
     await boss.work<{ attemptId: string }>(EXPIRE_QUEUE, opts, async jobs => {
-      for (const job of jobs) await this.handlers?.expire(job.data.attemptId);
+      for (const job of jobs) await this.handlers.expire?.(job.data.attemptId);
     });
     this.boss = boss;
   }
@@ -85,6 +92,7 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     this.boss = null;
   }
 
+  /** Whether alerts can be planned at all. */
   get running(): boolean {
     return this.boss !== null;
   }
@@ -98,6 +106,11 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
   /** Enqueue the send. Joins `tx`: it exists only if the transaction commits. */
   async enqueueSend(tx: Tx, attemptId: string): Promise<void> {
     await this.requireBoss().send(SEND_QUEUE, { attemptId }, { db: asDb(tx), singletonKey: attemptId });
+  }
+
+  /** Enqueue the countdown deadline. Joins `tx`: the incident and its deadline exist together. */
+  async enqueueCountdown(tx: Tx, incidentId: string, afterSeconds: number): Promise<void> {
+    await this.requireBoss().send(COUNTDOWN_QUEUE, { incidentId }, { db: asDb(tx), startAfter: afterSeconds, singletonKey: incidentId });
   }
 
   /** Enqueue the push-receipt check (Expo advises ~15 minutes). Joins `tx`. */

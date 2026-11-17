@@ -216,6 +216,23 @@ fact on the attempt, never an acknowledgement).
 run against real Twilio** (no account), so the plan's exit — a real SMS recorded as UNKNOWN with receipts
 disabled — is **not met**. **Push (1.7b-2, server side):** a contact who claims their invite while signed in is linked to their account (never inferred from a phone or email); a push token belongs to one user at a time; push goes to the linked account's devices; a push nobody confirms is "sent, not confirmed"; only the linked account's device can report delivery or acknowledge. **The app does not do its half yet** (no token registration, no claim screen, no receipts), so in practice no contact can be reached by push and nothing can reach "delivered" that way. At-most-once has a crash window (KI-67). Spec: `docs/specs/NOTIFICATIONS.md`; gaps KI-67 – KI-82.
 
+### Incidents and SOS (milestone 1.8a, server only)
+
+`POST /sos` creates an incident, answers at once, and the **server** runs the countdown (a manual SOS 0–3 s, an automatic
+trigger 10 s, clamped whatever the client asks), so an app killed mid-countdown still alerts. It then resolves the
+recipients (consent re-checked), applies region gating and the daily cap, plans the attempts, and the incident moves with
+its ledger: notifying → notified / partially notified / **all channels failed**, with the contacts who were skipped or
+capped named in the response. Cancel works only inside the countdown; after that the person **resolves**, which tells only
+the contacts whose alert actually went. A linked contact's "I'm responding" acknowledges it; "I can't help after all"
+restores it. An **emergency token** (opaque, 30 days, re-minted on use) lets an SOS dispatch with an expired login and can
+do nothing else. A position goes into a message only if the user allows it, worded with its time and precision, "last
+known" when stale.
+
+**What it does not do:** the app has none of it yet (1.8b), nothing has been sent to a real person (no provider accounts),
+there is no escalation ladder (1.9), and practice and duress are refused. **With the default settings SMS is off, so a user
+who has not opted in and has no contact who claimed their invite gets "all channels failed"** (KI-83). Spec:
+`docs/specs/INCIDENTS.md`; gaps KI-83 – KI-88.
+
 ### Device location
 
 `expo-location`, foreground only: permission is read at launch and asked only when
