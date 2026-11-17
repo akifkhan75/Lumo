@@ -35,7 +35,7 @@ checklist are in [`docs/BRANDING.md`](docs/gtm/BRANDING.md) and
 
 ## 2. Repo shape
 
-Turborepo + pnpm workspaces. Node >= 18, pnpm 9.
+Turborepo + pnpm workspaces. Node >= 22.12 (pg-boss 12; Node 20 is end of life), pnpm 9.
 
 ```
 apps/api        NestJS 12 REST API, Prisma 5, PostgreSQL        (the backend)

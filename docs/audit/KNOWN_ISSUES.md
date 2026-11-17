@@ -786,3 +786,38 @@ and would not be dialable by a later alert path. A review step belongs with the 
 The plan listed circles in 1.6, but they have no requirement ID in the PRD, nothing consumes them until
 the escalation engine (1.9), and the roadmap rule is not to mint IDs. Deferred to 1.9; the owner should
 assign the ID.
+
+## Found while building milestone 1.7a — 2026-11-17
+
+### 🟠 KI-67 — At-most-once has a crash window
+
+A worker claims an attempt before calling the provider. If the process dies after the provider accepted and
+before the outcome was written, the attempt stays `QUEUED` and claimed, and at its time-to-live becomes
+`EXPIRED` with reason `SEND_OUTCOME_UNKNOWN`. The message may have gone; the ledger says exactly that and the
+fallback proceeds. A Twilio callback carrying the attempt id can repair it (it records the acceptance it
+implies). Chosen over at-least-once because a duplicate alert is recoverable and a silent lie is not, but it is
+not free.
+
+### 🔴 KI-68 — Never run against real Twilio
+
+No account exists. The adapter follows Twilio's documented API and is tested against a stub client and a
+signed fake callback only. Unverified against the real service: the exact callback fields, error codes, and
+whether a destination without receipts ever reports `delivered`. The plan's exit for 1.7 stays open.
+
+### 🟠 KI-69 — Contacts have no push address
+
+`Device` belongs to a user and a contact is not linked to one. The link must never be inferred from a matching
+email or number (it would deliver one person's alerts to whoever registers that address). It can exist only when
+a contact claims their invite while signed in, which is not built. Until then push to a contact is ledgered
+`NO_ADDRESS`. 1.7b must decide how a contact ever gets an app.
+
+### 🟡 KI-70 — Node 22 is now required
+
+pg-boss 12 needs Node ≥ 22.12 (Node 20 reached end of life in April 2026). CI and the Dockerfile moved to 22.
+The image has still not been built (no Docker daemon was available), so the Node bump is unverified there.
+
+### 🟡 KI-71 — The queue shares the database, and has no spend cap yet
+
+A database outage stops sending and recording together. The pg-boss schema is created on boot and needs CREATE
+on the database. Fan-out is unbounded until the spend cap (1.7b), though nothing can raise an incident yet.
+Counters are in-memory only; real metrics are milestone 1.15.

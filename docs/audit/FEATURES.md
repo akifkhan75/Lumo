@@ -196,6 +196,23 @@ means only "willing". The server cannot tell the contact from the account holder
 link (KI-62). The consent page is a stopgap for the web app (1.11). Circles are not built (KI-66).
 Spec: `docs/specs/TRUSTED_CONTACTS.md`; gaps KI-62 – KI-66. Not run on a device.
 
+### Delivery ledger and SMS (milestone 1.7a)
+
+The plumbing that will carry an alert, with nothing yet raising one. A durable queue (pg-boss, same
+Postgres) whose jobs are enqueued **in the same transaction** as the attempt row; a single ledger writer
+that runs every state change through the state machine's channel guards and appends an event; an SMS
+worker that claims an attempt before sending so a redelivered job can never send twice; consent re-checked
+at send time; and a signature-verified Twilio status webhook that handles duplicate, early and out-of-order
+callbacks. Every way a send can fail or be skipped is a ledger row that says why — including "no
+credentials", which is never recorded as accepted. An SMS that was accepted but never got a receipt is
+**"delivery unconfirmed" (UNKNOWN)**, not "delivered" and not "failed".
+
+**What it does not do:** nothing creates an incident yet (1.8), so nothing is sent to anyone. It has **never
+run against real Twilio** (no account), so the plan's exit — a real SMS recorded as UNKNOWN with receipts
+disabled — is **not met**. Push, voice, device registration, the device-side receipt and the spend cap are
+1.7b; there is no cap yet. At-most-once has a crash window (KI-67). Spec: `docs/specs/NOTIFICATIONS.md`;
+gaps KI-67 – KI-71.
+
 ### Device location
 
 `expo-location`, foreground only: permission is read at launch and asked only when
