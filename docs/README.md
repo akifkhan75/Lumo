@@ -33,8 +33,9 @@ Lumo — Your Light in the Dark.
 [Escalation Policy](specs/ESCALATION_POLICY.md) ·
 [Journey Guardian](specs/JOURNEY_GUARDIAN.md) · [Safety Check](specs/SAFETY_CHECK.md) ·
 [Evidence Pipeline](specs/EVIDENCE_PIPELINE.md) · [Offline](specs/OFFLINE_ARCHITECTURE.md) ·
-[Practice Mode](specs/PRACTICE_MODE.md) · [Data Model](specs/DATA_MODEL.md) ·
-[API Spec](specs/API_SPEC.md)
+[Practice Mode](specs/PRACTICE_MODE.md) · [Offline SOS](specs/OFFLINE_SOS.md) ·
+[Incident History](specs/INCIDENT_HISTORY.md) · [Emergency Profile](specs/EMERGENCY_PROFILE.md) _(design)_ ·
+[Data Model](specs/DATA_MODEL.md) · [API Spec](specs/API_SPEC.md)
 
 ## Design
 

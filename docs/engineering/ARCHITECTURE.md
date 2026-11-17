@@ -72,11 +72,11 @@ This repo has already shipped three empty packages; that will not repeat.
 | Phase | Modules added                                                                                                                                                                                   |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0     | _(no new modules — fixes, specs; `danger-zones` → `hazard-reports` landed straight after)_                                                                                                      |
-| 1     | `trusted-contacts` `safety-circles` `safety-sessions` `journeys` `emergency-incidents` `escalation` `location` `notifications` `audit` · packages `safety-domain` `region-profiles` · app `web` |
+| 1     | `trusted-contacts` `safety-sessions` `journeys` `emergency-incidents` `escalation` `location` `notifications` `audit` · packages `safety-domain` `region-profiles` · app `web` |
 | 2     | `evidence`                                                                                                                                                                                      |
 | 3     | `ai-safety` `accident-detection`                                                                                                                                                                |
 | 4     | `safety-places` `community` `organizations`                                                                                                                                                     |
-| 5     | `subscriptions` `admin`                                                                                                                                                                         |
+| 5     | `subscriptions` `admin` `safety-circles` (moved from Phase 1: KI-66)                                                                                                                                                                      |
 
 | 6 | `wearables` _(`PLAT-12` is Phase 6; Phase 5 defines only its entitlement key)_ |
 

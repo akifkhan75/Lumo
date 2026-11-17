@@ -783,7 +783,9 @@ Numbers saved before E.164 validation may be loose or unparseable. They are kept
 back unchanged (so one old contact cannot block every settings save) but are not flagged to the user,
 and would not be dialable by a later alert path. A review step belongs with the alert work (1.7/1.8).
 
-### 🟠 KI-66 — Safety circles are not built
+### ✅ KI-66 — Safety circles are not built: decided, moved to Phase 5
+
+_Update (2026-11-18): **decided: circles leave Phase 1 and move to Phase 5, with the Family plan.** Nothing in Phase 1 consumes them; they have no requirement ID; and the one place the product already describes them is the Family tier (`MONETIZATION.md`: "shared circles"). The ROADMAP and ARCHITECTURE now say so. What stays: the pure escalation evaluator in `@lumo/safety-domain` already understands a `circle` recipient and expands it from a directory (tested, harmless), and the policy API refuses a circle for now ("no circles yet"). Phase 5 mints the ID, the model and the scoped, expiring membership. A person's trusted CONTACTS (consent, escalation, journeys) are the whole of Phase 1's social graph._ Original text:
 
 The plan listed circles in 1.6, but they have no requirement ID in the PRD, nothing consumes them until
 the escalation engine (1.9), and the roadmap rule is not to mint IDs. Deferred to 1.9; the owner should
@@ -1256,4 +1258,15 @@ fresh confirmation before an export is the likely fix; biometric lock is Phase 6
 `docs/product/FEATURE_CATALOG.md` still marks features that now exist as ❌ or ⛔ (the delivery ledger, Journey Guardian, Practice Mode and
 others). 1.15a corrected only the two rows it touched (PRO-9, PRO-7). The rest should be reconciled against the code in one pass, by reading
 each, because the honesty rule is that this file must not say something is missing that is built, any more than the reverse.
+
+## Found while writing the PRO-6 design — 2026-11-18
+
+### 🟠 KI-141 — PRO-6 (emergency profile sharing) is designed, not built, and waits on decisions
+
+`docs/specs/EMERGENCY_PROFILE.md` sets out the rules (default nobody; never in a link, SMS, push, timeline or log; only an agreed, linked,
+alerted contact, after "I'm responding"; per field; instant and silent revoke; every read logged for the owner), the model and the threats.
+It lists six decisions that are the owner's and counsel's, not engineering's: the field set, when a contact may read, the tail after an
+incident ends, whether Phase 1 may ship without PRO-8, the first market, and whether to build it behind a flag that stays off until counsel has
+reviewed health-data sharing for that market. Until then the profile is two encrypted fields shown to the owner alone, which is safe, and a
+contact still cannot see any of it, which is the gap. PRO-6 is the one Phase 1 item that should not be rushed.
 
