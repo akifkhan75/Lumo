@@ -116,6 +116,25 @@ export class ApiClient {
     }
   }
 
+  /** For endpoints that answer 204: the same bounded request, no body to read. */
+  private async sendNoBody(path: string, init: RequestInit = {}): Promise<void> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, { ...init, signal: controller.signal });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'An unknown error occurred' }));
+        throw new ApiError(error.message || `HTTP error! status: ${response.status}`, 'http', response.status);
+      }
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      if (controller.signal.aborted) throw new ApiError(`The request timed out after ${this.timeoutMs} ms`, 'timeout');
+      throw new ApiError(err instanceof Error ? err.message : 'Network request failed', 'network');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // Authentication
   async login(email: string, password: string): Promise<AuthResponse> {
     const data = await this.send<AuthResponse>('/api/v1/auth/login', {
@@ -162,6 +181,33 @@ export class ApiClient {
 
   async resolveIncident(id: string, bearer?: string | null): Promise<Incident> {
     return this.send(`/api/v1/incidents/${encodeURIComponent(id)}/resolve`, { method: 'POST', headers: this.getHeaders({}, bearer) });
+  }
+
+  // The contact side: a push address, joining as someone's contact, and the device's own report back.
+  async registerDevice(input: { platform: 'ios' | 'android'; osVersion: string; pushToken: string }): Promise<{ id: string }> {
+    return this.send('/api/v1/devices', {
+      method: 'POST',
+      headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(input),
+    });
+  }
+
+  async revokeDevice(id: string): Promise<void> {
+    await this.sendNoBody(`/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE', headers: this.getHeaders() });
+  }
+
+  /** Claim a contact link while signed in; this is what gives a contact a push address. */
+  async claimContactInvite(token: string): Promise<{ claimed: boolean }> {
+    return this.send(`/api/v1/contacts/invites/${encodeURIComponent(token)}/claim`, { method: 'POST', headers: this.getHeaders() });
+  }
+
+  /** The device reports an alert it actually received, or the contact's "I'm responding". */
+  async postNotificationReceipt(attemptId: string, kind: 'delivered' | 'acknowledged'): Promise<{ recorded: boolean }> {
+    return this.send(`/api/v1/notifications/${encodeURIComponent(attemptId)}/receipt`, {
+      method: 'POST',
+      headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ kind }),
+    });
   }
 
   async mintEmergencyToken(deviceKey: string): Promise<EmergencyToken> {

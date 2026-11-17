@@ -32,6 +32,7 @@ describe('ExpoPush.send', () => {
     expect(sent).toHaveLength(2);
     expect(sent[0]).toMatchObject({ to: 'ExponentPushToken[aaaaaaaa]', title: 'Lumo alert', data: { attemptId: 'att-1' } });
     expect(Object.keys(sent[0].data)).toEqual(['attemptId']);
+    expect(sent[0]).toMatchObject({ channelId: 'alerts', categoryId: 'lumo-alert' });
   });
 
   it('with no access token sends no Authorization header', async () => {

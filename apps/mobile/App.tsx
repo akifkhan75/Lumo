@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ActivityIndicator, Alert, AppState } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ActionButton, BottomNavContainer, Container, Header, HeaderActions, HeaderTextContainer, HelloText, MapViewContainer, NavItemContainer, NavItemLabel, RetryButton, RetryButtonText, SafetyAssistantButton, SettingsStatusRow, SettingsStatusStrip, SettingsStatusText, SOSButton, SOSButtonContainer, SOSText, VoiceGuardText } from './App.styled';
@@ -21,6 +21,10 @@ import SettingsScreen from './components/settings/SettingsModal';
 import ProfileSettingsScreen from './components/settings/ProfileSettings';
 import ContactSettingsScreen from './components/settings/ContactSettings';
 import AlertSettingsScreen from './components/settings/AlertSettings';
+import ContactRoleScreen from './components/settings/ContactRole';
+import ContactAlertScreen from './components/ContactAlert';
+import { lastAlertTap, listenForAlerts, prepareNotifications, reportReceived } from './services/pushService';
+import { inviteTokenFrom } from './services/inviteLink';
 import FollowMeScreen from './components/FollowMeModal';
 import CheckInScreen from './components/CheckInModal';
 import CommunitySafetyScreen from './components/CommunitySafetyModal';
@@ -94,6 +98,33 @@ const DashboardScreen = () => {
       } catch { /* nothing to resume */ }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Alerts addressed to THIS phone as someone's contact (docs/specs/NOTIFICATIONS.md), and the app link a contact is sent.
+  // A notification received or tapped here is reported as received; one that arrives while the app is closed cannot be.
+  useEffect(() => {
+    const open = (tap: { attemptId: string; title: string; body: string; responded: boolean }) => navigation.navigate('ContactAlert', tap);
+    let stop: () => void = () => undefined;
+    (async () => {
+      try {
+        await prepareNotifications();
+        stop = listenForAlerts(open);
+        const tap = await lastAlertTap(); // the alert the app was opened by
+        if (tap) {
+          reportReceived(tap.attemptId, 'delivered');
+          if (tap.responded) reportReceived(tap.attemptId, 'acknowledged');
+          open(tap);
+        }
+      } catch { /* alerts still arrive; the screen just does not open by itself */ }
+    })();
+    const claim = (url: string | null | undefined) => {
+      const token = url && /^lumo:\/\/claim\//i.test(url) ? inviteTokenFrom(url) : null;
+      if (token) navigation.navigate('JoinContact', { token });
+    };
+    Linking.getInitialURL().then(claim).catch(() => undefined);
+    const sub = Linking.addEventListener('url', e => claim(e.url));
+    return () => { stop(); sub.remove(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -265,6 +296,7 @@ const SettingsNavigator = ({ route }: { route: RouteProp<RootStackParamList, 'Se
                 component={ContactSettingsScreen} 
                 initialParams={{ currentSettings, onSave }}
             />
+            <SettingsStack.Screen name="ContactRole" component={ContactRoleScreen} />
             <SettingsStack.Screen 
                 name="AlertSettings" 
                 component={AlertSettingsScreen}
@@ -358,6 +390,8 @@ const App = () => {
                             <MainStack.Screen name="FakeCall" component={FakeCallScreen} />
                             <MainStack.Screen name="ReportHazard" component={ReportHazardScreen} />
                             <MainStack.Screen name="SafetyAssistant" component={SafetyAssistantScreen} />
+                            <MainStack.Screen name="ContactAlert" component={ContactAlertScreen} />
+                            <MainStack.Screen name="JoinContact" component={ContactRoleScreen} />
                         </MainStack.Group>
                     </>
                 )}
