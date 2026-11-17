@@ -84,7 +84,16 @@ export const loadOrCreateDeviceKey = async (): Promise<string> => {
  * If the app is killed mid-countdown, the server still dispatches (it owns the countdown); this lets the
  * next launch show the incident again instead of losing it.
  */
-export interface ActiveSos { key: string; incidentId?: string; startedAt: number; trigger: string; }
+export interface ActiveSos {
+  key: string;
+  incidentId?: string;
+  startedAt: number;
+  trigger: string;
+  /** The last known position at the press (docs/specs/OFFLINE_SOS.md), so a late send still carries where the person was. */
+  fix?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number };
+  /** The person cancelled while Lumo could not be reached. Nothing may be sent for this key; the cancel is what is still being settled. */
+  cancelled?: boolean;
+}
 export const saveActiveSos = (v: ActiveSos) => writeKey(ACTIVE_KEY, JSON.stringify(v));
 export const loadActiveSos = async (): Promise<ActiveSos | null> => {
   const raw = await readKey(ACTIVE_KEY);

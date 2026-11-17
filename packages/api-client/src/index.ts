@@ -23,8 +23,10 @@ export type ApiErrorKind = 'http' | 'timeout' | 'network';
 export class ApiError extends Error {
   readonly status: number | null;
   readonly kind: ApiErrorKind;
+  /** The server refused an SOS because the press was too long ago to alert anyone (docs/specs/OFFLINE_SOS.md). Nothing was sent. */
+  readonly tooLate: boolean;
 
-  constructor(message: string, kind: ApiErrorKind, status: number | null = null) {
+  constructor(message: string, kind: ApiErrorKind, status: number | null = null, tooLate = false) {
     super(message);
     // Restores the prototype chain. This package compiles to ES5 (the shared
     // tsconfig sets no target), and ES5 output of a class extending Error loses
@@ -35,6 +37,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.kind = kind;
     this.status = status;
+    this.tooLate = tooLate;
   }
 
   /** True only when the server explicitly rejected the credential. */
@@ -86,6 +89,7 @@ export class ApiClient {
         error.message || `HTTP error! status: ${response.status}`,
         'http',
         response.status,
+        error.tooLate === true,
       );
     }
     return response.json();
@@ -173,6 +177,14 @@ export class ApiClient {
 
   async getIncident(id: string, bearer?: string | null): Promise<Incident> {
     return this.send(`/api/v1/incidents/${encodeURIComponent(id)}`, { headers: this.getHeaders({}, bearer) });
+  }
+
+  /**
+   * Cancel a press by the key it was made with, for a device that cancelled while offline and cannot know whether its request arrived. If it
+   * did, that incident is cancelled; if not, an already-cancelled incident is made under the key, so a late arrival sends nothing.
+   */
+  async cancelSosByKey(key: string, bearer?: string | null): Promise<Incident> {
+    return this.send('/api/v1/sos/cancel', { method: 'POST', headers: this.getHeaders({ 'Idempotency-Key': key }, bearer) });
   }
 
   async cancelIncident(id: string, bearer?: string | null): Promise<Incident> {

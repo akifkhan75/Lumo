@@ -207,3 +207,71 @@ describe('too long ago', () => {
     await sos(o.token, body({ elapsedSeconds: 'soon' })).expect(400);
   });
 });
+
+describe('cancelling a press by its key (the person cancelled while offline)', () => {
+  const cancelByKey = (token: string, k: string) => api().post('/api/v1/sos/cancel').set(auth(token)).set('Idempotency-Key', k);
+
+  it('when the request never arrived: makes the incident already cancelled, so a late arrival sends nothing', async () => {
+    const o = await owner('cbk_none');
+    const k = key();
+    const c = await cancelByKey(o.token, k).expect(200);
+    expect(c.body.state).toBe('CANCELLED');
+    // the request that was "in flight" now arrives, even late with the countdown long gone
+    const late = await sos(o.token, body({ elapsedSeconds: 900 }), k).expect(200);
+    expect(late.body.id).toBe(c.body.id);
+    expect(late.body.state).toBe('CANCELLED');
+    expect(await prisma.notificationAttempt.count({ where: { incidentId: c.body.id } })).toBe(0);
+    expect(sms.calls).toHaveLength(0);
+  });
+
+  it('when the request did arrive and is still counting: cancels it', async () => {
+    const o = await owner('cbk_counting');
+    const k = key();
+    const made = await sos(o.token, body({ triggerType: 'shake' }), k).expect(201);
+    expect(made.body.state).toBe('CREATED');
+    const c = await cancelByKey(o.token, k).expect(200);
+    expect(c.body.id).toBe(made.body.id);
+    expect(c.body.state).toBe('CANCELLED');
+  });
+
+  it('when it has already gone out: returns the incident as it really is, NOT cancelled, so the device can show what happened', async () => {
+    const o = await owner('cbk_late');
+    const k = key();
+    const made = await sos(o.token, body(), k).expect(201); // manual, no countdown: dispatched at once
+    const c = await cancelByKey(o.token, k).expect(200);
+    expect(c.body.id).toBe(made.body.id);
+    expect(c.body.state).not.toBe('CANCELLED');
+    expect(c.body.attempts.length).toBeGreaterThan(0);
+  });
+
+  it('is idempotent', async () => {
+    const o = await owner('cbk_twice');
+    const k = key();
+    const a = await cancelByKey(o.token, k).expect(200);
+    const b = await cancelByKey(o.token, k).expect(200);
+    expect(b.body.id).toBe(a.body.id);
+  });
+
+  it('refuses another user\'s key and reveals nothing', async () => {
+    const a = await owner('cbk_a');
+    const b = await owner('cbk_b');
+    const k = key();
+    await sos(a.token, body({ triggerType: 'shake' }), k).expect(201);
+    await cancelByKey(b.token, k).expect(409);
+    await sos(b.token, body(), k).expect(409);
+  });
+
+  it('works with the emergency token alone (the login may have expired: that is when a phone is offline)', async () => {
+    const o = await owner('cbk_token');
+    const tok = (await api().post('/api/v1/emergency-token').set(auth(o.token)).send({ deviceKey: 'install-cbkcbkcbk' }).expect(201)).body.token as string;
+    const c = await cancelByKey(tok, key()).expect(200);
+    expect(c.body.state).toBe('CANCELLED');
+    expect(c.body.attempts.every((a: { recipientName?: string }) => a.recipientName === undefined)).toBe(true); // ids and states only
+  });
+
+  it('needs a key, and a login or emergency token', async () => {
+    const o = await owner('cbk_auth');
+    await api().post('/api/v1/sos/cancel').set(auth(o.token)).expect(400);
+    await api().post('/api/v1/sos/cancel').set('Idempotency-Key', key()).expect(401);
+  });
+});

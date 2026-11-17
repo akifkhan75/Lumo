@@ -406,6 +406,52 @@ export class IncidentService implements OnModuleInit {
     return this.view(caller, id);
   }
 
+  /**
+   * Cancel a press the device made, BY ITS KEY (docs/specs/OFFLINE_SOS.md). The person cancelled while offline, so the device does not know
+   * whether its request ever arrived. If it did, this cancels that incident (within its countdown, as any cancel). If it did NOT, this
+   * creates the incident ALREADY CANCELLED under that key, so a request still in flight that arrives later is a replay of a cancelled
+   * incident and sends nothing. Either way the answer is the incident, and a key that is another user's is refused.
+   *
+   * If the alert has ALREADY gone out, this does not pretend and does not fail: it returns the incident as it really is (not CANCELLED), so the
+   * device shows what happened. A device that cancelled blind has no incident id to ask for, which is why this is not a 409.
+   */
+  async cancelByKey(caller: Caller, key: string, now: Date = new Date()): Promise<IncidentView> {
+    const found = await this.prisma.emergencyIncident.findUnique({ where: { idempotencyKey: key }, select: { id: true, userId: true } });
+    if (found) {
+      if (found.userId !== caller.id) throw new ConflictException('That Idempotency-Key cannot be used.');
+      return this.cancelOrShow(caller, found.id, now);
+    }
+    let id: string;
+    try {
+      id = await this.prisma.$transaction(async tx => {
+        const created = await tx.emergencyIncident.create({
+          data: { userId: caller.id, idempotencyKey: key, triggerType: 'manual', triggeredAt: now, countdownEndsAt: now, regionProfileId: 'UNRESOLVED', mode: 'real', isDuress: false },
+        });
+        await tx.incidentEvent.create({ data: { incidentId: created.id, fromState: null, toState: 'CREATED', event: 'CREATED', actor: 'user', reason: 'cancelled_before_arrival', occurredAt: now } });
+        await this.apply(created.id, 'CANCEL', 'user', 'USER_CANCELLED_BEFORE_ARRIVAL', { withinCountdown: true }, now, tx);
+        return created.id;
+      });
+    } catch (e) {
+      // A request with this key got in between: cancel what it made.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const won = await this.prisma.emergencyIncident.findUnique({ where: { idempotencyKey: key }, select: { id: true, userId: true } });
+        if (won && won.userId === caller.id) return this.cancelOrShow(caller, won.id, now);
+        throw new ConflictException('That Idempotency-Key cannot be used.');
+      }
+      throw e;
+    }
+    return this.view(caller, id);
+  }
+
+  private async cancelOrShow(caller: Caller, id: string, now: Date): Promise<IncidentView> {
+    try {
+      return await this.cancel(caller, id, now);
+    } catch (e) {
+      if (e instanceof ConflictException) return this.view(caller, id); // too late: show what is true
+      throw e;
+    }
+  }
+
   async resolve(caller: Caller, id: string, now: Date = new Date()): Promise<IncidentView> {
     const inc = await this.owned(caller, id);
     if (inc.state === 'RESOLVING' || inc.state === 'CLOSED') return this.view(caller, id); // idempotent

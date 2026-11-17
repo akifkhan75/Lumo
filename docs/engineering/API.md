@@ -369,3 +369,8 @@ Every incident view now carries `mode` and each attempt `simulated` (false for a
 `POST /api/v1/sos` accepts `elapsedSeconds` (integer ≥ 0): how long ago the press was, measured on the device. The server derives the press
 time from its own clock. If the countdown has already passed it dispatches at once. Over 6 hours: `400 { message, tooLate: true }`, nothing
 sent. The incident view carries `lateBySeconds` (0 for an ordinary SOS), and any message to a contact says so from two minutes.
+
+`POST /api/v1/sos/cancel` (header `Idempotency-Key`, login or emergency token): cancel a press by the key it was made with, for a device that
+cancelled while offline. Existing and still counting: cancelled. Not yet arrived: the incident is made already cancelled under that key, so a
+late arrival is a replay of a cancelled incident and sends nothing. Already gone out: **200 with the incident as it really is** (not
+`CANCELLED`), not a 409, because the device has no incident id to ask for. Another user's key: 409.

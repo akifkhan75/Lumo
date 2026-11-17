@@ -102,3 +102,25 @@ user · the composer is never reported as sent · no screen says "queued" or "wi
 - **1.13a** server: late dispatch from `elapsedSeconds`, the cap, `lateBySeconds`, and the delay in every message.
 - **1.13b** app: the durable press, retry with the same key, the offline states and copy, the reminder notification, cancel offline.
 - **1.13c** the pre-filled text: the contact cache, the composer, the attempt record. Gated on the native module decision.
+
+## As built (1.13b: the app, and cancel-by-key on the server)
+
+- **The press is saved first**, with the position at the press (`ActiveSos.fix`), before any request; **`elapsedSeconds`** goes on every send,
+  measured by the device's stopwatch. The server decides the rest (1.13a).
+- **Automatic retry with the same key**, 2, 4, 8, 16, then every 30 s, and **at once when the app returns to the foreground** ("Try now"
+  does the same). A try never overlaps another. It stops, and says why, when the answer cannot change: signed out, **too long ago**
+  (`tooLate`: the saved press is cleared so it never comes back), or refused. Practice never retries in the background.
+- **The offline screen** says nothing has been sent, that Lumo will keep trying and will _try_ to alert contacts as soon as it can **as long
+  as Lumo stays open**, names the number to call with the dialler one tap away, shows the device's own countdown and when the next try is, and
+  never says sent, queued or delivered (a test scans for it). Once through, a press that was late says so in the same terms the contacts got.
+- **A reminder notification** ("Your alert has not been sent. Open Lumo to keep trying, or call") is scheduled on the first failure and
+  cancelled when Lumo has the incident or the person cancels. Without notification permission there is none, and nothing claims one.
+- **Cancel is available whenever Lumo does not yet have the alert** (in flight, or unreachable), because with no signal a request can hang for
+  its whole timeout. It stops sending first, writes `cancelled` to the saved press (so a restart finishes the cancel and **never sends**), then
+  asks Lumo to cancel **by key** (`POST /api/v1/sos/cancel`). If the request had arrived, that incident is cancelled; if not, Lumo makes the
+  incident already cancelled under that key, so a request still in flight sends nothing. If Lumo cannot be reached it says so and keeps
+  trying; if the alert had already gone out it shows the incident as it is, not "cancelled". A response that arrives after the cancel never
+  becomes a live ledger.
+- A saved press older than 6 hours is dropped at launch, not offered and not sent.
+
+Not in this slice: the pre-filled text (1.13c), a background send, journey queues. See Limits.

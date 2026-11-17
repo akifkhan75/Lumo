@@ -66,6 +66,15 @@ export class IncidentsController {
     return incident;
   }
 
+  /** Cancel by the key the press was made with: for a device that cancelled while offline and cannot know whether its request arrived. */
+  @Post('sos/cancel')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  cancelByKey(@Request() req: any, @Headers('idempotency-key') key: string | undefined) {
+    if (!key || !KEY.test(key)) throw new BadRequestException('An Idempotency-Key header (8–128 letters, digits or . _ : -) is required.');
+    return this.incidents.cancelByKey(caller(req), key);
+  }
+
   @Post('incidents/:id/cancel')
   @HttpCode(200)
   cancel(@Request() req: any, @Param('id', new ParseUUIDPipe()) id: string) {

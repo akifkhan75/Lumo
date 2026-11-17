@@ -90,6 +90,9 @@ jest.mock('expo-notifications', () => ({
   addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   getLastNotificationResponseAsync: jest.fn(async () => null),
+  SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval' },
+  scheduleNotificationAsync: jest.fn(async () => 'reminder-1'),
+  cancelScheduledNotificationAsync: jest.fn(async () => undefined),
 }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { extra: {} }, easConfig: undefined } }));
 jest.mock('expo-device', () => ({ isDevice: true }));

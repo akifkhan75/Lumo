@@ -923,6 +923,8 @@ revoked. It cannot read contacts, history or location.
 
 ### 🟠 KI-87 — A countdown killed with the phone offline is not covered
 
+_Update: built in 1.13b (the press is saved and counted down on the device, retried with the same key, and resumed after a kill); only while Lumo is open — see KI-123._
+
 The server owns the countdown only once the request reaches it. A device that is offline when SOS is pressed counts down
 locally and sends on reconnect (1.13); until then it must say so and offer the dialler.
 
@@ -946,6 +948,8 @@ cannot dispatch early or late; but the seconds it shows are counted locally and 
 clock's error and the request's latency.
 
 ### 🟠 KI-91 — A press while offline sends nothing, and nothing queues it
+
+_Update: built in 1.13b (automatic retry, the offline states and the reminder). The pre-filled device text is 1.13c; nothing is sent while the app is closed — see KI-123._
 
 The screen says nothing was sent and offers the dialler and "try again" (user-initiated, same key). There is no
 automatic send on reconnect, and the pre-filled device SMS fallback is not built (1.13).
@@ -1133,3 +1137,30 @@ anyone it could not already alert, and the contact is told only a stated age. Th
 
 `locationLine` words "N min before this was sent" from the fix's `capturedAt` (the phone's clock) and the server's `now`. A wrong phone
 clock skews that figure. Fixing it needs the fix's own elapsed time sent with it, as the press has now.
+
+## Found while building milestone 1.13b — 2026-11-17
+
+_Update to KI-87 and KI-91: built (1.13b). A press with no signal is saved, counted down on the device, retried with the same key, cancellable
+and finished on restart. What remains is below, and the platform limit that no slice removes: nothing is sent while the app is closed._
+
+### 🔴 KI-123 — Nothing is sent while the app is closed, killed, or the phone is off
+
+There is no background task: retries run only while Lumo is open, and iOS limits background work in any case. The reminder notification can
+reach a person whose app was closed, and the dialler works always, but no alert is sent for them until they reopen Lumo. The screen says "as
+long as Lumo stays open". A background-fetch task, and on iOS the service extension (1.16), are the partial fixes; nothing makes it complete.
+
+### 🟠 KI-124 — The offline flow has never run on a device
+
+Jest with the API mocked, and a real database for the server half. Not exercised: airplane mode, a SIM removed, a tunnel, the app killed
+mid-countdown, the reminder arriving, or a request that hangs for the full timeout. Needs a native rebuild and a device (see KI-89).
+
+### 🟡 KI-125 — The reminder needs notification permission
+
+Without it there is no reminder and no sign of one. The app asks for the permission for push elsewhere; it does not ask here, at the worst
+moment. Whether to ask at the first contact is a product decision.
+
+### 🟡 KI-126 — A cancel that cannot be confirmed stays "Cancelled on this phone"
+
+If Lumo is unreachable for a long time the screen keeps saying it will keep trying. The saved cancel survives a restart and is finished on the
+next open, but a person who never reopens Lumo has an unconfirmed cancel. It cannot send (the press is marked cancelled), but a request that
+reached Lumo before the cancel may still alert contacts.

@@ -242,7 +242,7 @@ const EmergencyScreen = () => {
 
   // A clock for the countdown only while there is one.
   useEffect(() => {
-    if (state.phase !== 'counting') return;
+    if (state.phase !== 'counting' && state.phase !== 'unreachable' && state.phase !== 'cancelling') return;
     const h = setInterval(() => setTick(Date.now()), 250);
     return () => clearInterval(h);
   }, [state.phase]);
@@ -308,12 +308,25 @@ const EmergencyScreen = () => {
     title = left !== null ? `Alerting your contacts in ${left}` : 'Alerting your contacts soon';
     description += 'Nothing has been sent yet. Cancel now to stop it.';
   } else if (state.phase === 'unreachable') {
-    description += `Lumo could not reach its server, so no alert was started. ${state.error ?? ''}Call your local emergency number now.`;
+    // The press is saved on this phone and Lumo keeps trying. Nothing has gone: say so, say what Lumo will try, and what it needs from them.
+    const retryIn = state.retryAt ? Math.max(0, Math.ceil((state.retryAt - tick) / 1000)) : null;
+    description += `No signal, or Lumo can't be reached. ${state.error ? `${state.error} ` : ''}Lumo will keep trying, and will try to alert your contacts as soon as it can, as long as Lumo stays open. To get help now, call ${dialLabel}.`;
+    if (left !== null && left > 0) description += ` Your alert is set to start in ${left} seconds. Cancel to stop it.`;
+    if (retryIn !== null) description += ` Trying again in ${retryIn} s.`;
+  } else if (state.phase === 'tooLate') {
+    title = 'Too long ago to send';
+    description += 'This was triggered too long ago to alert your contacts, so nothing was sent. Call your local emergency number now.';
+  } else if (state.phase === 'cancelling') {
+    title = 'Cancelled on this phone';
+    description += "Lumo couldn't be reached to confirm, so it will keep trying. If your request had already reached Lumo, your contacts may still be told. If you need help, call your local emergency number.";
   } else if (state.phase === 'cannot') {
     description += "You're not signed in here, so Lumo cannot alert your contacts. Call your local emergency number now.";
   } else if (incident) {
     title = headline(incident);
     description += incident.locationAvailable ? 'Your last known location was included.' : "Your location was not included.";
+    // A press Lumo could only send later says so, in the same terms it told the contacts.
+    const late = incident.lateBySeconds ?? 0;
+    if (late >= 120) description += ` Lumo could only reach its server about ${Math.round(late / 60)} minutes after you pressed it. Contacts it tries are told how late it is.`;
   }
 
   const rows = incident ? contactRows(incident) : [];
@@ -370,10 +383,23 @@ const EmergencyScreen = () => {
             <CancelText>Cancel</CancelText>
           </CancelButton>
         ) : null}
+        {/* While a request is in flight Lumo has not answered, so nothing is confirmed sent and the person must be able to stop it. With no signal a
+            request can hang for its whole timeout: Cancel must not disappear for that long. */}
+        {state.phase === 'requesting' ? (
+          <CancelButton onPress={sos.cancel} accessibilityRole="button" accessibilityLabel="Cancel the alert. Nothing has been sent">
+            <CancelText>Cancel</CancelText>
+          </CancelButton>
+        ) : null}
         {state.phase === 'unreachable' ? (
-          <BottomButton onPress={sos.retry} accessibilityRole="button" accessibilityLabel="Try to start the alert again">
-            <ButtonText>Try again</ButtonText>
-          </BottomButton>
+          <>
+            <BottomButton onPress={sos.retry} accessibilityRole="button" accessibilityLabel="Try to start the alert again">
+              <ButtonText>Try now</ButtonText>
+            </BottomButton>
+            {/* Nothing has been confirmed sent, so cancelling is always on offer while Lumo cannot be reached. */}
+            <CancelButton onPress={sos.cancel} accessibilityRole="button" accessibilityLabel="Cancel the alert. Nothing has been sent">
+              <CancelText>Cancel</CancelText>
+            </CancelButton>
+          </>
         ) : null}
         {live && !ended ? (
           <BottomButton onPress={sos.resolve} accessibilityRole="button" accessibilityLabel="End the alert. Contacts who were alerted will be told it ended">

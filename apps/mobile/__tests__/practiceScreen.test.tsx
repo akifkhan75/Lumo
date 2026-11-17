@@ -185,6 +185,14 @@ describe('offline and signed out', () => {
     expect(openURL).not.toHaveBeenCalled();
   });
 
+  it('does not keep retrying the server in the background: a rehearsal that came back from Lumo later would be confusing', async () => {
+    api.raiseSos.mockRejectedValue(new ApiError('x', 'network'));
+    await open();
+    await start();
+    await flush(120_000);
+    expect(api.raiseSos).toHaveBeenCalledTimes(1);
+  });
+
   it('with no settings loaded, the offline run shows nobody to try rather than inventing contacts', async () => {
     api.raiseSos.mockRejectedValue(new ApiError('x', 'network'));
     await open({});

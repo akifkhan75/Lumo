@@ -372,7 +372,8 @@ describe('the emergency token', () => {
     for (const must of ['post /api/v1/sos', 'get /api/v1/settings', 'post /api/v1/incidents/:id/ack', 'post /api/v1/devices', 'put /api/v1/settings']) expect(have, must).toContain(must);
     expect(routes.length).toBeGreaterThan(25);
 
-    const ACCEPT = new Set(['post /api/v1/sos', 'post /api/v1/incidents/:id/cancel', 'post /api/v1/incidents/:id/resolve', 'get /api/v1/incidents/:id']);
+    // `sos/cancel` is cancel-by-key (docs/specs/OFFLINE_SOS.md): the token may stop a press it could start, including one it cannot see the id of.
+    const ACCEPT = new Set(['post /api/v1/sos', 'post /api/v1/sos/cancel', 'post /api/v1/incidents/:id/cancel', 'post /api/v1/incidents/:id/resolve', 'get /api/v1/incidents/:id']);
     // Public BY DESIGN: their own credential (a link token, a signature) or none. They never read the Authorization header.
     const PUBLIC = (p: string) => p === '/' || p.startsWith('/api/v1/auth/') || p.startsWith('/api/v1/contacts/invites/') && !p.endsWith('/claim') || p.startsWith('/api/v1/webhooks/') || p.startsWith('/api/v1/j/');
     const concrete = (p: string) => p.replace(/:token/g, 'x'.repeat(43)).replace(/:[A-Za-z]+/g, randomUUID());
