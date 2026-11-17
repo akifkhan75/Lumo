@@ -377,21 +377,22 @@ The guards here are what make the Delivery Ledger structurally honest: a transit
 a state **above the channel's `maxState` is rejected**, so a channel that cannot report
 delivery can never be recorded as delivered.
 
-| From        | Event                       | To             | Guard                                                                                                         |
-| ----------- | --------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------- |
-| `QUEUED`    | `PROVIDER_ACCEPTED`         | `SENT`         | —                                                                                                             |
-| `QUEUED`    | `PROVIDER_REJECTED`         | `FAILED`       | — · triggers fallback                                                                                         |
-| `QUEUED`    | `NOT_ATTEMPTED`             | `FAILED`       | nothing was handed to a provider (no address, not configured, region) · reason says which · triggers fallback |
-| `QUEUED`    | `TTL_ELAPSED`               | `EXPIRED`      | —                                                                                                             |
-| `QUEUED`    | `SPEND_CAP_REACHED`         | `FAILED`       | reason `SPEND_CAP`; surfaced to the user                                                                      |
-| `SENT`      | `PROVIDER_REPORTED_FAILURE` | `FAILED`       | the provider accepted it, then said it did not arrive · triggers fallback                                     |
-| `SENT`      | `RECEIPT_DELIVERED`         | `DELIVERED`    | **the channel can reach `DELIVERED`, and the receipt comes from the source it names**                         |
-| `SENT`      | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel** · ack may precede a receipt                                  |
-| `SENT`      | `CHANNEL_CANNOT_REPORT`     | `UNKNOWN`      | the channel stops at `SENT`, **or** its receipts are provider-dependent (SMS)                                 |
-| `SENT`      | `TTL_ELAPSED`               | `EXPIRED`      | `channel.maxState > SENT` — otherwise `UNKNOWN`                                                               |
-| `DELIVERED` | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel**                                                              |
+| From        | Event                       | To             | Guard                                                                                                                                                                                                  |
+| ----------- | --------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `QUEUED`    | `PROVIDER_ACCEPTED`         | `SENT`         | —                                                                                                                                                                                                      |
+| `QUEUED`    | `PROVIDER_REJECTED`         | `FAILED`       | — · triggers fallback                                                                                                                                                                                  |
+| `QUEUED`    | `NOT_ATTEMPTED`             | `FAILED`       | nothing was handed to a provider (no address, not configured, region) · reason says which · triggers fallback                                                                                          |
+| `QUEUED`    | `TTL_ELAPSED`               | `EXPIRED`      | —                                                                                                                                                                                                      |
+| `QUEUED`    | `SPEND_CAP_REACHED`         | `FAILED`       | reason `SPEND_CAP`; surfaced to the user                                                                                                                                                               |
+| `SENT`      | `PROVIDER_REPORTED_FAILURE` | `FAILED`       | the provider accepted it, then said it did not arrive · triggers fallback                                                                                                                              |
+| `SENT`      | `RECEIPT_DELIVERED`         | `DELIVERED`    | **the channel can reach `DELIVERED`, and the receipt comes from the source it names**                                                                                                                  |
+| `SENT`      | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel** · ack may precede a receipt                                                                                                                           |
+| `SENT`      | `CHANNEL_CANNOT_REPORT`     | `UNKNOWN`      | the channel stops at `SENT`, **or** its receipts are provider-dependent (SMS), **or** only the device can vouch for it (push, web): a silent device looks like an absent one, so "sent, not confirmed" |
+| `SENT`      | `TTL_ELAPSED`               | `EXPIRED`      | `channel.maxState > SENT` — otherwise `UNKNOWN`                                                                                                                                                        |
+| `UNKNOWN`   | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel** · a late acknowledgement is the one signal that means help knows                                                                                      |
+| `DELIVERED` | `ACK`                       | `ACKNOWLEDGED` | **a person can acknowledge through the channel**                                                                                                                                                       |
 
-Terminal: `ACKNOWLEDGED` · `FAILED` · `EXPIRED` · `UNKNOWN` · `DELIVERED` (when the
+Terminal: `ACKNOWLEDGED` · `FAILED` · `EXPIRED` · `UNKNOWN` and `DELIVERED` (when the
 channel cannot reach `ACKNOWLEDGED`).
 
 **Deliberate rejections:**

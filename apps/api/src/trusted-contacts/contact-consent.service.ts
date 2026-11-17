@@ -128,6 +128,30 @@ export class ContactConsentService {
     return this.view(token, now);
   }
 
+  /**
+   * A signed-in Lumo user claims the link (docs/specs/NOTIFICATIONS.md): they agree, if they have
+   * not already, and their ACCOUNT is linked to this contact, which is the only way a contact has
+   * a push address. First claim wins; the account that added the contact cannot claim it; a link
+   * that is not live is refused with the same answer as everywhere else.
+   */
+  async claim(userId: string, token: string, now: Date): Promise<'claimed'> {
+    let i = await this.find(token);
+    if (i && ContactConsentService.live(i, now) === 'pending') {
+      await this.accept(token, now);
+      i = await this.find(token);
+    }
+    if (!i || ContactConsentService.live(i, now) !== 'agreed') throw new NotFoundException();
+    // You cannot be your own emergency contact: it would route your own alerts to your own phone.
+    if (i.contact.userId === userId) throw new ConflictException('You cannot be your own emergency contact.');
+
+    const { count } = await this.prisma.trustedContact.updateMany({
+      where: { id: i.contactId, removedAt: null, OR: [{ linkedUserId: null }, { linkedUserId: userId }] },
+      data: { linkedUserId: userId, linkedAt: now },
+    });
+    if (count !== 1) throw new ConflictException('This link has already been claimed by another account.');
+    return 'claimed';
+  }
+
   /** The contact withdraws with the same link. Immediate. Idempotent. A record is revoked, never deleted. */
   async withdraw(token: string, now: Date): Promise<PublicInvite> {
     const i = await this.find(token);
@@ -138,6 +162,8 @@ export class ContactConsentService {
         where: { id: i.id, endedAt: null, acceptedAt: { not: null } },
         data: { endedAt: now, endedReason: ENDED_CONTACT_WITHDREW },
       });
+      // Withdrawing ends the account link too: no push address survives a withdrawal.
+      await tx.trustedContact.updateMany({ where: { id: i.contactId }, data: { linkedUserId: null, linkedAt: null } });
       if (count === 1 && i.consentId) {
         await tx.consentRecord.updateMany({
           where: { id: i.consentId, revokedAt: null },

@@ -138,9 +138,10 @@ export class TrustedContactsService {
    * then, because it can be withdrawn between planning an alert and sending it. Null
    * for a contact that is removed or unknown.
    */
-  async findActive(tx: Tx, id: string): Promise<(ContactView & { userId: string }) | null> {
+  async findActive(tx: Tx, id: string): Promise<(ContactView & { userId: string; linkedUserId: string | null }) | null> {
     const row = await tx.trustedContact.findFirst({ where: { id, removedAt: null }, include: WITH });
-    return row ? { ...this.view(row), userId: row.userId } : null;
+    // linkedUserId is for the worker only. It is never part of ContactView, so it can never reach a response.
+    return row ? { ...this.view(row), userId: row.userId, linkedUserId: row.linkedUserId } : null;
   }
 
   async create(tx: Tx, userId: string, input: ContactInput, priority: number, country: string | null = null): Promise<ContactView> {
@@ -195,6 +196,8 @@ export class TrustedContactsService {
         email: this.cipher.encryptNullable(email, this.cell(row.id, 'email')),
         priority: patch.priority,
         consentId: identityChanged ? null : undefined,
+        // The account that claimed this contact was the person at the OLD number or address.
+        ...(identityChanged ? { linkedUserId: null, linkedAt: null } : {}),
       },
     });
     if (count !== 1) throw new NotFoundException('Contact not found');
@@ -215,7 +218,7 @@ export class TrustedContactsService {
     await this.endInvites(tx, row.id, ENDED_CONTACT_REMOVED);
     await tx.trustedContact.updateMany({
       where: { id: row.id, userId: row.userId, removedAt: null },
-      data: { removedAt: new Date(), consentId: null },
+      data: { removedAt: new Date(), consentId: null, linkedUserId: null, linkedAt: null },
     });
   }
 

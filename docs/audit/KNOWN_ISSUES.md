@@ -858,3 +858,36 @@ applied to an incident whose region could not be worked out.
 No Twilio account. The call parameters and statuses follow Twilio's documentation (fetched, not recalled), but
 nothing has been run against the real service, and voice to a US number also needs the registration the
 profile marks incomplete.
+
+## Found while building milestone 1.7b (part 2) — 2026-11-17
+
+### 🔴 KI-78 — The app does not do its half of push
+
+Nothing in `apps/mobile` registers a push token, offers "claim this invite", or posts device receipts and
+acknowledgements. So no contact can have a push address, and nothing can reach `DELIVERED` or be acknowledged by
+push, until it does (needs `expo-notifications`, a native rebuild, and a deep link into the app). On iOS a
+backgrounded app cannot post a receipt until the Notification Service Extension (1.16), so many pushes will settle
+"sent, not confirmed" there regardless.
+
+### 🟠 KI-79 — Claiming a link is possession, not identity
+
+Whoever holds an unclaimed link, signed in, can claim it, and the first claim wins. A forwarded link can therefore be
+claimed by the wrong person; the contact can withdraw (which clears the link), and the owner sees "agreed" either
+way. The same limit as KI-62, now with a push address attached. A one-time code to the contact's own number (SMS,
+now possible) would close it.
+
+### 🟠 KI-80 — A push the service accepted for some devices is "sent" for all
+
+One attempt covers every live device of the linked account; accepted-for-one is `SENT`, and a device-side receipt
+from any one device is `DELIVERED`. The ledger cannot say which device, or whether the others got it.
+
+### 🟡 KI-81 — Expo receipts are checked once
+
+At ~15 minutes, once (the queue retries only if the service is unreachable). A receipt that is not ready then is not
+re-asked; the TTL settles the attempt. Receipt-time `DeviceNotRegistered` is not mapped back to a token (receipts
+carry only the ticket id), so a token that died after acceptance is revoked at its next send, not at receipt time.
+
+### 🟡 KI-82 — Expo push has never run
+
+No Expo project or credentials. The API is built to Expo's documentation (fetched, not recalled) and tested against a
+stub only.

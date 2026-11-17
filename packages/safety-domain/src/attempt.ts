@@ -44,9 +44,14 @@ const canBeAcknowledged = (c: AttemptContext) => c.capability.humanAck;
 
 // A channel that stops at SENT cannot report further. SMS can also reach this
 // state at runtime: its receipts are provider-dependent, so the provider may tell
-// us this particular destination has none.
+// us this particular destination has none. So can a channel whose delivery only the
+// DEVICE can vouch for (push): a handset that is off, or an app that is backgrounded
+// and cannot post a receipt, looks exactly like one that never got the message. That is
+// "sent, not confirmed" — UNKNOWN — not a failure.
 const cannotReport = (c: AttemptContext) =>
-  c.capability.automaticCeiling === 'SENT' || c.capability.receipts === 'provider-dependent';
+  c.capability.automaticCeiling === 'SENT' ||
+  c.capability.receipts === 'provider-dependent' ||
+  c.capability.deliveredEvidence === 'device';
 
 const mayReachBeyondSent = (c: AttemptContext) => maxState(c.capability) !== 'SENT';
 
@@ -80,8 +85,11 @@ const rows: Row<AttemptState, AttemptEvent, AttemptContext>[] = [
   ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>('SENT', 'PROVIDER_REPORTED_FAILURE', 'FAILED', ['system'], {
     effects: ['triggerFallback'],
   }),
-  // An acknowledgement may arrive before any delivery receipt.
-  ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>(['SENT', 'DELIVERED'], 'ACK', 'ACKNOWLEDGED', ['contact'], {
+  // An acknowledgement may arrive before any delivery receipt — and after the ledger gave up
+  // waiting for one. UNKNOWN is "sent, not confirmed", and a person tapping "I'm responding"
+  // an hour later is the one signal that means help knows; refusing it because the receipt
+  // was late would strand the user. (A late DELIVERED receipt is still refused: it adds nothing.)
+  ...rowsFrom<AttemptState, AttemptEvent, AttemptContext>(['SENT', 'DELIVERED', 'UNKNOWN'], 'ACK', 'ACKNOWLEDGED', ['contact'], {
     guard: canBeAcknowledged,
     effects: ['haltEscalation'],
   }),
@@ -108,16 +116,17 @@ export const ATTEMPT_MACHINE: Machine<AttemptState, AttemptEvent, AttemptContext
 
 /**
  * Terminal means no further transition is possible on this channel.
- * DELIVERED is terminal only where nobody can acknowledge through the channel.
+ * DELIVERED and UNKNOWN are terminal only where nobody can acknowledge through the channel.
  */
 export function isAttemptTerminal(state: AttemptState, capability: ChannelCapability): boolean {
   switch (state) {
     case 'ACKNOWLEDGED':
     case 'FAILED':
     case 'EXPIRED':
-    case 'UNKNOWN':
       return true;
     case 'DELIVERED':
+    case 'UNKNOWN':
+      // Where a person can acknowledge, a late acknowledgement is still possible.
       return !capability.humanAck;
     default:
       return false; // QUEUED, SENT

@@ -17,6 +17,7 @@ import { requireEnv } from '../config/env';
 
 export const SEND_QUEUE = 'notify.send';
 export const EXPIRE_QUEUE = 'notify.expire';
+export const RECEIPTS_QUEUE = 'notify.receipts';
 
 export type Tx = Prisma.TransactionClient;
 
@@ -30,6 +31,7 @@ export const asDb = (tx: Tx): Db => ({
 export interface JobHandlers {
   send(attemptId: string): Promise<void>;
   expire(attemptId: string): Promise<void>;
+  receipts(attemptId: string): Promise<void>;
 }
 
 @Injectable()
@@ -68,6 +70,10 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     await boss.work<{ attemptId: string }>(SEND_QUEUE, opts, async jobs => {
       for (const job of jobs) await this.handlers?.send(job.data.attemptId);
     });
+    await boss.createQueue(RECEIPTS_QUEUE, { retryLimit: 5, retryDelay: 30, retryBackoff: true });
+    await boss.work<{ attemptId: string }>(RECEIPTS_QUEUE, opts, async jobs => {
+      for (const job of jobs) await this.handlers?.receipts(job.data.attemptId);
+    });
     await boss.work<{ attemptId: string }>(EXPIRE_QUEUE, opts, async jobs => {
       for (const job of jobs) await this.handlers?.expire(job.data.attemptId);
     });
@@ -92,6 +98,11 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
   /** Enqueue the send. Joins `tx`: it exists only if the transaction commits. */
   async enqueueSend(tx: Tx, attemptId: string): Promise<void> {
     await this.requireBoss().send(SEND_QUEUE, { attemptId }, { db: asDb(tx), singletonKey: attemptId });
+  }
+
+  /** Enqueue the push-receipt check (Expo advises ~15 minutes). Joins `tx`. */
+  async enqueueReceipts(tx: Tx, attemptId: string, afterSeconds: number): Promise<void> {
+    await this.requireBoss().send(RECEIPTS_QUEUE, { attemptId }, { db: asDb(tx), startAfter: afterSeconds, singletonKey: attemptId });
   }
 
   /** Enqueue the time-to-live check. Joins `tx`. */

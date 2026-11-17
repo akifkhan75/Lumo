@@ -92,8 +92,12 @@ describe('UNKNOWN is the honest state', () => {
   it('SMS can too, because its receipts depend on provider and destination network', () => {
     expect(run('SENT', 'CHANNEL_CANNOT_REPORT', 'sms').ok).toBe(true);
   });
-  it('push and web cannot — their evidence comes from the device, so absence is a timeout, not "cannot report"', () => {
-    for (const ch of ['push', 'web'] as const) expect(run('SENT', 'CHANNEL_CANNOT_REPORT', ch)).toMatchObject({ rejection: 'GUARD_FAILED' });
+  it('push and web can too — only the device can vouch for them, and a silent device looks like an absent one: "sent, not confirmed"', () => {
+    for (const ch of ['push', 'web'] as const) {
+      const out = run('SENT', 'CHANNEL_CANNOT_REPORT', ch);
+      expect(out.ok && out.snapshot.state).toBe('UNKNOWN');
+      expect(out.ok && out.record.effects).toEqual([]); // not a failure, so no automatic fallback
+    }
   });
   it('a channel that stops at SENT lets its TTL lapse to UNKNOWN, not EXPIRED', () => {
     for (const ch of ['voice', 'device_direct_sms', 'email'] as const) {
@@ -164,16 +168,26 @@ describe('deliberate rejections — the ledger is evidence', () => {
   it('ACKNOWLEDGED → DELIVERED: acknowledgement supersedes delivery', () => {
     expect(run('ACKNOWLEDGED', 'RECEIPT_DELIVERED', 'push', 'contact', 'device')).toMatchObject({ rejection: 'ILLEGAL_TRANSITION' });
   });
+  it('UNKNOWN still accepts a late acknowledgement where a person can acknowledge — and only that', () => {
+    expect(run('UNKNOWN', 'ACK', 'push', 'contact').ok).toBe(true);
+    expect(run('UNKNOWN', 'ACK', 'web', 'contact').ok).toBe(true);
+    expect(run('UNKNOWN', 'ACK', 'sms', 'contact')).toMatchObject({ rejection: 'GUARD_FAILED' });
+    expect(run('UNKNOWN', 'ACK', 'push', 'system')).toMatchObject({ rejection: 'ACTOR_NOT_PERMITTED' });
+    for (const e of ATTEMPT_EVENTS) if (e !== 'ACK') expect(run('UNKNOWN', e, 'push', 'contact', 'device').ok).toBe(false);
+  });
   it.each(['FAILED', 'EXPIRED', 'UNKNOWN', 'ACKNOWLEDGED'] as const)('%s allows nothing further', (terminal) => {
     for (const e of ATTEMPT_EVENTS) for (const ch of CHANNELS) for (const by of ['system', 'contact', 'policy', 'user'] as const) {
+      // The one exception, tested above: a person acknowledging after the ledger gave up waiting.
+      if (terminal === 'UNKNOWN' && e === 'ACK' && by === 'contact' && CHANNEL_CAPABILITIES[ch].humanAck) continue;
       expect(run(terminal, e, ch, by, CHANNEL_CAPABILITIES[ch].deliveredEvidence === 'none' ? undefined : CHANNEL_CAPABILITIES[ch].deliveredEvidence).ok).toBe(false);
     }
   });
 });
 
 describe('terminality', () => {
-  it('FAILED, EXPIRED, UNKNOWN and ACKNOWLEDGED are always terminal', () => {
-    for (const s of ['FAILED', 'EXPIRED', 'UNKNOWN', 'ACKNOWLEDGED'] as const) {
+  it('FAILED, EXPIRED and ACKNOWLEDGED are always terminal; UNKNOWN is where nobody can acknowledge', () => {
+    for (const c of CHANNELS) expect(isAttemptTerminal('UNKNOWN', CHANNEL_CAPABILITIES[c])).toBe(!CHANNEL_CAPABILITIES[c].humanAck);
+    for (const s of ['FAILED', 'EXPIRED', 'ACKNOWLEDGED'] as const) {
       for (const c of CHANNELS) expect(isAttemptTerminal(s, CHANNEL_CAPABILITIES[c])).toBe(true);
     }
   });
