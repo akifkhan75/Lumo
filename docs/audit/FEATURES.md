@@ -260,7 +260,7 @@ anything runs (`GET /escalation-policy`) and editable (`PUT`), is frozen onto ea
 queue jobs that survive a restart.
 
 **What it does not do:** no screen for the plan in the app (KI-95); never run with real providers; a manual SOS reaches the
-second contact only after the first step gives way (KI-93); per-template defaults wait for sessions (1.10); channels within a
+third contact onward only after the step before gives way (the first two are alerted together, KI-93 decided); per-template defaults wait for sessions (1.10); channels within a
 step go in parallel, not as a fallback chain (2.4). Spec: `docs/specs/ESCALATION_POLICY.md` ("As executed"); gaps KI-93 – KI-96.
 
 ### Device location

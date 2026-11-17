@@ -900,7 +900,9 @@ stub only.
 
 ## Found while building milestone 1.8a — 2026-11-18
 
-### 🔴 KI-83 — With the defaults, an SOS reaches nobody
+### 🟠 KI-83 — With SMS off, an SOS reaches nobody (default changed to ON for new accounts)
+
+_Decided (recommended option): `sendSmsOnSos` now defaults to **on** for new accounts._ **Accounts created before this keep their stored value, and most have `false`**, because the old default was false and nothing distinguishes "never touched" from "chose off". They are not switched on silently. A one-time prompt in the app ("Turn on text alerts?") is not built. Original text:
 
 `sendSmsOnSos` defaults to **off**, and push needs a contact who claimed their invite from a signed-in account (KI-78: the
 app cannot do that yet). So a typical user's SOS ends `ALL_CHANNELS_FAILED`, honestly, and the app must then put the dialler
@@ -963,7 +965,9 @@ Punjab number is shown as "might work" until the subdivision is confirmed.
 
 ## Found while building milestone 1.9 — 2026-11-19
 
-### 🔴 KI-93 — A manual SOS now reaches contacts one at a time
+### 🟠 KI-93 — A manual SOS reaches contacts in steps (decided: the first two together)
+
+_Decided (recommended option): the derived plan alerts the **first two contacts together**, then the rest one at a time._ A stored plan can say anything; the app still has no screen to set one (KI-95). A journey's missed check-in still tries one contact first, on purpose. Original text:
 
 By the spec's own design the ladder runs contact → contact with a timeout (120 s), so the **second contact is not alerted for up to
 two minutes** unless the first step's attempts all fail. Before 1.9 every contact was alerted at once. A person pressing SOS may
@@ -1017,7 +1021,9 @@ milestone 1.16), are the fix.
 RES-14's six-step algorithm needs an expected route, and a journey has only a destination. `DEVIATION_DETECTED` is in the state
 machine and is never raised. A person who is taken somewhere else is caught only by missing their arrival time.
 
-### 🟠 KI-102 — Contacts are not told a journey started
+### 🟡 KI-102 — Contacts are not told a journey started (decided: not automatically; the person may send them a link, 1.11)
+
+_Decided (recommended option): Lumo does not message contacts when a journey starts._ In 1.11 the person can **choose** to send a contact the journey link (their own message, through the share sheet, like an invitation), which is the same act with the person in control, no cost to Lumo and nothing a contact did not agree to. Original text:
 
 The machine declares `notifyContactsSessionStarted`; it is not carried out. Nothing yet delivers a live link (1.11) and a message per
 journey costs money and goes beyond what a contact agreed to. The consequence: a contact first hears of a journey when it goes wrong.

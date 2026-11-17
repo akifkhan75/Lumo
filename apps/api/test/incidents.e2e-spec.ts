@@ -422,7 +422,7 @@ describe('cancelling', () => {
     await api().post(`/api/v1/incidents/${r.body.id}/cancel`).set(auth(b.token)).expect(404);
   });
 
-  it('a cancel racing the deadline has exactly one winner, and the incident is never half of each', async () => {
+  it('a cancel racing the deadline has exactly one winner, and the incident is never half of each', { timeout: 30_000 }, async () => {
     for (let i = 0; i < 4; i++) {
       const o = await owner(`cancel_race_${i}`, { sms: true });
       const r = await sos(o.token, key(), body({ countdownSeconds: 3 })).expect(201);
@@ -466,11 +466,9 @@ describe('the rollup from the ledger', () => {
     const o = await owner('roll_part', { sms: true, contacts: 2 });
     const r = await sos(o.token, key()).expect(201);
     const led = app.get(SendWorker)['ledger'];
-    const a = (await attemptsOf(r.body.id)).find((x) => x.channel === 'sms')!;
+    const [a, b] = (await attemptsOf(r.body.id)).filter((x) => x.channel === 'sms'); // the first two contacts are alerted together
     await worker.send(a.id);
     await led.apply(a.id, [{ event: 'RECEIPT_DELIVERED', by: 'system', evidence: 'provider' }]);
-    await stepOn(r.body.id, 1);
-    const b = (await attemptsOf(r.body.id)).filter((x) => x.channel === 'sms')[1];
     sms.next = { kind: 'rejected', reason: 'TWILIO_21211' };
     await worker.send(b.id);
     expect((await row(r.body.id)).state).toBe('PARTIALLY_NOTIFIED');

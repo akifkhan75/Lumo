@@ -33,6 +33,8 @@ export type Tx = Prisma.TransactionClient;
 type StoredPolicy = Prisma.EscalationPolicyGetPayload<object>;
 
 const FAILED_STATES = new Set(['FAILED', 'EXPIRED']);
+/** How many of the person's first contacts a derived (no stored plan) SOS alerts at once. */
+export const FIRST_STEP_TOGETHER = 2;
 
 export function policyFromRow(row: StoredPolicy): EscalationPolicy {
   return {
@@ -95,11 +97,15 @@ export class EscalationService {
     }
     const list = await this.contacts.list(tx, userId);
     const channels: Channel[] = user.sendSmsOnSos ? ['push', 'sms'] : ['push'];
+    // The FIRST step alerts your first two contacts together (KI-93): someone pressing SOS should not wait two minutes for the second
+    // person. The rest follow one at a time, each after the step before it gives way. A journey's missed check-in is deliberately NOT
+    // like this: it is not an emergency in progress, and its template tries one contact first.
+    const groups = list.length >= 2 ? [list.slice(0, FIRST_STEP_TOGETHER), ...list.slice(FIRST_STEP_TOGETHER).map(c => [c])] : list.map(c => [c]);
     return {
       stored: false,
       policy: {
         id: 'derived', name: 'Your contacts, in order', graceSeconds: DEFAULT_GRACE_SECONDS,
-        steps: list.map((c, i) => ({ order: i + 1, recipients: [{ kind: 'contact' as const, id: c.id }], channels, timeoutSeconds: DEFAULT_STEP_TIMEOUT_SECONDS, requireAck: true })),
+        steps: groups.map((g, i) => ({ order: i + 1, recipients: g.map(c => ({ kind: 'contact' as const, id: c.id })), channels, timeoutSeconds: DEFAULT_STEP_TIMEOUT_SECONDS, requireAck: true })),
         maxRecipientsPerIncident: DEFAULT_MAX_RECIPIENTS, stopOnAcknowledgement: true, resumeOnUnacknowledge: true,
         promptEmergencyNumberOnFailure: true, deviationGraceSeconds: DEFAULT_DEVIATION_GRACE_SECONDS,
       },

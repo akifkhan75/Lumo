@@ -147,13 +147,13 @@ attempt). Each decision-to-action choice below was made where this document was 
 
 - **The incident's policy is a SNAPSHOT** taken when it starts, stored with the ladder's state on the incident. Editing the
   policy mid-incident changes nothing about a running one (tested).
-- **No stored policy → one is derived**: every contact in priority order, **one per step**, 120 s each, over push, plus SMS
-  only if the person opted in (`sendSmsOnSos`, default off). The person's own settings always bound a stored policy's channels
-  too: a policy cannot turn SMS on for someone who turned it off.
-- **A manual SOS is therefore sequential by default**, not "everyone at once". That is what this spec defines (contact → contact
-  with a timeout), and it is the thing a person may not expect: **the second contact is not alerted until the first step gives way**
-  (timeout, or every attempt of the step failing). Whether a manual SOS should alert the first N contacts together is a product
-  decision (KI-93); a stored policy can already put several recipients in one step.
+- **No stored policy → one is derived**: every contact in priority order, 120 s per step, over push, plus SMS only if the person
+  has SMS on (`sendSmsOnSos`, **default on for new accounts**, KI-83). **The first step alerts the first TWO contacts together
+  (KI-93, decided)**: someone pressing SOS should not wait two minutes for the second person. The rest follow one at a time, each
+  after the step before it gives way (its timeout, or every attempt in it failing). The person's own settings always bound a
+  stored policy's channels too: a policy cannot turn SMS on for someone who turned it off.
+- **A journey's missed check-in is deliberately NOT like this.** It is not an emergency in progress, and its template tries one
+  contact first (Walk Home: contact 1 → contact 2), because a late bus is not a reason to alert two people at once.
 - **Timers are queue jobs** (`incident.step`), enqueued in the same transaction that advances the ladder, so a restart or deploy
   loses none. A stale, early or repeated timer changes nothing.
 - **Acknowledgement halts the ladder; resolve stops it for good** (without recording an acknowledgement). **Un-acknowledge resumes

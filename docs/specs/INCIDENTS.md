@@ -58,10 +58,12 @@ subdivision, accuracy, age of the fix) and the account country. A country with n
 
 ### Honouring the user's settings
 
-`sendSmsOnSos` (default **off**) decides whether SMS is a channel; `shareLocationOnSos` decides whether a position is
-put in any message. Push goes to contacts who have claimed their invite. **With the defaults, nobody is texted** — a user
-who has not opted in to SMS and has no contact with the app gets `ALL_CHANNELS_FAILED` and the dialler. That is the
-configured behaviour, shown plainly; whether the default should be on is a product decision (KI-83).
+`sendSmsOnSos` decides whether SMS is a channel; `shareLocationOnSos` decides whether a position is put in any message. Push goes
+to contacts who have claimed their invite. **`sendSmsOnSos` is ON by default for new accounts (KI-83, decided)**: an SOS that
+reaches nobody by default is not an SOS. SMS goes only to contacts who **agreed**, is bounded by the daily cap, and the person
+can turn it off in Settings → Setup Alert. **Accounts created before this keep the value they have**, which for most is off
+(the column's old default): they are not silently switched on, and are not texted until they choose to be. Someone who has SMS
+off, and has no contact who has claimed their invite, still gets `ALL_CHANNELS_FAILED` and the dialler, shown plainly.
 
 ### What a message says about location
 
@@ -129,7 +131,7 @@ No coordinate is ever logged.
 - Without 1.9, one plan only: no retry ladder, no next contact on silence.
 - `duress` is refused (above). `practice` is a rehearsal and sends nothing.
 - UTC clock times in SMS (no timezone known for the contact).
-- `sendSmsOnSos` defaults off (KI-83).
+- `sendSmsOnSos` is on for new accounts only; existing ones keep theirs (KI-83).
 
 ## Required tests
 

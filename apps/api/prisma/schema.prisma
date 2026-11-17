@@ -18,7 +18,9 @@ model User {
 
   locationSharingEnabled   Boolean @default(true)
   shareLocationOnSos       Boolean @default(true)
-  sendSmsOnSos             Boolean @default(false)
+  // Default ON for new accounts (KI-83): an SOS that reaches nobody by default is not an SOS. SMS goes only to contacts who
+  // AGREED, is bounded by the daily cap, and the person can turn it off. Existing accounts keep what they have.
+  sendSmsOnSos             Boolean @default(true)
   shakeToSosEnabled        Boolean @default(true)
   voiceActivationEnabled   Boolean @default(false)
   accidentDetectionEnabled Boolean @default(false)
