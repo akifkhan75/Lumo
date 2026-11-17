@@ -107,7 +107,7 @@ so a client echoing the whole object back (including every installed build) is n
   using the same link, so consent is **not verified identity**. It is the contact's agreement as far
   as a shared link can show it (KI-62).
 - **The consent page is a stopgap** for the web app of milestone 1.11, which replaces it.
-- **Circles** are not in this milestone: they have no requirement ID, and nothing consumes them
+- **Circles** are not in this milestone, and are no longer in Phase 1 (moved to Phase 5 with the Family plan, KI-66): they have no requirement ID, and nothing consumes them
   until the escalation engine (1.9).
 
 ## Required tests

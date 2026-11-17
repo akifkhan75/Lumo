@@ -65,7 +65,7 @@
 | Evidence Integrity Report  | PRO-3 | 2   | P    | ❌                       |
 | Evidence authorisation     | PRO-4 | 2   | F    | ❌                       |
 | Retention + deletion       | PRO-5 | 2   | F    | ❌                       |
-| Emergency profile          | PRO-6 | 1   | F    | 🟨 stored, shown as text |
+| Emergency profile          | PRO-6 | 1   | F    | 🟨 two encrypted fields, shown to the owner only; sharing is DESIGNED, not built (`specs/EMERGENCY_PROFILE.md`, KI-141) |
 | Sharing transparency       | PRO-7 | 1   | F    | 🟨 journey links only (1.11c): live links, opens, revoke, always-visible indicator; nothing else is shared yet |
 | Consent re-confirmation    | PRO-8 | 2   | F    | ❌                       |
 | Incident timeline          | PRO-9 | 1   | F    | 🟨 API only (1.15a): list + CSV/JSON timeline, audited; no app screen (KI-136) |

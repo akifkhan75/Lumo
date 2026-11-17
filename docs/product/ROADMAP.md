@@ -25,7 +25,7 @@ lacks. CI green with a **real** typecheck.
 `RES-1…RES-4` `RES-6…RES-14` `RES-16…RES-18` · `PRO-6/7/9`
 
 `packages/safety-domain` extracted **first**, 100% branch-covered, before any feature
-uses it · contacts **with consent** · circles with scoped, expiring membership ·
+uses it · contacts **with consent** ·
 manual SOS + countdown + emergency token · Journey Guardian · Safety Check templates
 with **server-side timers** · real location with accuracy and staleness handling ·
 **Delivery Ledger** · escalation engine · `apps/web`: the tokenised journey page only
@@ -78,8 +78,10 @@ assisted journeys.
 
 ## Phase 5 — Monetisation and growth
 
-`PLAT-10` — billing and entitlements · Free/Plus/Family/Business · referral and the
-install-free-link loop · trust and transparency page.
+`PLAT-10` — billing and entitlements · Free/Plus/Family/Business · **safety circles** (scoped,
+expiring membership, shared with a Family plan; moved here from Phase 1, KI-66; it gets its
+requirement ID when it is built) · referral and the install-free-link loop · trust and
+transparency page.
 
 **Exit:** paying subscribers; free-tier unit economics positive with the spend cap enforced.
 
