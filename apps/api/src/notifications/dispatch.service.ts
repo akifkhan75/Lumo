@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { resolveRecipients, type SkipReason } from '../trusted-contacts/recipients';
 import { TrustedContactsService } from '../trusted-contacts/trusted-contacts.service';
 import { LedgerService, type Tx } from './ledger.service';
+import { assertReal } from './practice-boundary';
 import { NotificationQueue } from './queue';
 
 /**
@@ -112,8 +113,9 @@ export class DispatchService {
     input: { incidentId: string; userId: string; recipientId: string; channels: readonly Channel[]; stepOrder: number; skipReason?: string; now?: Date },
   ): Promise<PlannedAttempt[]> {
     const now = input.now ?? new Date();
-    const incident = await tx.emergencyIncident.findUniqueOrThrow({ where: { id: input.incidentId }, select: { userId: true, regionProfileId: true } });
+    const incident = await tx.emergencyIncident.findUniqueOrThrow({ where: { id: input.incidentId }, select: { userId: true, regionProfileId: true, mode: true } });
     if (incident.userId !== input.userId) throw new Error('The incident does not belong to this user.');
+    assertReal(input.incidentId, incident.mode); // a rehearsal plans nothing: practice has its own simulated ledger
 
     // Region of the INCIDENT (where the device was), not of the account.
     const profile = this.regions.profileFor(incident.regionProfileId);
@@ -178,6 +180,8 @@ export class DispatchService {
    * its own harm — and it never counts in the incident's rollup (purpose RESOLVED).
    */
   async planResolutionIn(tx: Tx, incidentId: string, now: Date = new Date()): Promise<PlannedAttempt[]> {
+    const mode = (await tx.emergencyIncident.findUniqueOrThrow({ where: { id: incidentId }, select: { mode: true } })).mode;
+    assertReal(incidentId, mode);
     const went = await tx.notificationAttempt.findMany({
       where: { incidentId, purpose: 'ALERT', state: { in: ['SENT', 'DELIVERED', 'ACKNOWLEDGED', 'UNKNOWN'] } },
       orderBy: { queuedAt: 'asc' },

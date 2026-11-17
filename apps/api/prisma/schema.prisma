@@ -428,6 +428,8 @@ model EmergencyIncident {
   createdAt         DateTime       @default(now())
 
   attempts  NotificationAttempt[]
+  // Practice Mode only (docs/specs/PRACTICE_MODE.md): the SIMULATED ledger. A practice incident has no NotificationAttempt: a trigger forbids it.
+  practiceAttempts PracticeAttempt[]
   events    IncidentEvent[]
   locations LocationSnapshot[]
   // evidence EvidenceAsset[] — arrives with the model, in Phase 2.
@@ -610,4 +612,23 @@ model EmergencyCredential {
   revokedAt DateTime?
 
   @@index([userId, deviceKey])
+}
+
+// A SIMULATED delivery-ledger row for a practice incident (docs/specs/PRACTICE_MODE.md). Deliberately NOT a NotificationAttempt: nothing here is
+// ever queued, claimed, sent, costed or counted against the spend cap, and no worker reads this table. The database refuses a
+// NotificationAttempt for a practice incident (trigger), so the two cannot be confused.
+model PracticeAttempt {
+  id          String            @id @default(uuid())
+  incidentId  String
+  incident    EmergencyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  recipientId String
+  channel     Channel
+  state       AttemptState
+  reason      String?
+  queuedAt    DateTime
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  failedAt    DateTime?
+
+  @@index([incidentId])
 }

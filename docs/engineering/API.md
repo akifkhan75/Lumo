@@ -357,3 +357,9 @@ after still reads "This journey has ended" and then it stops working. A link alr
 
 The app reaches the three owner endpoints through `ApiClient.createJourneyLink / listJourneyLinks / revokeJourneyLink`. It builds the shared URL
 from `EXPO_PUBLIC_WEB_URL` + the returned `path`.
+
+## Practice (1.12a)
+
+`POST /api/v1/sos` accepts `mode: "practice"`. The incident it returns has `mode: "practice"` and every attempt has `simulated: true`; nothing
+is sent, queued or costed, and the ledger is the simulated one (`SIMULATED_FAILURE` marks the example failure). `duress: true` is still refused.
+Every incident view now carries `mode` and each attempt `simulated` (false for a real one).

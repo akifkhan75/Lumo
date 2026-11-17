@@ -20,6 +20,7 @@ import { NotificationQueue } from '../notifications/queue';
 import { LocationService, validateSnapshots } from '../location/location.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { REGION_REGISTRY } from '../regions/regions.module';
+import { PracticeService } from './practice.service';
 
 /**
  * Incidents (docs/specs/INCIDENTS.md). `apply` is the ONLY code that changes an incident's state: it
@@ -57,6 +58,8 @@ export interface SosInput {
   readonly place?: { country: string; subdivision?: string | null } | null;
   /** The journey this SOS belongs to, if any. Honoured only if it is the caller's own, live journey. */
   readonly sessionId?: string | null;
+  /** `practice` rehearses the whole path and contacts nobody (docs/specs/PRACTICE_MODE.md). Default `real`. */
+  readonly mode?: 'real' | 'practice';
 }
 
 /** What a journey needs to hear about its incidents. Registered by the session service. */
@@ -70,6 +73,8 @@ export interface SessionHooks {
 export interface IncidentView {
   readonly id: string;
   readonly state: IncidentState;
+  /** `practice`: a rehearsal. Nothing was sent, and every attempt below is simulated. */
+  readonly mode: 'real' | 'practice';
   readonly triggerType: string;
   readonly countdownEndsAt: Date | null;
   readonly locationAvailable: boolean;
@@ -86,6 +91,8 @@ export interface IncidentView {
   readonly attempts: readonly {
     id: string; recipientId: string; recipientName?: string; channel: string; purpose: string; state: string; reason: string | null;
     queuedAt: Date; sentAt: Date | null; deliveredAt: Date | null; acknowledgedAt: Date | null; failedAt: Date | null;
+    /** True for every row of a practice run. */
+    simulated: boolean;
   }[];
 }
 
@@ -109,6 +116,7 @@ export class IncidentService implements OnModuleInit {
     private readonly ledger: LedgerService,
     private readonly queue: NotificationQueue,
     private readonly locations: LocationService,
+    private readonly practice: PracticeService,
     @Inject(REGION_REGISTRY) private readonly regions: RegionRegistry,
   ) {}
 
@@ -180,17 +188,19 @@ export class IncidentService implements OnModuleInit {
   /** Create (or replay) an incident. A replay by the same user returns the existing one and never re-plans. */
   async raise(caller: Caller, key: string, input: SosInput, now: Date = new Date()): Promise<{ replay: boolean; incident: IncidentView }> {
     // Dispatch needs the queue. Refuse LOUDLY rather than record an alert that can never be sent.
-    if (!this.queue.running) throw new ServiceUnavailableException('Alerts cannot be sent right now. Call your local emergency number.');
+    const practice = input.mode === 'practice';
+    const seconds = clampCountdown(input.triggerType, input.countdownSeconds);
+    // A rehearsal sends nothing, so it needs the queue only for a countdown. A real alert needs it always.
+    if (!this.queue.running && (!practice || seconds > 0)) throw new ServiceUnavailableException(practice ? 'Practice cannot run right now.' : 'Alerts cannot be sent right now. Call your local emergency number.');
 
     const existing = await this.prisma.emergencyIncident.findUnique({ where: { idempotencyKey: key }, select: { id: true, userId: true } });
     if (existing) return this.replay(caller, existing);
 
     const user = await this.prisma.user.findUnique({ where: { id: caller.id }, select: { regionProfileId: true } });
     // A journey link is honoured only for the caller's own live journey; anything else is ignored, never an error: an SOS must not fail over it.
-    const linked = input.sessionId
+    const linked = input.sessionId && !practice
       ? await this.prisma.safetySession.findFirst({ where: { id: input.sessionId, userId: caller.id, state: { notIn: ['CLOSED', 'CANCELLED', 'EXPIRED'] } }, select: { id: true } })
       : null;
-    const seconds = clampCountdown(input.triggerType, input.countdownSeconds);
     const countdownEndsAt = seconds > 0 ? new Date(now.getTime() + seconds * 1000) : null;
 
     let incidentId: string;
@@ -199,7 +209,7 @@ export class IncidentService implements OnModuleInit {
         const created = await tx.emergencyIncident.create({
           data: {
             userId: caller.id, idempotencyKey: key, triggerType: input.triggerType, triggeredAt: input.triggeredAt,
-            countdownEndsAt, regionProfileId: this.regionFor(input, user?.regionProfileId ?? null, now), mode: 'real', isDuress: false,
+            countdownEndsAt, regionProfileId: this.regionFor(input, user?.regionProfileId ?? null, now), mode: practice ? 'practice' : 'real', isDuress: false,
             ...(linked ? { sessionId: linked.id } : {}),
           },
         });
@@ -217,7 +227,11 @@ export class IncidentService implements OnModuleInit {
     }
 
     // A fix is attached if it is a usable one. A bad fix NEVER blocks an SOS: it is dropped, and the message says so.
-    if (input.location && validateSnapshots([{ ...input.location, source: 'gps' }], now.getTime()).length === 0) {
+    const usableFix = input.location && validateSnapshots([{ ...input.location, source: 'gps' }], now.getTime()).length === 0;
+    if (usableFix && practice) {
+      // A rehearsal exercises "a position was available" without keeping where the person was.
+      await this.prisma.emergencyIncident.update({ where: { id: incidentId }, data: { locationAvailable: true } });
+    } else if (input.location && usableFix) {
       try {
         await this.locations.recordForIncident(caller.id, incidentId, [{ ...input.location, source: 'gps' }], now.getTime());
         await this.prisma.emergencyIncident.update({ where: { id: incidentId }, data: { locationAvailable: true } });
@@ -289,6 +303,7 @@ export class IncidentService implements OnModuleInit {
     await this.prisma.$transaction(async tx => {
       const inc = await tx.emergencyIncident.findUnique({ where: { id: incidentId } });
       if (!inc || inc.state !== 'CREATED') return;
+      const practice = inc.mode === 'practice';
 
       const manualNow = inc.countdownEndsAt === null;
       // A missed check-in is the SYSTEM's doing (the person's grace has run out): the timeline must not say the user pressed anything.
@@ -304,6 +319,17 @@ export class IncidentService implements OnModuleInit {
       // The ladder decides who, in what order, over which channels (the user's own settings bound the channels: SMS is
       // opt-in, default off; push goes to contacts who claimed their invite). A contact who may not be alerted at all is
       // ledgered with the reason and does not count as a recipient.
+      // A rehearsal resolves who it WOULD try and writes a simulated ledger. It never reaches the ladder, the planner or the queue.
+      if (practice) {
+        const sim = await this.practice.run(tx, incidentId, inc.userId, now);
+        if (sim.dispatched > 0) {
+          await this.apply(incidentId, 'RECIPIENTS_RESOLVED', 'system', null, { consentedRecipients: sim.dispatched }, now, tx);
+          await this.apply(incidentId, 'ALL_SETTLED', 'system', null, { pending: 0, reached: sim.reached, failed: sim.failed, moreStepsRemain: false }, now, tx);
+        } else {
+          await this.apply(incidentId, 'NO_RECIPIENTS', 'system', 'NO_CONSENTED_CONTACT', { consentedRecipients: 0 }, now, tx);
+        }
+        return;
+      }
       const { dispatched } = await this.escalation.start(tx, incidentId, now);
       if (dispatched > 0) {
         await this.apply(incidentId, 'RECIPIENTS_RESOLVED', 'system', null, { consentedRecipients: dispatched }, now, tx);
@@ -364,7 +390,8 @@ export class IncidentService implements OnModuleInit {
       const out = await this.apply(id, 'RESOLVE', 'user', 'USER_RESOLVED', {}, now, tx);
       if (!out.applied) throw new ConflictException('This incident cannot be resolved from where it is.');
       // Contacts whose alert went are told it ended. The incident then closes; those messages are ledgered under RESOLVED.
-      await this.dispatchSvc.planResolutionIn(tx, id, now);
+      // A rehearsal tells nobody it ended: nobody was told it began.
+      if (inc.mode === 'real') await this.dispatchSvc.planResolutionIn(tx, id, now);
       await this.apply(id, 'CLOSE', 'system', 'RESOLUTION_QUEUED', {}, now, tx);
     });
     if (inc.sessionId) await this.sessionHooks?.incidentResolved(inc.sessionId, now).catch(() => undefined);
@@ -375,8 +402,8 @@ export class IncidentService implements OnModuleInit {
 
   /** The contact record for `userId` among the incident's owner's contacts, if they are a live, consenting, linked contact. */
   private async linkedContact(userId: string, incidentId: string) {
-    const inc = await this.prisma.emergencyIncident.findUnique({ where: { id: incidentId }, select: { userId: true, state: true } });
-    if (!inc) return null;
+    const inc = await this.prisma.emergencyIncident.findUnique({ where: { id: incidentId }, select: { userId: true, state: true, mode: true } });
+    if (!inc || inc.mode !== 'real') return null; // a contact has no part in a rehearsal, and cannot even see that one exists
     const contact = await this.prisma.trustedContact.findFirst({
       where: { userId: inc.userId, linkedUserId: userId, removedAt: null, consent: { is: { revokedAt: null } } },
       select: { id: true },
@@ -405,7 +432,13 @@ export class IncidentService implements OnModuleInit {
 
   async view(caller: Caller, id: string): Promise<IncidentView> {
     const inc = await this.owned(caller, id);
-    const attempts = await this.prisma.notificationAttempt.findMany({ where: { incidentId: id }, orderBy: { queuedAt: 'asc' } });
+    // A rehearsal's ledger is its own table, and every row says it is simulated. A real incident's is the delivery ledger.
+    const attempts = inc.mode === 'practice'
+      ? (await this.prisma.practiceAttempt.findMany({ where: { incidentId: id }, orderBy: [{ queuedAt: 'asc' }, { id: 'asc' }] })).map(a => ({
+          id: a.id, recipientId: a.recipientId, channel: a.channel, purpose: 'ALERT', state: a.state, stateReason: a.reason,
+          queuedAt: a.queuedAt, sentAt: a.sentAt, deliveredAt: a.deliveredAt, acknowledgedAt: null as Date | null, failedAt: a.failedAt, simulated: true,
+        }))
+      : (await this.prisma.notificationAttempt.findMany({ where: { incidentId: id }, orderBy: { queuedAt: 'asc' } })).map(a => ({ ...a, simulated: false }));
     const roll = rollupIncident(attempts.filter(a => a.purpose === 'ALERT').map(a => ({ recipientId: a.recipientId, channel: a.channel, state: a.state })));
 
     // Names only for a login. An emergency token reads ids and states, nothing else.
@@ -415,7 +448,7 @@ export class IncidentService implements OnModuleInit {
       for (const c of contacts) names.set(c.id, c.name);
     }
     return {
-      id: inc.id, state: inc.state, triggerType: inc.triggerType, countdownEndsAt: inc.countdownEndsAt, locationAvailable: inc.locationAvailable,
+      id: inc.id, state: inc.state, mode: inc.mode, triggerType: inc.triggerType, countdownEndsAt: inc.countdownEndsAt, locationAvailable: inc.locationAvailable,
       outcome: INCIDENT_TERMINAL.includes(inc.state) ? inc.state : roll.outcome,
       escalation: EscalationService.view(inc.ladder, inc.policySnapshot),
       reached: roll.reached, acknowledged: roll.acknowledged, failed: roll.failed, pending: roll.pending,
@@ -423,7 +456,7 @@ export class IncidentService implements OnModuleInit {
       attempts: attempts.map(a => ({
         id: a.id, recipientId: a.recipientId, ...(names.has(a.recipientId) ? { recipientName: names.get(a.recipientId) } : {}),
         channel: a.channel, purpose: a.purpose, state: a.state, reason: a.stateReason,
-        queuedAt: a.queuedAt, sentAt: a.sentAt, deliveredAt: a.deliveredAt, acknowledgedAt: a.acknowledgedAt, failedAt: a.failedAt,
+        queuedAt: a.queuedAt, sentAt: a.sentAt, deliveredAt: a.deliveredAt, acknowledgedAt: a.acknowledgedAt, failedAt: a.failedAt, simulated: a.simulated,
       })),
     };
   }
