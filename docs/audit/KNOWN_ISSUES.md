@@ -1045,3 +1045,31 @@ in a way they would notice. Louder, repeated local reminders need a scheduled no
 A journey with the phone in a pocket and the screen off, which is the usual walk home, saves no positions: foreground only, by decision
 (docs/specs/LOCATION.md). The position an alert carries is therefore the last one saved while Lumo was open, with its age. Background
 location is its own permission, review and promise (milestone 1.16 / a decision).
+
+## Found while building milestone 1.11 — 2026-11-17
+
+### 🟠 KI-108 — The journey page has no regional emergency guidance
+
+`docs/engineering/WEB.md` calls for emergency guidance for the contact's region. The page says only to "contact your local emergency number",
+because the link holder's region is unknown (it is not the sender's) and a wrong number is worse than none. A region choice on the page, fed
+from `@lumo/region-profiles`, is the fix.
+
+### 🟠 KI-109 — A person cannot yet mint or revoke a link from the app
+
+The API mints, lists and revokes links (`/api/v1/safety-sessions/:id/links`) and the page renders them, but the Journey screen has no
+control, and so no sharing indicator. Per invariant 4 a share must not exist without its indicator, so the control and the indicator ship
+together, and until they do nobody can actually receive a link. KI-57 stays open for this reason.
+
+### 🟡 KI-110 — The page is rendered on request, so it does not poll
+
+A contact reloads to see a newer position; nothing refreshes it. The age shown is measured against the server's clock at the moment of the
+request, so a page left open grows stale and says nothing. Auto-refresh with a visible "updated N ago" is the fix.
+
+### 🟡 KI-111 — `PublicJourney` is declared twice
+
+`apps/web/lib/api.ts` mirrors the API's type. The API's test pins the exact keys but nothing checks the copy. Move it to `@lumo/types`.
+
+### 🟡 KI-112 — The web app is unverified end to end
+
+Unit-tested (age wording) and smoke-tested (headers, unreachable API) only. Not yet run against a live API: the e2e suite needs Postgres.
+No browser test of the PIN or "I'm responding" paths, no accessibility audit, not in CI's deploy path, and no hosting decision.
