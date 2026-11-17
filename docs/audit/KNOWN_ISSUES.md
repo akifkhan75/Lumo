@@ -1046,6 +1046,51 @@ A journey with the phone in a pocket and the screen off, which is the usual walk
 (docs/specs/LOCATION.md). The position an alert carries is therefore the last one saved while Lumo was open, with its age. Background
 location is its own permission, review and promise (milestone 1.16 / a decision).
 
+## Found while building milestone 1.11 — 2026-11-17
+
+### 🟠 KI-108 — The journey page has no regional emergency guidance
+
+`docs/engineering/WEB.md` calls for emergency guidance for the contact's region. The page says only to "contact your local emergency number",
+because the link holder's region is unknown (it is not the sender's) and a wrong number is worse than none. A region choice on the page, fed
+from `@lumo/region-profiles`, is the fix.
+
+### ✅ KI-109 — A person could not mint or revoke a link from the app (built)
+
+_Update: built in 1.11b._ The Journey screen now has **Share a link** (optional PIN; the full URL goes to the system share sheet, never the PIN)
+and, for as long as any link works, an indicator listing each link's opens and expiry with **Stop sharing** and per-link **Turn off**. The same
+indicator is a strip on the dashboard. It reflects the SERVER's list of live links, re-read every 10–15 s, not what the screen remembers.
+Remaining gaps are KI-113 – KI-115.
+
+### 🟡 KI-110 — The page is rendered on request, so it does not poll
+
+A contact reloads to see a newer position; nothing refreshes it. The age shown is measured against the server's clock at the moment of the
+request, so a page left open grows stale and says nothing. Auto-refresh with a visible "updated N ago" is the fix.
+
+### 🟡 KI-111 — `PublicJourney` is declared twice
+
+`apps/web/lib/api.ts` mirrors the API's type. The API's test pins the exact keys but nothing checks the copy. Move it to `@lumo/types`.
+
+### 🟡 KI-112 — The web app is unverified end to end
+
+Unit-tested (age wording) and smoke-tested (headers, unreachable API) only. Not yet run against a live API: the e2e suite needs Postgres.
+No browser test of the PIN or "I'm responding" paths, no accessibility audit, not in CI's deploy path, and no hosting decision.
+
+### 🟠 KI-113 — A build with no `EXPO_PUBLIC_WEB_URL` cannot share
+
+The app builds the link from `EXPO_PUBLIC_WEB_URL` (https only; plain http in a dev build). Without it the Share control is replaced by a
+notice saying so, because a link nobody can open is not sharing. There is no hosting decision for `apps/web` yet (KI-112), so no build has a
+real address.
+
+### 🟡 KI-114 — Opens are counted per page load, not per person
+
+The indicator says "Opened 3 times", never by whom: a link does not say who opened it, and a reload counts. It is evidence that someone
+looked, not of how many people did. A forwarded link cannot be told from the original (the reason for the PIN and one-tap revoke).
+
+### 🟡 KI-115 — The share sheet's outcome is unknown
+
+React Native reports whether the sheet closed, not whether anything was sent. The screen therefore says only that a link exists and that Lumo
+sent nothing; the open count is the only evidence it reached anyone. Recipients cannot be named or counted.
+
 ## Found while building milestone 1.12a — 2026-11-17
 
 ### 🟡 KI-116 — A practice run with one attempt shows no failure

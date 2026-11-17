@@ -291,9 +291,12 @@ model JourneyLink {
   expiresAt  DateTime
   revokedAt  DateTime?
   pinHash    String?
+  failedPinAttempts Int @default(0)         // the link is revoked at MAX_PIN_FAILURES (10): a PIN that can be guessed is not one
+  createdAt  DateTime @default(now())
   viewCount  Int @default(0)
   lastViewedAt DateTime?
   @@index([expiresAt])
+  @@index([sessionId])
 }
 
 model Device {
