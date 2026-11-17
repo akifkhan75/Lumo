@@ -42,7 +42,9 @@ would be worse.
 - `POST /incidents/:id/resolve` — contacts are told it ended
 - `POST /incidents/:id/cancel` — countdown window only
 - `GET /incidents/:id` — incident + per-channel ledger
-- `GET /incidents/:id/export` — timeline, ledger, hashes (REC-1)
+- `GET /incidents` — the caller's history, newest first; real only unless `mode=practice` (login only)
+- `GET /incidents/:id/timeline` — every event and attempt in order; `?format=csv|json` downloads it, audited (login only; PRO-9)
+- `GET /incidents/:id/export` — timeline, ledger, **hashes and evidence** (REC-1, Phase 2)
 
 ### Sessions and journeys
 

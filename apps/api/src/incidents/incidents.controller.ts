@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Request, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { Query } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsUUID, IsIn, IsInt, IsISO8601, IsNotEmpty, IsNumber, IsOptional, IsString, Length, Max, Min, ValidateNested } from 'class-validator';
 import type { Response } from 'express';
@@ -7,6 +8,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EmergencyCredentialService } from './emergency-credential.service';
 import { IncidentAuthGuard } from './incident-auth.guard';
 import { IncidentService, SOS_TRIGGERS, type Caller } from './incident.service';
+import { IncidentHistoryService, timelineToCsv, HISTORY_PAGE_MAX } from './incident-history.service';
 
 class LocationDto {
   @IsNumber() @Min(-90) @Max(90) latitude!: number;
@@ -133,5 +135,48 @@ export class EmergencyTokenController {
   @HttpCode(204)
   async revoke(@Request() req: any, @Param('id', new ParseUUIDPipe()) id: string) {
     await this.credentials.revoke(req.user.id, id);
+  }
+}
+
+export class HistoryQueryDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(HISTORY_PAGE_MAX) limit?: number;
+  @IsOptional() @IsString() @Length(1, 200) cursor?: string;
+  @IsOptional() @IsIn(['real', 'practice']) mode?: 'real' | 'practice';
+}
+
+export class ExportQueryDto {
+  @IsOptional() @IsIn(['json', 'csv']) format?: 'json' | 'csv';
+}
+
+/**
+ * The person's own history (docs/specs/INCIDENT_HISTORY.md). LOGIN ONLY: an emergency token can act on the alert it started, but a phone that
+ * holds one must not be able to read the person's past incidents. Real incidents by default; a rehearsal is never mixed in.
+ */
+@Controller('api/v1/incidents')
+@UseGuards(JwtAuthGuard)
+export class IncidentHistoryController {
+  constructor(private readonly history: IncidentHistoryService) {}
+
+  @Get()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  list(@Request() req: any, @Query() q: HistoryQueryDto) {
+    return this.history.list(req.user.id, q);
+  }
+
+  /** Every state change and attempt event, in order. `?format=csv` downloads it. Each export is recorded in the audit log. */
+  @Get(':id/timeline')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async timeline(@Request() req: any, @Param('id', new ParseUUIDPipe()) id: string, @Query() q: ExportQueryDto, @Res({ passthrough: true }) res: Response) {
+    const t = await this.history.timeline(req.user.id, id);
+    if (!q.format) return t;
+    await this.history.recordExport(req.user.id, id, q.format);
+    res.setHeader('Cache-Control', 'no-store');
+    if (q.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="lumo-incident-${id}.csv"`);
+      return timelineToCsv(t);
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="lumo-incident-${id}.json"`);
+    return t;
   }
 }

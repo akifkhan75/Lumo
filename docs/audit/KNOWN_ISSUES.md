@@ -1226,3 +1226,32 @@ Urdu sentence, a phone number) is untested.
 
 `userInterfaceStyle: "light"`. Contrast is checked for the one theme. A dark theme, if added, needs the whole check again, including the emergency
 screen's own slate background.
+
+## Found while building milestone 1.15a — 2026-11-18
+
+### 🟠 KI-136 — History and export are server-only; there is no screen
+
+The routes exist and are tested; the app has no history screen, so a person cannot see their past incidents or share a timeline. That is 1.15b.
+
+### 🟠 KI-137 — No retention for incident rows
+
+Incidents and their events are kept indefinitely: nothing deletes them, and the region profiles define retention for positions, not for the
+record that an alert was raised. PRIVACY_AND_CONSENT.md should say how long a timeline lives and how a person deletes theirs (PRO-5 is Phase 2,
+but the history makes the question real now). Until it is decided the timeline is, in effect, permanent.
+
+### 🟡 KI-138 — The timeline stops at the incident
+
+A journey's positions and check-in history are not in an incident's timeline, and a contact's view of the alert (what they saw, when) is not
+the person's to export. The timeline is what Lumo did, in order, not everything that surrounded it.
+
+### 🟡 KI-139 — An export can be shared by anyone who holds the unlocked phone
+
+Exporting needs a login, not a re-check. A person who hands over an unlocked phone has handed over their emergency history (T1). Requiring a
+fresh confirmation before an export is the likely fix; biometric lock is Phase 6.
+
+### 🟡 KI-140 — The feature catalog's status column is out of date
+
+`docs/product/FEATURE_CATALOG.md` still marks features that now exist as ❌ or ⛔ (the delivery ledger, Journey Guardian, Practice Mode and
+others). 1.15a corrected only the two rows it touched (PRO-9, PRO-7). The rest should be reconciled against the code in one pass, by reading
+each, because the honesty rule is that this file must not say something is missing that is built, any more than the reverse.
+
