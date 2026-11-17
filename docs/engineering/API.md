@@ -354,3 +354,6 @@ Tracked in [ROADMAP.md](../product/ROADMAP.md); listed here so nobody looks for 
 
 When a journey ends (arrived, cancelled, expired or closed), every link of it is capped to expire 30 minutes later, so a contact who opens one just
 after still reads "This journey has ended" and then it stops working. A link already shorter is left alone.
+
+The app reaches the three owner endpoints through `ApiClient.createJourneyLink / listJourneyLinks / revokeJourneyLink`. It builds the shared URL
+from `EXPO_PUBLIC_WEB_URL` + the returned `path`.
