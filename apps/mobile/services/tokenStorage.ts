@@ -84,7 +84,16 @@ export const loadOrCreateDeviceKey = async (): Promise<string> => {
  * If the app is killed mid-countdown, the server still dispatches (it owns the countdown); this lets the
  * next launch show the incident again instead of losing it.
  */
-export interface ActiveSos { key: string; incidentId?: string; startedAt: number; trigger: string; }
+export interface ActiveSos {
+  key: string;
+  incidentId?: string;
+  startedAt: number;
+  trigger: string;
+  /** The last known position at the press (docs/specs/OFFLINE_SOS.md), so a late send still carries where the person was. */
+  fix?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number };
+  /** The person cancelled while Lumo could not be reached. Nothing may be sent for this key; the cancel is what is still being settled. */
+  cancelled?: boolean;
+}
 export const saveActiveSos = (v: ActiveSos) => writeKey(ACTIVE_KEY, JSON.stringify(v));
 export const loadActiveSos = async (): Promise<ActiveSos | null> => {
   const raw = await readKey(ACTIVE_KEY);
@@ -95,6 +104,24 @@ export const loadActiveSos = async (): Promise<ActiveSos | null> => {
   } catch { return null; }
 };
 export const clearActiveSos = () => deleteKey(ACTIVE_KEY);
+
+const CONTACTS_KEY = 'lumo.offline.contacts';
+/**
+ * The contacts who AGREED, kept encrypted on this phone (the platform keychain/keystore) so the pre-filled text can be addressed with no
+ * signal (docs/specs/OFFLINE_SOS.md). Personal data at rest: only agreed contacts, only name and number, refreshed whenever settings load,
+ * and removed on logout.
+ */
+export const saveOfflineContacts = (list: ReadonlyArray<{ id: string; name: string; phone: string }>) =>
+  list.length === 0 ? deleteKey(CONTACTS_KEY) : writeKey(CONTACTS_KEY, JSON.stringify(list));
+export const loadOfflineContacts = async (): Promise<{ id: string; name: string; phone: string }[]> => {
+  const raw = await readKey(CONTACTS_KEY);
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter(c => typeof c?.id === 'string' && typeof c?.name === 'string' && typeof c?.phone === 'string') : [];
+  } catch { return []; }
+};
+export const clearOfflineContacts = () => deleteKey(CONTACTS_KEY);
 
 const PUSH_DEVICE_KEY = 'lumo.push.deviceId';
 /** The server-side id of THIS phone's push registration, so logout can revoke it. Not the push token itself. */

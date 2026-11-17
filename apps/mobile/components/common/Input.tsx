@@ -16,7 +16,7 @@ const InputWrapper = styled(View)`
 `;
 
 const IconWrapper = styled(View)`
-  padding-right: 12px;
+  padding-end: 12px;
 `;
 
 const StyledTextInput = styled(TextInput)`

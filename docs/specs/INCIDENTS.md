@@ -27,12 +27,16 @@ device shows a countdown and can `POST /incidents/:id/cancel` until then. A kill
   (default 0), shake / voice / crash / fall 10 s. A buggy or hostile client cannot make a 10-minute countdown.
 - Countdown 0 dispatches inside the request. Otherwise the job and `cancel` both go through the incident lock, so a
   cancel racing the deadline has exactly one winner.
-- **Offline** the device cannot reach the server: it counts down locally and sends on reconnect (milestone 1.13).
+- **Offline** the device cannot reach the server: it counts down locally and sends on reconnect (milestone 1.13, `OFFLINE_SOS.md`).
+  The request carries `elapsedSeconds`, how long ago the press was **by the device's own stopwatch**; the server takes `now − elapsed` as the
+  press time (never the phone's clock), measures the countdown from it, and **dispatches at once if the deadline has passed**. Up to 6 hours
+  (`MAX_LATE_SOS_SECONDS`); beyond it the request is `400 { tooLate: true }`, nothing is sent and nothing is created. `lateBySeconds`
+  (the whole elapsed time less the countdown) is stored, returned, and from two minutes **stated in every SMS, push and call**.
 
 ### Refused until they exist
 
-`mode: "practice"` (no send boundary until 1.12) and `duress: true` (no device suppression until 2.5) are **refused with
-400**, not accepted and ignored: accepting either today would send real alerts, or show a ledger that must be hidden.
+`duress: true` (no device suppression until 2.5) is **refused with 400**, not accepted and ignored: it would show a ledger that must be
+hidden. `mode: "practice"` is accepted (1.12, `PRACTICE_MODE.md`): it runs the whole path and contacts nobody.
 
 ### The emergency token (PLAT-4)
 
@@ -125,7 +129,7 @@ No coordinate is ever logged.
 
 - **Never sent to anyone real.** No providers (KI-68, KI-78, KI-82). The plan's two-device exit stays open.
 - Without 1.9, one plan only: no retry ladder, no next contact on silence.
-- `duress` and `practice` are refused (above).
+- `duress` is refused (above). `practice` is a rehearsal and sends nothing.
 - UTC clock times in SMS (no timezone known for the contact).
 - `sendSmsOnSos` is on for new accounts only; existing ones keep theirs (KI-83).
 
@@ -135,7 +139,7 @@ No coordinate is ever logged.
 | ------------------------------------------------------------------------------------------- | ---------------- |
 | The same `Idempotency-Key` twice creates one incident; concurrent ones plan once            | database suite   |
 | Another user's key is 409 and leaks nothing                                                 | database suite   |
-| Practice and duress are refused; the countdown is clamped by trigger                        | database suite   |
+| Duress is refused; the countdown is clamped by trigger                                      | database suite   |
 | Dispatch proceeds with no location; the message says so                                     | database suite   |
 | An expired login but a valid emergency token dispatches                                     | database suite   |
 | Only the SOS routes accept the emergency token; the JWT strategy rejects it                 | route-table test |

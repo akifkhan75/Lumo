@@ -40,6 +40,7 @@ Turborepo + pnpm workspaces. Node >= 22.12 (pg-boss 12; Node 20 is end of life),
 ```
 apps/api        NestJS 12 REST API, Prisma 5, PostgreSQL        (the backend)
 apps/mobile     Expo 58 / React Native 0.88, styled-components  (the app)
+apps/web        Next.js, one route: the tokenised journey page /j/:token (RES-11)
 packages/types        shared TS domain types  (@lumo/types)
 packages/api-client   typed fetch client      (@lumo/api-client)
 packages/region-profiles  every market-specific value, as data: emergency numbers,

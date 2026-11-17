@@ -341,3 +341,36 @@ Tracked in [ROADMAP.md](../product/ROADMAP.md); listed here so nobody looks for 
 | `POST /api/v1/devices`                                        | Push token registration                                                                   |
 | `POST /api/v1/auth/refresh`, `/forgot-password`               | Session and account recovery                                                              |
 | `GET /api/v1/me`                                              | Identity without the whole settings payload                                               |
+
+## Journey links (1.11)
+
+| Endpoint | Auth | Notes |
+| --- | --- | --- |
+| `POST /api/v1/safety-sessions/:id/links` | JWT | Mint a link: `{ expiresInMinutes?: 15–10080, pin?: "4–8 digits" }`. Returns `path` (`/j/<token>`) **once**; only a SHA-256 of the token is stored. Max 5 live links per journey. Lumo sends nothing (`sentByLumo: false`). |
+| `GET /api/v1/safety-sessions/:id/links` | JWT | Every link with `viewCount`, `lastViewedAt`, `live`, `hasPin`. Never the token. |
+| `DELETE /api/v1/safety-sessions/:id/links/:linkId` | JWT | Revoke. Idempotent; unknown id is 404. |
+| `GET /api/v1/j/:token` | token (+ optional `x-link-pin`) | The link holder's view: exact keys `who, status, expectedArrivalAt, location, asOf, canRespond, responding`. Unknown, expired and revoked are one 404; a missing or wrong PIN is 401 `{ pinRequired }`. `Cache-Control: no-store`. The PIN locks the link after 10 wrong guesses. |
+| `POST /api/v1/j/:token/respond`, `/unrespond` | token (+ PIN) | "I'm responding": recorded as someone holding the link, halts or resumes escalation. Only while an incident is active. |
+
+When a journey ends (arrived, cancelled, expired or closed), every link of it is capped to expire 30 minutes later, so a contact who opens one just
+after still reads "This journey has ended" and then it stops working. A link already shorter is left alone.
+
+The app reaches the three owner endpoints through `ApiClient.createJourneyLink / listJourneyLinks / revokeJourneyLink`. It builds the shared URL
+from `EXPO_PUBLIC_WEB_URL` + the returned `path`.
+
+## Practice (1.12a)
+
+`POST /api/v1/sos` accepts `mode: "practice"`. The incident it returns has `mode: "practice"` and every attempt has `simulated: true`; nothing
+is sent, queued or costed, and the ledger is the simulated one (`SIMULATED_FAILURE` marks the example failure). `duress: true` is still refused.
+Every incident view now carries `mode` and each attempt `simulated` (false for a real one).
+
+## Late SOS (1.13a)
+
+`POST /api/v1/sos` accepts `elapsedSeconds` (integer ≥ 0): how long ago the press was, measured on the device. The server derives the press
+time from its own clock. If the countdown has already passed it dispatches at once. Over 6 hours: `400 { message, tooLate: true }`, nothing
+sent. The incident view carries `lateBySeconds` (0 for an ordinary SOS), and any message to a contact says so from two minutes.
+
+`POST /api/v1/sos/cancel` (header `Idempotency-Key`, login or emergency token): cancel a press by the key it was made with, for a device that
+cancelled while offline. Existing and still counting: cancelled. Not yet arrived: the incident is made already cancelled under that key, so a
+late arrival is a replay of a cancelled incident and sends nothing. Already gone out: **200 with the incident as it really is** (not
+`CANCELLED`), not a 409, because the device has no incident id to ask for. Another user's key: 409.

@@ -26,6 +26,7 @@ export type RootStackParamList = {
   // settings fetch finishes, and must open either way.
   JoinContact: { token?: string } | undefined;
   ContactAlert: { attemptId: string; title: string; body: string; responded: boolean };
+  Practice: { settings?: UserSettings } | undefined;
   Emergency: { settings?: UserSettings; trigger?: 'manual' | 'shake' | 'voice' | 'crash'; resume?: boolean; incidentId?: string } | undefined;
 };
 

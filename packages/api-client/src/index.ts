@@ -1,4 +1,4 @@
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken, Journey, CreateJourneyInput, JourneyFix } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, ContactInvite, Incident, RaiseSosInput, EmergencyToken, Journey, CreateJourneyInput, JourneyFix, JourneyLinkInfo, CreateJourneyLinkInput, CreatedJourneyLink } from '@lumo/types';
 
 export interface AuthResponse {
   user: PersonalInfo;
@@ -23,8 +23,10 @@ export type ApiErrorKind = 'http' | 'timeout' | 'network';
 export class ApiError extends Error {
   readonly status: number | null;
   readonly kind: ApiErrorKind;
+  /** The server refused an SOS because the press was too long ago to alert anyone (docs/specs/OFFLINE_SOS.md). Nothing was sent. */
+  readonly tooLate: boolean;
 
-  constructor(message: string, kind: ApiErrorKind, status: number | null = null) {
+  constructor(message: string, kind: ApiErrorKind, status: number | null = null, tooLate = false) {
     super(message);
     // Restores the prototype chain. This package compiles to ES5 (the shared
     // tsconfig sets no target), and ES5 output of a class extending Error loses
@@ -35,6 +37,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.kind = kind;
     this.status = status;
+    this.tooLate = tooLate;
   }
 
   /** True only when the server explicitly rejected the credential. */
@@ -86,6 +89,7 @@ export class ApiClient {
         error.message || `HTTP error! status: ${response.status}`,
         'http',
         response.status,
+        error.tooLate === true,
       );
     }
     return response.json();
@@ -175,6 +179,14 @@ export class ApiClient {
     return this.send(`/api/v1/incidents/${encodeURIComponent(id)}`, { headers: this.getHeaders({}, bearer) });
   }
 
+  /**
+   * Cancel a press by the key it was made with, for a device that cancelled while offline and cannot know whether its request arrived. If it
+   * did, that incident is cancelled; if not, an already-cancelled incident is made under the key, so a late arrival sends nothing.
+   */
+  async cancelSosByKey(key: string, bearer?: string | null): Promise<Incident> {
+    return this.send('/api/v1/sos/cancel', { method: 'POST', headers: this.getHeaders({ 'Idempotency-Key': key }, bearer) });
+  }
+
   async cancelIncident(id: string, bearer?: string | null): Promise<Incident> {
     return this.send(`/api/v1/incidents/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: this.getHeaders({}, bearer) });
   }
@@ -211,6 +223,21 @@ export class ApiClient {
     return this.send(`/api/v1/safety-sessions/${encodeURIComponent(id)}/location`, {
       method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ snapshots }),
     });
+  }
+
+  // Journey links: who could be looking. The token comes back once, at creation (docs/engineering/WEB.md). Login only.
+  async createJourneyLink(journeyId: string, input: CreateJourneyLinkInput = {}): Promise<CreatedJourneyLink> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(journeyId)}/links`, {
+      method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(input),
+    });
+  }
+
+  async listJourneyLinks(journeyId: string): Promise<JourneyLinkInfo[]> {
+    return this.send(`/api/v1/safety-sessions/${encodeURIComponent(journeyId)}/links`, { headers: this.getHeaders() });
+  }
+
+  async revokeJourneyLink(journeyId: string, linkId: string): Promise<void> {
+    await this.sendNoBody(`/api/v1/safety-sessions/${encodeURIComponent(journeyId)}/links/${encodeURIComponent(linkId)}`, { method: 'DELETE', headers: this.getHeaders() });
   }
 
   // The contact side: a push address, joining as someone's contact, and the device's own report back.

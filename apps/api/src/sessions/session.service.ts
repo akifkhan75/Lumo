@@ -73,6 +73,9 @@ export interface SessionView {
 
 export type ApplyResult = { applied: true; from: SessionState; to: SessionState } | { applied: false; why: 'NOT_FOUND' | Rejection; state?: SessionState };
 
+/** How long a link keeps answering after its journey ends. */
+export const ENDED_LINK_WINDOW_MS = 30 * 60_000;
+
 @Injectable()
 export class SessionService implements OnModuleInit {
   private readonly logger = new Logger('Sessions');
@@ -115,6 +118,12 @@ export class SessionService implements OnModuleInit {
         ...(SESSION_TERMINAL.includes(to) || to === 'ARRIVED' ? { endedAt: now } : {}),
       },
     });
+    // A journey that is over keeps its links for a short while, not for hours: a contact who opens one just after should read "this journey
+    // has ended" (reassurance), and then the link dies. Every way a journey can end passes through here, so none can leave a link behind.
+    if (SESSION_TERMINAL.includes(to) || to === 'ARRIVED') {
+      const cap = new Date(now.getTime() + ENDED_LINK_WINDOW_MS);
+      await tx.journeyLink.updateMany({ where: { sessionId, revokedAt: null, expiresAt: { gt: cap } }, data: { expiresAt: cap } });
+    }
     return { applied: true, from: out.record.from, to };
   }
 

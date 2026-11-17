@@ -33,8 +33,8 @@ export const MapViewContainer = styled(View)`
 export const Header = styled(View)`
     position: absolute;
     top: 40px;
-    left: 16px;
-    right: 16px;
+    start: 16px;
+    end: 16px;
     flex-direction: row;
     justify-content: space-between;
     align-items: flex-start;
@@ -45,7 +45,7 @@ export const Header = styled(View)`
 // backing so it keeps its contrast whatever tile is underneath.
 export const HeaderTextContainer = styled(View)`
     flex: 1;
-    margin-right: 8px;
+    margin-end: 8px;
     padding: 8px 12px;
     border-radius: 12px;
     background-color: rgba(15, 23, 42, 0.78);
@@ -82,9 +82,13 @@ export const HeaderActions = styled(View)`
 
 export const ActionButton = styled(TouchableOpacity)`
     background-color: white;
+    min-width: 48px;
+    min-height: 48px;
+    justify-content: center;
+    align-items: center;
     padding: 8px;
     border-radius: 9999px;
-    margin-left: 8px;
+    margin-start: 8px;
     shadow-color: #000;
     shadow-offset: 0px 2px;
     shadow-opacity: 0.25;
@@ -106,6 +110,7 @@ export const BottomNavContainer = styled(View)`
 export const NavItemContainer = styled(TouchableOpacity)`
     align-items: center;
     width: 64px;
+    min-height: 56px;
 `;
 
 export const NavItemLabel = styled(Text)`
@@ -146,7 +151,7 @@ export const SOSText = styled(Text)`
 export const SafetyAssistantButton = styled(TouchableOpacity)`
     position: absolute;
     bottom: 112px; /* Above BottomNav */
-    right: 16px;
+    end: 16px;
     width: 64px;
     height: 64px;
     border-radius: 32px;

@@ -12,11 +12,12 @@
  */
 
 import React from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import renderer, { act, ReactTestRenderer } from 'react-test-renderer';
 import { ApiError } from '@lumo/api-client';
 import App from '../App';
 import * as apiService from '../services/apiService';
+import { auditPressables, pressables } from '../test-utils/a11yAudit';
 
 jest.mock('../services/apiService');
 
@@ -334,6 +335,13 @@ describe('App: the dashboard map', () => {
     act(() => { tree.unmount(); });
   });
 
+  it('the dashboard meets the accessibility floor: every control has a role, an action label and a 44 pt target (PLAT-2)', async () => {
+    const tree = await mountSignedIn();
+    const found = auditPressables(tree);
+    expect({ controls: pressables(tree).length > 0, violations: found }).toEqual({ controls: true, violations: [] });
+    act(() => { tree.unmount(); });
+  });
+
   it('draws no hazard report (that is a deliberate Phase 4 change)', async () => {
     const tree = await mountSignedIn();
     // The dashboard does not even fetch them: pins are Phase 4, with their own age/confidence rules.
@@ -346,5 +354,45 @@ describe('App: the dashboard map', () => {
     const tree = await mountSignedIn();
     expect(JSON.stringify(tree.toJSON())).not.toContain('static picture');
     act(() => { tree.unmount(); });
+  });
+});
+
+describe('App: settings are re-read quietly when the app comes back to the foreground', () => {
+  let tree: ReactTestRenderer;
+  let handlers: ((s: string) => void)[];
+  const mount = async () => {
+    await act(async () => { tree = renderer.create(<App />); });
+    await act(async () => { await Promise.resolve(); });
+  };
+  const goTo = async (s: string) => { await act(async () => { handlers.forEach(h => h(s)); await Promise.resolve(); }); };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    handlers = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_: string, h: (s: string) => void) => { handlers.push(h); return { remove: jest.fn() }; }) as never);
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    api.restoreSession.mockResolvedValue(true);
+    api.signOut.mockResolvedValue(undefined);
+    api.getSelfDefenseTips.mockResolvedValue([]);
+    api.getSettings.mockResolvedValue(settings);
+  });
+  afterEach(() => { act(() => { tree?.unmount(); }); jest.restoreAllMocks(); });
+
+  it('reads them again on coming back, which is also what keeps the offline copy of the contacts who agreed in step', async () => {
+    await mount();
+    const before = api.getSettings.mock.calls.length;
+    await goTo('background');
+    expect(api.getSettings.mock.calls.length).toBe(before); // going away reads nothing
+    await goTo('active');
+    expect(api.getSettings.mock.calls.length).toBe(before + 1);
+  });
+
+  it('a refresh that fails changes nothing and signs nobody out', async () => {
+    await mount();
+    api.getSettings.mockRejectedValue(new ApiError('Network request failed', 'network'));
+    await goTo('background');
+    await goTo('active');
+    expect(api.signOut).not.toHaveBeenCalled();
+    expect(JSON.stringify(tree.toJSON())).toContain('Josim'); // the last settings are still shown
   });
 });

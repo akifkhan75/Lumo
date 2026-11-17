@@ -418,6 +418,9 @@ model EmergencyIncident {
   // this deadline and dispatches when it passes, so an app killed mid-countdown still alerts. A
   // device-only countdown would dispatch nothing if the app were never reopened. Null = no countdown.
   countdownEndsAt   DateTime?
+  // How late the alert is (docs/specs/OFFLINE_SOS.md): seconds between when it SHOULD have gone (the press plus its countdown) and when the
+  // server got it. 0 for an ordinary SOS. Computed by the SERVER from the device's elapsed time, never from the device's clock.
+  lateBySeconds     Int            @default(0)
   // The escalation ladder (docs/specs/ESCALATION_POLICY.md): its state, and the policy AS IT WAS when this
   // incident started, so editing a policy mid-incident cannot change what a running incident does.
   ladder            Json?
@@ -429,9 +432,11 @@ model EmergencyIncident {
   regionProfileId   String
   createdAt         DateTime       @default(now())
 
-  attempts  NotificationAttempt[]
-  events    IncidentEvent[]
-  locations LocationSnapshot[]
+  attempts         NotificationAttempt[]
+  // Practice Mode only (docs/specs/PRACTICE_MODE.md): the SIMULATED ledger. A practice incident has no NotificationAttempt: a trigger forbids it.
+  practiceAttempts PracticeAttempt[]
+  events           IncidentEvent[]
+  locations        LocationSnapshot[]
   // evidence EvidenceAsset[] — arrives with the model, in Phase 2.
 
   @@index([userId, createdAt])
@@ -519,18 +524,22 @@ model NotificationEvent {
 }
 
 model JourneyLink {
-  id           String        @id @default(uuid())
-  sessionId    String
-  session      SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                String        @id @default(uuid())
+  sessionId         String
+  session           SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   // Only the HASH is stored, never the token (T6).
-  tokenHash    String        @unique
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  pinHash      String?
-  viewCount    Int           @default(0)
-  lastViewedAt DateTime?
+  tokenHash         String        @unique
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  pinHash           String?
+  // Wrong PIN guesses so far. The link locks (is revoked) at MAX_PIN_FAILURES: a PIN is only worth anything if it cannot be guessed.
+  failedPinAttempts Int           @default(0)
+  createdAt         DateTime      @default(now())
+  viewCount         Int           @default(0)
+  lastViewedAt      DateTime?
 
   @@index([expiresAt])
+  @@index([sessionId])
 }
 
 model Device {
@@ -608,4 +617,23 @@ model EmergencyCredential {
   revokedAt DateTime?
 
   @@index([userId, deviceKey])
+}
+
+// A SIMULATED delivery-ledger row for a practice incident (docs/specs/PRACTICE_MODE.md). Deliberately NOT a NotificationAttempt: nothing here is
+// ever queued, claimed, sent, costed or counted against the spend cap, and no worker reads this table. The database refuses a
+// NotificationAttempt for a practice incident (trigger), so the two cannot be confused.
+model PracticeAttempt {
+  id          String            @id @default(uuid())
+  incidentId  String
+  incident    EmergencyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  recipientId String
+  channel     Channel
+  state       AttemptState
+  reason      String?
+  queuedAt    DateTime
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  failedAt    DateTime?
+
+  @@index([incidentId])
 }

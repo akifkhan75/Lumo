@@ -16,12 +16,15 @@ import { UserSettings, RootStackParamList, SettingsStackParamList } from './type
 import AuthScreen from './components/auth/AuthScreen';
 import BootScreen from './components/BootScreen';
 import EmergencyScreen from './components/EmergencyModal';
+import PracticeScreen from './components/PracticeScreen';
 import FakeCallScreen from './components/FakeCallScreen';
 import SettingsScreen from './components/settings/SettingsModal';
 import ProfileSettingsScreen from './components/settings/ProfileSettings';
 import ContactSettingsScreen from './components/settings/ContactSettings';
 import AlertSettingsScreen from './components/settings/AlertSettings';
 import JourneyScreen from './components/JourneyScreen';
+import SharingStrip from './components/SharingStrip';
+import { useSharingIndicator } from './hooks/useSharingIndicator';
 import ContactRoleScreen from './components/settings/ContactRole';
 import ContactAlertScreen from './components/ContactAlert';
 import { lastAlertTap, listenForAlerts, prepareNotifications, reportReceived } from './services/pushService';
@@ -137,6 +140,8 @@ const DashboardScreen = () => {
     }
   }, []);
 
+  const sharing = useSharingIndicator(true);
+
   const shakeEnabled = userSettings?.security.shakeToSosEnabled ?? false;
   const voiceEnabled = userSettings?.security.voiceActivationEnabled ?? false;
   const accidentEnabled = userSettings?.security.accidentDetectionEnabled ?? false;
@@ -187,6 +192,15 @@ const DashboardScreen = () => {
   }, []);
   const location = useLocation(focused && appActive);
 
+  // Back in the foreground: re-read the settings, quietly. Loading them is also what keeps this phone's offline copy of the contacts who agreed
+  // in step with the server (a contact who withdraws must not stay addressable by the pre-filled text for longer than the phone has had no
+  // signal). A failure changes nothing on screen: the last settings stay.
+  const wasActive = useRef(appActive);
+  useEffect(() => {
+    if (appActive && !wasActive.current) apiService.getSettings().then(setUserSettings).catch(() => undefined);
+    wasActive.current = appActive;
+  }, [appActive]);
+
   return (
     <Container>
       <MapViewContainer>
@@ -202,12 +216,15 @@ const DashboardScreen = () => {
                 {isListening && <VoiceGuardText><IconMic size={12} color="#16a34a" /> Voice Guard Active</VoiceGuardText>}
             </HeaderTextContainer>
             <HeaderActions>
-                <ActionButton onPress={() => navigation.navigate('ReportHazard')}>
+                <ActionButton onPress={() => navigation.navigate('ReportHazard')} accessibilityRole="button" accessibilityLabel="Report a hazard. Opens a screen that explains reporting is not available yet">
                     <IconAlert size={24} color="#f97316" />
                 </ActionButton>
                  <ActionButton
                     // Settings need the loaded settings to edit; without them there is nothing to open.
                     disabled={!userSettings}
+                    accessibilityRole="button"
+                    accessibilityLabel={userSettings ? 'Open settings, contacts and alerts' : 'Settings are not available until they have loaded'}
+                    accessibilityState={{ disabled: !userSettings }}
                     onPress={() => userSettings && navigation.navigate('Settings', { onLogout: onLogout, currentSettings: userSettings, onSave: handleSaveSettings })}
                 >
                     <IconSettings size={24} color="#4b5563" />
@@ -238,12 +255,13 @@ const DashboardScreen = () => {
           )}
         </SettingsStatusStrip>
       )}
+      <SharingStrip count={sharing.count} onPress={() => navigation.navigate('Journey')} />
       <BottomNavContainer>
-            <NavItemContainer onPress={() => navigation.navigate('CommunitySafety')}>
+            <NavItemContainer onPress={() => navigation.navigate('CommunitySafety')} accessibilityRole="button" accessibilityLabel="Open community safety reports">
                 <IconShield size={28} color="#4b5563" />
                 <NavItemLabel>Community</NavItemLabel>
             </NavItemContainer>
-            <NavItemContainer onPress={() => navigation.navigate('Journey')}>
+            <NavItemContainer onPress={() => navigation.navigate('Journey')} accessibilityRole="button" accessibilityLabel="Start or view a journey">
                 <IconWalk size={28} color="#4b5563" />
                 <NavItemLabel>Journey</NavItemLabel>
             </NavItemContainer>
@@ -257,16 +275,16 @@ const DashboardScreen = () => {
                     <SOSText>SOS</SOSText>
                 </SOSButton>
             </SOSButtonContainer>
-            <NavItemContainer onPress={() => navigation.navigate('Journey', { kind: 'custom' })}>
+            <NavItemContainer onPress={() => navigation.navigate('Journey', { kind: 'custom' })} accessibilityRole="button" accessibilityLabel="Start a check-in timer">
                 <IconTimer size={28} color="#4b5563" />
                 <NavItemLabel>Check-In</NavItemLabel>
             </NavItemContainer>
-            <NavItemContainer onPress={() => navigation.navigate('FakeCall')}>
+            <NavItemContainer onPress={() => navigation.navigate('FakeCall')} accessibilityRole="button" accessibilityLabel="Start a fake call">
                 <IconFakeCall size={28} color="#4b5563" />
                 <NavItemLabel>Fake Call</NavItemLabel>
             </NavItemContainer>
       </BottomNavContainer>
-      <SafetyAssistantButton onPress={() => navigation.navigate('SafetyAssistant')}>
+      <SafetyAssistantButton onPress={() => navigation.navigate('SafetyAssistant')} accessibilityRole="button" accessibilityLabel="Open the safety assistant">
           <IconBot size={32} color="white" />
       </SafetyAssistantButton>
     </Container>
@@ -385,6 +403,7 @@ const App = () => {
                             <MainStack.Screen name="Settings" component={SettingsNavigator} />
                             <MainStack.Screen name="CommunitySafety" component={CommunitySafetyScreen} />
                             <MainStack.Screen name="Journey" component={JourneyScreen} />
+                            <MainStack.Screen name="Practice" component={PracticeScreen} />
                             <MainStack.Screen name="FakeCall" component={FakeCallScreen} />
                             <MainStack.Screen name="ReportHazard" component={ReportHazardScreen} />
                             <MainStack.Screen name="SafetyAssistant" component={SafetyAssistantScreen} />

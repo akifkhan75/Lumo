@@ -116,3 +116,11 @@ deadline ─▶ CHECK_IN_DUE ─▶ (prompt window) ─▶ GRACE ─▶ (grace) 
   the person say they are safe; cancelling is not offered.
 - **Polling** every 5 s while a journey is live. A failed refresh keeps the last state on screen, marked old, and says the journey is
   still being kept.
+
+## Sharing (1.11b)
+
+A running journey can be shared by **link** (`docs/engineering/WEB.md`). Lumo sends nothing: the person passes the link on, and the app says
+so. The link is shown once. While any link is live, **an indicator is visible on the person's own device** (invariant 4): on the Journey screen
+(with each link's opens and expiry, **Stop sharing** and per-link **Turn off**) and as a strip on the dashboard. It is read from the server's
+list, so a link made elsewhere, or one that is still live after a failed revoke, is never hidden. A failed revoke says the link may still work.
+A PIN is optional, 4–8 digits, and is never put in the shared text. A build with no `EXPO_PUBLIC_WEB_URL` offers no share control (KI-113).

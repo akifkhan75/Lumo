@@ -166,13 +166,19 @@ export interface IncidentAttempt {
   deliveredAt: string | null;
   acknowledgedAt: string | null;
   failedAt: string | null;
+  /** True for every row of a practice run: nothing was sent. Absent or false for a real one. */
+  simulated?: boolean;
 }
 
 export interface Incident {
   id: string;
   state: IncidentState;
+  /** `practice`: a rehearsal. Nothing was sent. Absent means real (an older server). */
+  mode?: 'real' | 'practice';
   triggerType: string;
   countdownEndsAt: string | null;
+  /** Seconds between when the alert should have gone and when Lumo got it. 0 or absent for an ordinary SOS. */
+  lateBySeconds?: number;
   locationAvailable: boolean;
   outcome: string;
   /** The escalation ladder: the step in flight, of how many, and when it gives way to the next. */
@@ -190,6 +196,10 @@ export interface RaiseSosInput {
   triggerType: 'manual' | 'shake' | 'voice' | 'safeword' | 'crash' | 'fall';
   triggeredAt: string;
   countdownSeconds?: number;
+  /** How long ago the press was, measured on this device (the server works out the time from its own clock). */
+  elapsedSeconds?: number;
+  /** A rehearsal: the whole path, and nobody is contacted. */
+  mode?: 'real' | 'practice';
   location?: { latitude: number; longitude: number; accuracyM: number | null; capturedAt: number };
   place?: { country: string; subdivision?: string | null };
 }
@@ -228,6 +238,24 @@ export interface CreateJourneyInput {
   destination?: { latitude: number; longitude: number; label?: string | null };
   shareLocation?: boolean;
 }
+
+/** A link someone can follow a journey by, as the OWNER sees it. Never carries the token: that is shown once, at creation. */
+export interface JourneyLinkInfo {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  hasPin: boolean;
+  viewCount: number;
+  lastViewedAt: string | null;
+  /** Not revoked and not expired: someone holding it can see the journey right now. */
+  live: boolean;
+}
+
+export interface CreateJourneyLinkInput { expiresInMinutes?: number; pin?: string }
+
+/** `path` is `/j/<token>` and is returned ONCE. Lumo sends it to nobody (`sentByLumo` is always false): the person passes it on. */
+export interface CreatedJourneyLink { id: string; path: string; expiresAt: string; hasPin: boolean; sentByLumo: false }
 
 export interface JourneyFix { latitude: number; longitude: number; accuracyM: number; capturedAt: number; batteryPct?: number | null; source: string }
 

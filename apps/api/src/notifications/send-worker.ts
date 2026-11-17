@@ -53,6 +53,13 @@ export class SendWorker implements OnModuleInit {
       return void (await this.skip(attemptId, 'NO_ADDRESS', now));
     }
 
+    // The practice boundary, before anything else can lead to a provider: a rehearsal is never sent (docs/specs/PRACTICE_MODE.md).
+    const incident = await this.prisma.emergencyIncident.findUnique({ where: { id: attempt.incidentId }, select: { triggerType: true, mode: true, lateBySeconds: true } });
+    if (incident?.mode === 'practice') {
+      this.ledger.counters.set('send.practice_refused', (this.ledger.counters.get('send.practice_refused') ?? 0) + 1);
+      return void (await this.skip(attemptId, 'PRACTICE_MODE', now));
+    }
+
     // Consent and existence are checked AGAIN here: both can change between planning and sending.
     const contact = await this.contacts.findActive(this.prisma, attempt.recipientId);
     if (!contact) return void (await this.skip(attemptId, 'CONTACT_REMOVED', now));
@@ -72,7 +79,6 @@ export class SendWorker implements OnModuleInit {
     const owner = await this.prisma.user.findUnique({ where: { id: contact.userId }, select: { fullName: true, shareLocationOnSos: true } });
     const name = owner?.fullName ?? 'Someone';
     const resolved = attempt.purpose === 'RESOLVED';
-    const incident = await this.prisma.emergencyIncident.findUnique({ where: { id: attempt.incidentId }, select: { triggerType: true } });
     const kind: AlertKind = incident?.triggerType === 'missed_check_in' ? 'missed_check_in' : 'sos';
     // A position goes into a message only if the user allows it, and only for an alert (not for "it ended").
     const location = !resolved && owner?.shareLocationOnSos ? await this.latestLocation(attempt.incidentId) : null;
@@ -84,12 +90,12 @@ export class SendWorker implements OnModuleInit {
     });
     if (claimed.count !== 1) return;
 
-    if (attempt.channel === 'push') return this.sendPush(attemptId, tokens.map(t => t.pushToken), name, resolved, kind, now);
+    if (attempt.channel === 'push') return this.sendPush(attemptId, tokens.map(t => t.pushToken), name, resolved, kind, now, incident?.lateBySeconds ?? 0);
 
     const outcome =
       attempt.channel === 'sms'
-        ? await this.sms.send({ to: contact.phone, body: resolved ? resolvedBody(name) : alertBody(name, location, now.getTime(), kind), attemptId })
-        : await this.voice.call({ to: contact.phone, script: voiceScript(name, kind), attemptId });
+        ? await this.sms.send({ to: contact.phone, body: resolved ? resolvedBody(name) : alertBody(name, location, now.getTime(), kind, incident?.lateBySeconds ?? 0), attemptId })
+        : await this.voice.call({ to: contact.phone, script: voiceScript(name, kind, incident?.lateBySeconds ?? 0), attemptId });
 
     if (outcome.kind === 'accepted') {
       await this.ledger.apply(
@@ -112,8 +118,8 @@ export class SendWorker implements OnModuleInit {
     return s ? { latitude: s.latitude, longitude: s.longitude, accuracyM: s.accuracyM, capturedAt: s.capturedAt.getTime() } : null;
   }
 
-  private async sendPush(attemptId: string, tokens: string[], name: string, resolved: boolean, kind: AlertKind, now: Date): Promise<void> {
-    const outcome = await this.push.send({ tokens, title: resolved ? 'Lumo' : 'Lumo alert', body: resolved ? resolvedBody(name) : pushBody(name, kind), attemptId });
+  private async sendPush(attemptId: string, tokens: string[], name: string, resolved: boolean, kind: AlertKind, now: Date, lateBySeconds = 0): Promise<void> {
+    const outcome = await this.push.send({ tokens, title: resolved ? 'Lumo' : 'Lumo alert', body: resolved ? resolvedBody(name) : pushBody(name, kind, lateBySeconds), attemptId });
     // A token the service says is dead stops receiving anything.
     for (const dead of outcome.kind === 'ambiguous' ? [] : outcome.deadTokens) await this.devices.revokeToken(dead, now);
 

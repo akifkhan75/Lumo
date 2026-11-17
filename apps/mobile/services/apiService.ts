@@ -1,7 +1,8 @@
 import { NativeModules } from 'react-native';
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, Incident, RaiseSosInput, CreateJourneyInput, JourneyFix } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, Incident, RaiseSosInput, CreateJourneyInput, JourneyFix, CreateJourneyLinkInput } from '@lumo/types';
 import { ApiClient } from '@lumo/api-client';
 import * as tokenStorage from './tokenStorage';
+import { agreedForCache } from './offlineText';
 
 const DEFAULT_API_PORT = '3005';
 
@@ -83,6 +84,7 @@ export const signOut = async (): Promise<void> => {
     // The emergency token is revoked on the server by logging out elsewhere; here it simply stops being kept.
     await tokenStorage.clearEmergencyToken();
     await tokenStorage.clearActiveSos();
+    await tokenStorage.clearOfflineContacts(); // someone else's contacts must not stay on a phone after they sign out
     await tokenStorage.clearToken();
 };
 
@@ -92,6 +94,9 @@ export const getActiveJourney = () => apiClient.getActiveJourney();
 export const checkInJourney = (id: string, expectedArrivalAt: string) => apiClient.checkInJourney(id, expectedArrivalAt);
 export const arriveJourney = (id: string) => apiClient.arriveJourney(id);
 export const cancelJourney = (id: string) => apiClient.cancelJourney(id);
+export const createJourneyLink = (journeyId: string, input?: CreateJourneyLinkInput) => apiClient.createJourneyLink(journeyId, input);
+export const listJourneyLinks = (journeyId: string) => apiClient.listJourneyLinks(journeyId);
+export const revokeJourneyLink = (journeyId: string, linkId: string) => apiClient.revokeJourneyLink(journeyId, linkId);
 export const postJourneyLocation = (id: string, snapshots: JourneyFix[]) => apiClient.postJourneyLocation(id, snapshots);
 // The contact side (docs/specs/NOTIFICATIONS.md): a push address, joining as someone's contact, and the phone's own report back.
 export const registerPushDevice = async (input: { platform: 'ios' | 'android'; osVersion: string; pushToken: string }): Promise<string> => {
@@ -145,9 +150,11 @@ const withCredentials = async <T>(call: (bearer: string | null | undefined) => P
 export const raiseSos = (key: string, input: RaiseSosInput): Promise<Incident> =>
     withCredentials(b => apiClient.raiseSos(key, input, b)).then(r => r.incident);
 export const getIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.getIncident(id, b === undefined ? undefined : b));
+export const cancelSosByKey = (key: string): Promise<Incident> => withCredentials(b => apiClient.cancelSosByKey(key, b));
 export const cancelIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.cancelIncident(id, b));
 export const resolveIncident = (id: string): Promise<Incident> => withCredentials(b => apiClient.resolveIncident(id, b));
 export const loadActiveSos = tokenStorage.loadActiveSos;
+export const loadOfflineContacts = tokenStorage.loadOfflineContacts;
 export const saveActiveSos = tokenStorage.saveActiveSos;
 export const clearActiveSos = tokenStorage.clearActiveSos;
 
@@ -183,8 +190,13 @@ export const signup = async (name: string, email: string, password: string): Pro
 };
 
 // Settings
+/** Keep the offline copy of the agreed contacts in step with what the server says. Best effort: it can never fail or slow settings. */
+const rememberContacts = (s: UserSettings) => { tokenStorage.saveOfflineContacts(agreedForCache(s.trustedContacts)).catch(() => undefined); };
+
 export const getSettings = async (): Promise<UserSettings> => {
-    return apiClient.getSettings();
+    const settings = await apiClient.getSettings();
+    rememberContacts(settings);
+    return settings;
 };
 
 /** A link for the contact to open. Lumo sends nothing; the caller passes it on. */
@@ -194,7 +206,9 @@ export const createContactInvite = async (contactId: string): Promise<{ url: str
 };
 
 export const updateSettings = async (settings: UserSettings): Promise<UserSettings> => {
-    return apiClient.updateSettings(settings);
+    const saved = await apiClient.updateSettings(settings);
+    rememberContacts(saved);
+    return saved;
 };
 
 // Hazard reports

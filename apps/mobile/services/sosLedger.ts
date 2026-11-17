@@ -27,6 +27,7 @@ export const REASON_TEXT: Record<string, string> = {
   NEVER_SENT: 'it was not sent in time',
   SEND_OUTCOME_UNKNOWN: 'Lumo could not confirm whether it went',
   NO_RECEIPT_BY_TTL: 'no confirmation came back',
+  SIMULATED_FAILURE: 'this is the example failure Lumo adds to practice, so you can see what one looks like',
 };
 
 export const reasonText = (reason: string | null): string => {
@@ -44,6 +45,12 @@ export const clock = (iso: string | null): string =>
 
 /** The one line for one attempt. */
 export function attemptLine(a: IncidentAttempt): string {
+  const line = rawAttemptLine(a);
+  // A rehearsal's row is marked, so no line of it can be read as a real send.
+  return a.simulated ? `${line} (practice)` : line;
+}
+
+function rawAttemptLine(a: IncidentAttempt): string {
   const noun = channelNoun(a.channel);
   switch (a.state) {
     case 'QUEUED':

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { alertBody, locationLine, pushBody, resolvedBody, voiceScript } from './message-templates';
+import { alertBody, lateSentence, locationLine, pushBody, resolvedBody, voiceScript } from './message-templates';
 
 const NOW = Date.UTC(2026, 10, 18, 12, 30);
 const loc = (ageMs: number, accuracyM = 18) => ({ latitude: 33.6844, longitude: 73.0479, accuracyM, capturedAt: NOW - ageMs });
@@ -64,3 +64,30 @@ describe('a missed check-in is not a plea for help, and the words say so', () =>
   });
 });
 
+describe('lateSentence (docs/specs/OFFLINE_SOS.md)', () => {
+  it('says nothing for an ordinary alert or a small delay', () => {
+    expect(lateSentence(0)).toBe('');
+    expect(lateSentence(119)).toBe('');
+    expect(lateSentence(Number.NaN)).toBe('');
+  });
+  it('says how old it is, in words, and why', () => {
+    expect(lateSentence(120)).toContain('about 2 minutes before it could be sent');
+    expect(lateSentence(14 * 60)).toContain('about 14 minutes');
+    expect(lateSentence(70 * 60)).toContain('about an hour');
+    expect(lateSentence(5 * 3600)).toContain('about 5 hours');
+    expect(lateSentence(600)).toContain('no signal until now');
+  });
+  it('appears in the sms, the push and the call, and never promises help', () => {
+    const late = 15 * 60;
+    expect(alertBody('Sam', null, Date.now(), 'sos', late)).toContain('about 15 minutes');
+    expect(pushBody('Sam', 'sos', late)).toContain('about 15 minutes');
+    expect(voiceScript('Sam', 'sos', late)).toContain('about 15 minutes');
+    for (const t of [alertBody('Sam', null, Date.now(), 'sos', late), pushBody('Sam', 'sos', late), voiceScript('Sam', 'sos', late)]) {
+      expect(t.toLowerCase()).not.toMatch(/help is|on its way|will arrive/);
+    }
+  });
+  it('leaves an on-time message exactly as it was', () => {
+    expect(alertBody('Sam', null, 0, 'sos')).toBe(alertBody('Sam', null, 0, 'sos', 0));
+    expect(pushBody('Sam')).toBe('Sam asked Lumo to alert you.');
+  });
+});

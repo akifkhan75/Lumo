@@ -281,6 +281,8 @@ prompt is built from `message` alone. Multi-turn context is silently dropped.
 
 ## ⚪ KI-15 — No accessibility pass
 
+_Update: partly built in 1.14a. A mechanical floor now covers the emergency path, Journey, the dashboard, a contact's alert, Settings and the signed-out screens (role, action label, 44 pt target, contrast, RTL-safe layout), and found and fixed real failures. What a machine cannot judge is KI-131 to KI-135._
+
 No `accessibilityLabel` / `accessibilityRole` anywhere in `apps/mobile`. For an
 app used under stress — and sometimes one-handed, in the dark, or by users with
 impairments — this matters more than average. Add labels to the SOS button, the
@@ -925,6 +927,8 @@ revoked. It cannot read contacts, history or location.
 
 ### 🟠 KI-87 — A countdown killed with the phone offline is not covered
 
+_Update: built in 1.13b (the press is saved and counted down on the device, retried with the same key, and resumed after a kill); only while Lumo is open — see KI-123._
+
 The server owns the countdown only once the request reaches it. A device that is offline when SOS is pressed counts down
 locally and sends on reconnect (1.13); until then it must say so and offer the dialler.
 
@@ -948,6 +952,8 @@ cannot dispatch early or late; but the seconds it shows are counted locally and 
 clock's error and the request's latency.
 
 ### 🟠 KI-91 — A press while offline sends nothing, and nothing queues it
+
+_Update: built in 1.13b (automatic retry, the offline states and the reminder) and 1.13c (the pre-filled text, which the person sends). Nothing is sent while the app is closed — see KI-123._
 
 The screen says nothing was sent and offers the dialler and "try again" (user-initiated, same key). There is no
 automatic send on reconnect, and the pre-filled device SMS fallback is not built (1.13).
@@ -1051,3 +1057,172 @@ in a way they would notice. Louder, repeated local reminders need a scheduled no
 A journey with the phone in a pocket and the screen off, which is the usual walk home, saves no positions: foreground only, by decision
 (docs/specs/LOCATION.md). The position an alert carries is therefore the last one saved while Lumo was open, with its age. Background
 location is its own permission, review and promise (milestone 1.16 / a decision).
+
+## Found while building milestone 1.11 — 2026-11-17
+
+### 🟠 KI-108 — The journey page has no regional emergency guidance
+
+`docs/engineering/WEB.md` calls for emergency guidance for the contact's region. The page says only to "contact your local emergency number",
+because the link holder's region is unknown (it is not the sender's) and a wrong number is worse than none. A region choice on the page, fed
+from `@lumo/region-profiles`, is the fix.
+
+### ✅ KI-109 — A person could not mint or revoke a link from the app (built)
+
+_Update: built in 1.11b._ The Journey screen now has **Share a link** (optional PIN; the full URL goes to the system share sheet, never the PIN)
+and, for as long as any link works, an indicator listing each link's opens and expiry with **Stop sharing** and per-link **Turn off**. The same
+indicator is a strip on the dashboard. It reflects the SERVER's list of live links, re-read every 10–15 s, not what the screen remembers.
+Remaining gaps are KI-113 – KI-115.
+
+### 🟡 KI-110 — The page is rendered on request, so it does not poll
+
+A contact reloads to see a newer position; nothing refreshes it. The age shown is measured against the server's clock at the moment of the
+request, so a page left open grows stale and says nothing. Auto-refresh with a visible "updated N ago" is the fix.
+
+### 🟡 KI-111 — `PublicJourney` is declared twice
+
+`apps/web/lib/api.ts` mirrors the API's type. The API's test pins the exact keys but nothing checks the copy. Move it to `@lumo/types`.
+
+### 🟡 KI-112 — The web app is unverified end to end
+
+Unit-tested (age wording) and smoke-tested (headers, unreachable API) only. Not yet run against a live API: the e2e suite needs Postgres.
+No browser test of the PIN or "I'm responding" paths, no accessibility audit, not in CI's deploy path, and no hosting decision.
+
+### 🟠 KI-113 — A build with no `EXPO_PUBLIC_WEB_URL` cannot share
+
+The app builds the link from `EXPO_PUBLIC_WEB_URL` (https only; plain http in a dev build). Without it the Share control is replaced by a
+notice saying so, because a link nobody can open is not sharing. There is no hosting decision for `apps/web` yet (KI-112), so no build has a
+real address.
+
+### 🟡 KI-114 — Opens are counted per page load, not per person
+
+The indicator says "Opened 3 times", never by whom: a link does not say who opened it, and a reload counts. It is evidence that someone
+looked, not of how many people did. A forwarded link cannot be told from the original (the reason for the PIN and one-tap revoke).
+
+### 🟡 KI-115 — The share sheet's outcome is unknown
+
+React Native reports whether the sheet closed, not whether anything was sent. The screen therefore says only that a link exists and that Lumo
+sent nothing; the open count is the only evidence it reached anyone. Recipients cannot be named or counted.
+
+## Found while building milestone 1.12a — 2026-11-17
+
+### 🟡 KI-116 — A practice run with one attempt shows no failure
+
+The simulated failure is the last of two or more attempts. With one contact on push alone there is exactly one attempt, and failing it would
+invent a failure of the only path, so that run shows none. A second contact, or SMS turned on, shows one.
+
+### 🟡 KI-117 — Practice simulates one pass, not the ladder over time
+
+The run resolves who would be tried and over which channels and writes the ledger at once, with fixed offsets. It does not step through the
+escalation timeouts, retries or an acknowledgement, so a person does not yet see what happens when the first contact stays silent.
+
+### 🟠 KI-118 — No onboarding step and no activation record
+
+_Update: the app entry, banner and offline run are built (1.12b)._ Onboarding step 4 ("an untested safety device") and the "completed one
+practice run" activation measure (PRD §7) are not: there is no onboarding flow, and no metrics pipeline. `mode` on the incident is the hook
+that keeps rehearsals out of the metrics when there is one; the app does not yet remember that a run was completed.
+
+### 🟡 KI-119 — Practice is reachable only from Settings
+
+There is no prompt after adding a first contact and no dashboard shortcut, so a person who never opens Settings never practises. The
+bottom bar has no room for it; a one-time nudge after the first agreed contact is the likely fix.
+
+## Found while building milestone 1.13a — 2026-11-17
+
+_The design is `docs/specs/OFFLINE_SOS.md`. 1.13a is the server half only: until 1.13b the app still queues and retries nothing (KI-87, KI-91 stay open)._
+
+### 🟠 KI-120 — An SOS older than 6 hours is refused
+
+`MAX_LATE_SOS_SECONDS` is a judgment, not a law: past it a press is more likely stale than urgent and a contact woken by it cannot tell.
+The server refuses it, says so, and the person is offered the dialler. If a real case shows an older press should still go, the cap moves;
+it should not be removed.
+
+### 🟡 KI-121 — The device's elapsed time is trusted, within bounds
+
+The server believes `elapsedSeconds`. A hostile client can claim 0 to look on time, or up to 6 hours to look late; neither gets an alert to
+anyone it could not already alert, and the contact is told only a stated age. The press time shown is the server's clock less the claim.
+
+### 🟡 KI-122 — A position's age is still by the device's clock
+
+`locationLine` words "N min before this was sent" from the fix's `capturedAt` (the phone's clock) and the server's `now`. A wrong phone
+clock skews that figure. Fixing it needs the fix's own elapsed time sent with it, as the press has now.
+
+## Found while building milestone 1.13b — 2026-11-17
+
+_Update to KI-87 and KI-91: built (1.13b). A press with no signal is saved, counted down on the device, retried with the same key, cancellable
+and finished on restart. What remains is below, and the platform limit that no slice removes: nothing is sent while the app is closed._
+
+### 🔴 KI-123 — Nothing is sent while the app is closed, killed, or the phone is off
+
+There is no background task: retries run only while Lumo is open, and iOS limits background work in any case. The reminder notification can
+reach a person whose app was closed, and the dialler works always, but no alert is sent for them until they reopen Lumo. The screen says "as
+long as Lumo stays open". A background-fetch task, and on iOS the service extension (1.16), are the partial fixes; nothing makes it complete.
+
+### 🟠 KI-124 — The offline flow has never run on a device
+
+Jest with the API mocked, and a real database for the server half. Not exercised: airplane mode, a SIM removed, a tunnel, the app killed
+mid-countdown, the reminder arriving, or a request that hangs for the full timeout. Needs a native rebuild and a device (see KI-89).
+
+### 🟡 KI-125 — The reminder needs notification permission
+
+Without it there is no reminder and no sign of one. The app asks for the permission for push elsewhere; it does not ask here, at the worst
+moment. Whether to ask at the first contact is a product decision.
+
+### 🟡 KI-126 — A cancel that cannot be confirmed stays "Cancelled on this phone"
+
+If Lumo is unreachable for a long time the screen keeps saying it will keep trying. The saved cancel survives a restart and is finished on the
+next open, but a person who never reopens Lumo has an unconfirmed cancel. It cannot send (the press is marked cancelled), but a request that
+reached Lumo before the cancel may still alert contacts.
+
+## Found while building milestone 1.13c — 2026-11-17
+
+### 🟠 KI-127 — The pre-filled text is not on the incident's ledger
+
+The text is composed with no incident to attach it to, and nothing records it afterwards. The incident view never shows a `device_direct_sms`
+attempt, so a contact list read later does not say that the person texted them. Recording it needs the result kept until Lumo is reachable, and an
+endpoint that writes an attempt whose ceiling is SENT and never DELIVERED (the channel has no receipt path at all).
+
+### 🟠 KI-128 — A withdrawal made while the phone is offline is not yet known to it
+
+_Update: mitigated, not eliminated. The screen now shows **who the text will be addressed to before it opens**, and the dashboard re-reads settings (which refreshes this copy) every time the app returns to the foreground with a signal. What remains: a contact who withdraws while this phone has had no signal since is unknowable to it, and is still shown by name until it has._
+
+The cached contacts follow the server whenever settings load. A contact who withdraws consent while this phone has no signal is still in the
+cache, so the text can be addressed to them. The person must still press send, and the names are shown, but consent is the contact's: the mitigation above shortens the window and makes it visible.
+
+### 🟡 KI-129 — The text's map link is Google's, and the position's age is the phone's own clock
+
+Same as KI-88: opening the link tells Google where the person was. The age ("about 12 min ago") is the fix's age by the phone's clock, consistently
+(both ends are on the device), so it is only as wrong as the phone's own sense of elapsed time. A Lumo-hosted position page would replace it.
+
+### 🟡 KI-130 — The composer's answer is weak on some platforms
+
+`expo-sms` can say "sent", "cancelled" or "unknown", and on some it is always "unknown". The screen reports exactly that and never more.
+`expo-sms` is a native module: a dev-build rebuild is needed before this works on a device (KI-124), and it has not run on one.
+
+## Found while building milestone 1.14a — 2026-11-18
+
+### 🔴 KI-131 — No screen-reader, 200%-text or one-handed check has been done on a device
+
+Everything above is Jest. Nobody has gone through the emergency path with VoiceOver or TalkBack, with text at 200%, or one-handed. The things
+only that finds: reading order, whether a live region is announced and not repeated, a fixed-width label clipping (the bottom bar's labels are
+64 pt wide), and whether the SOS button is in reach. The floor in `ACCESSIBILITY.md` is not met until this is done on both platforms.
+
+### 🟠 KI-132 — No haptic confirmation
+
+The floor asks for "haptic + visual + audible confirmation of state changes, where permitted". There is no haptics module, so a deaf or
+low-vision person gets the visual and the announced state only. `expo-haptics` is a native module (a rebuild and a mock).
+
+### 🟠 KI-133 — Screens off the emergency path are not audited
+
+Hazard reporting, fake call, the safety assistant, profile, "being a contact", joining a contact and community safety are not in the audit.
+They are not the emergency path, but they are the app.
+
+### 🟠 KI-134 — Layout mirrors; nothing is in Urdu
+
+The RTL work is layout only. There is no message catalogue and no Urdu string anywhere (i18n is 6.1), so "Urdu selected → RTL correct" cannot be
+tested end to end, and every safety string still needs a native-speaker review (KI-48's rule). Mixed-direction text (a name in Latin script in an
+Urdu sentence, a phone number) is untested.
+
+### 🟡 KI-135 — Light theme only
+
+`userInterfaceStyle: "light"`. Contrast is checked for the one theme. A dark theme, if added, needs the whole check again, including the emergency
+screen's own slate background.

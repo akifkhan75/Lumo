@@ -25,6 +25,8 @@ export class SosDto {
   @IsIn(SOS_TRIGGERS as unknown as string[]) triggerType!: (typeof SOS_TRIGGERS)[number];
   @IsISO8601() triggeredAt!: string;
   @IsOptional() @IsInt() @Min(0) @Max(60) countdownSeconds?: number;
+  // How long ago the press was, measured on the device (docs/specs/OFFLINE_SOS.md). The service refuses one over the cap, with a plain message.
+  @IsOptional() @IsInt() @Min(0) elapsedSeconds?: number;
   @IsOptional() @ValidateNested() @Type(() => LocationDto) location?: LocationDto;
   @IsOptional() @ValidateNested() @Type(() => PlaceDto) place?: PlaceDto;
   // The journey this SOS happens during, if any; ignored unless it is the caller's own live journey.
@@ -47,20 +49,30 @@ export class IncidentsController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async sos(@Request() req: any, @Headers('idempotency-key') key: string | undefined, @Body() body: SosDto, @Res({ passthrough: true }) res: Response) {
     if (!key || !KEY.test(key)) throw new BadRequestException('An Idempotency-Key header (8–128 letters, digits or . _ : -) is required.');
-    // Refused, never accepted-and-ignored: either would send real alerts or show a ledger that must be hidden.
-    if (body.mode === 'practice') throw new BadRequestException('Practice mode is not available yet. Nothing was sent.');
+    // Refused, never accepted-and-ignored: it would show a ledger that must be hidden.
     if (body.duress) throw new BadRequestException('This option is not available yet. Nothing was sent.');
 
     const { replay, incident } = await this.incidents.raise(caller(req), key, {
       triggerType: body.triggerType,
       triggeredAt: new Date(body.triggeredAt),
       countdownSeconds: body.countdownSeconds,
+      elapsedSeconds: body.elapsedSeconds,
       location: body.location ? { latitude: body.location.latitude, longitude: body.location.longitude, accuracyM: body.location.accuracyM ?? null, capturedAt: body.location.capturedAt } : null,
       place: body.place ?? null,
       sessionId: body.sessionId ?? null,
+      mode: body.mode ?? 'real',
     });
     res.status(replay ? 200 : 201);
     return incident;
+  }
+
+  /** Cancel by the key the press was made with: for a device that cancelled while offline and cannot know whether its request arrived. */
+  @Post('sos/cancel')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  cancelByKey(@Request() req: any, @Headers('idempotency-key') key: string | undefined) {
+    if (!key || !KEY.test(key)) throw new BadRequestException('An Idempotency-Key header (8–128 letters, digits or . _ : -) is required.');
+    return this.incidents.cancelByKey(caller(req), key);
   }
 
   @Post('incidents/:id/cancel')

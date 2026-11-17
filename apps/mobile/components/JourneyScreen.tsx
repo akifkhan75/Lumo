@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, StyleSheet, Share, TextInput } from 'react-native';
 import styled from 'styled-components/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { SessionKindName } from '@lumo/types';
@@ -7,13 +7,15 @@ import { IconArrowLeft } from '../constants';
 import { useLocation } from '../hooks/useLocation';
 import { useJourney } from '../hooks/useJourney';
 import { useJourneyLocation } from '../hooks/useJourneyLocation';
+import { useJourneyLinks } from '../hooks/useJourneyLinks';
 import * as api from '../services/apiService';
+import { cannotShareNoWebAddress, couldNotHandOver, createdNotice, indicatorTitle, linkLine, liveLinks, mayShareAgainNote, shareMessage, shareUrl, webBaseUrl, whatTheyWillSee } from '../services/journeyLinks';
 import { alertsMayStartAt, clock, contactsTried, durationLabel, endedText, KIND_OPTIONS, kindOption, phaseOf, planLines, type ContactInfo } from '../services/journeyCopy';
 
 const Container = styled(SafeAreaView)`flex: 1; background-color: white;`;
 const Header = styled(View)`flex-direction: row; align-items: center; padding: 16px;`;
 const Back = styled(TouchableOpacity)`padding: 8px; min-width: 44px; min-height: 44px; justify-content: center;`;
-const Title = styled(Text)`font-size: 24px; font-weight: bold; color: #1f2937; margin-left: 12px;`;
+const Title = styled(Text)`font-size: 24px; font-weight: bold; color: #1f2937; margin-start: 12px;`;
 const H2 = styled(Text)`font-size: 18px; font-weight: bold; color: #111827; margin-top: 20px;`;
 const Body = styled(Text)`font-size: 15px; color: #374151; margin-top: 8px;`;
 const Strong = styled(Text)`font-size: 17px; font-weight: 600; color: #111827; margin-top: 8px;`;
@@ -28,7 +30,14 @@ const Row = styled(View)`flex-direction: row; flex-wrap: wrap;`;
 const Ask = styled(View)`margin: 16px; padding: 16px; border-radius: 16px; background-color: #fef3c7; border-width: 2px; border-color: #b45309;`;
 const AskTitle = styled(Text)`font-size: 28px; font-weight: bold; color: #451a03;`;
 
+const Sharing = styled(View)`margin-top: 16px; padding: 12px; border-radius: 12px; border-width: 2px; border-color: #1e3a8a; background-color: #eff6ff;`;
+const SharingTitle = styled(Text)`font-size: 16px; font-weight: 700; color: #1e3a8a;`;
+const PinInput = styled(TextInput)`min-height: 48px; margin-top: 8px; padding: 8px 12px; font-size: 18px; border-width: 2px; border-color: #1e3a8a; border-radius: 12px; color: #111827; background-color: white;`;
+
 const styles = StyleSheet.create({ scroll: { paddingHorizontal: 16, paddingBottom: 32 } });
+
+// Where the page a link opens lives. A build without it cannot make a link anyone could open, and says so.
+const webBase = () => webBaseUrl(process.env.EXPO_PUBLIC_WEB_URL, typeof __DEV__ !== 'undefined' && __DEV__);
 
 /**
  * A journey: set it up (with the plan shown BEFORE it runs), keep it, answer it, end it (docs/specs/JOURNEYS.md).
@@ -63,6 +72,31 @@ export default function JourneyScreen() {
   const saveOn = Boolean(journey?.shareLocation) && running && !paused && location.permission === 'granted';
   const saving = useJourneyLocation(journey?.id ?? null, location.fix, saveOn, r => { if (r.arrived || r.atDestination) { /* the next refresh shows it */ } });
 
+  // Sharing: the live links are the SERVER's list, polled while the journey runs, so the indicator is what is true, not what we remember.
+  const WEB_BASE = webBase();
+  const links = useJourneyLinks(journey?.id ?? null, running);
+  const live = liveLinks(links.state.links);
+  const [pin, setPin] = useState('');
+  const [madeNotice, setMadeNotice] = useState<string | null>(null);
+  const pinOk = pin === '' || /^\d{4,8}$/.test(pin);
+
+  const shareJourney = useCallback(async () => {
+    if (!journey) return;
+    setMadeNotice(null);
+    const made = await links.create(pin ? { pin } : {});
+    if (!made) return;
+    setPin('');
+    const url = shareUrl(WEB_BASE, made.path);
+    if (!url) {
+      // The link exists on the server but cannot be handed over: turn it off rather than leave one nobody can use and nobody can see.
+      await links.revoke([made.id]);
+      setMadeNotice(couldNotHandOver);
+      return;
+    }
+    setMadeNotice(createdNotice);
+    try { await Share.share({ message: shareMessage(url, null, made.hasPin) }); } catch { /* the link exists either way; the indicator shows it */ }
+  }, [journey, links, pin, WEB_BASE]);
+
   const pick = (k: SessionKindName) => { setKind(k); setMinutes(kindOption(k).minutes[0]); };
   const arriveAt = useMemo(() => tick + minutes * 60_000, [tick, minutes]);
   const agreedCount = contacts?.filter(c => c.agreed).length ?? 0;
@@ -71,6 +105,41 @@ export default function JourneyScreen() {
   const more = (m: number) => checkIn(Date.now() + m * 60_000);
 
   const close = () => navigation.goBack();
+
+  // The indicator: visible for as long as any link works, with the way to stop it beside it (invariant 4).
+  const indicator = live.length > 0 ? (
+    <Sharing accessibilityLiveRegion="polite">
+      <SharingTitle accessibilityRole="header">{indicatorTitle(live)}</SharingTitle>
+      {live.map(l => <Body key={l.id}>{linkLine(l)}</Body>)}
+      {links.state.stale ? <Body>Can't refresh this right now, so it may be out of date.</Body> : null}
+      <Quiet disabled={links.state.busy} onPress={() => links.revoke(live.map(l => l.id))} accessibilityRole="button" accessibilityLabel="Stop sharing. Turn off every link to this journey">
+        <QuietText>Stop sharing</QuietText>
+      </Quiet>
+      {live.length > 1 ? live.map((l, i) => (
+        <Quiet key={l.id} disabled={links.state.busy} onPress={() => links.revoke([l.id])} accessibilityRole="button" accessibilityLabel={`Turn off link ${i + 1} of ${live.length}`}>
+          <QuietText>{`Turn off link ${i + 1}`}</QuietText>
+        </Quiet>
+      )) : null}
+    </Sharing>
+  ) : null;
+
+  const shareControl = journey ? (
+    <>
+      <H2 accessibilityRole="header">Share this journey</H2>
+      {WEB_BASE ? (
+        <>
+          <Body>{whatTheyWillSee(journey.shareLocation)}</Body>
+          <Body>Lumo does not send the link. You choose who gets it, and it works for whoever has it until you turn it off.</Body>
+          <PinInput value={pin} onChangeText={t => setPin(t.replace(/\D/g, '').slice(0, 8))} keyboardType="number-pad" secureTextEntry maxLength={8} placeholder="Optional PIN, 4 to 8 digits" accessibilityLabel="Optional PIN for the link, 4 to 8 digits. You give it to them separately" />
+          {!pinOk ? <Body accessibilityLiveRegion="polite">A PIN is 4 to 8 digits.</Body> : null}
+          <Big disabled={links.state.busy || !pinOk} onPress={shareJourney} accessibilityRole="button" accessibilityLabel="Make a link and choose who to share it with"><BigText>{links.state.busy ? 'Working…' : 'Share a link'}</BigText></Big>
+          <Body>{mayShareAgainNote}</Body>
+        </>
+      ) : <Notice>{cannotShareNoWebAddress}</Notice>}
+      {madeNotice ? <Notice accessibilityLiveRegion="polite">{madeNotice}</Notice> : null}
+      {links.state.error ? <Notice accessibilityRole="alert" accessibilityLiveRegion="assertive">{links.state.error}</Notice> : null}
+    </>
+  ) : null;
   const errorLine = state.error ? <Notice accessibilityRole="alert" accessibilityLiveRegion="assertive">{state.error}</Notice> : null;
 
   // ------------------------------------------------------------ the question
@@ -85,6 +154,7 @@ export default function JourneyScreen() {
             {mayStart ? <Strong>If you do not answer, Lumo may start trying to alert your contacts at about {clock(mayStart)}.</Strong> : null}
           </Ask>
           {errorLine}
+          {indicator}
           <Big disabled={state.busy} onPress={() => more(15)} accessibilityRole="button" accessibilityLabel="I'm OK. Give me 15 more minutes"><BigText>I'm OK — 15 more minutes</BigText></Big>
           <Quiet disabled={state.busy} onPress={() => more(60)} accessibilityRole="button" accessibilityLabel="I'm OK. Give me an hour"><QuietText>I'm OK — an hour</QuietText></Quiet>
           <Quiet disabled={state.busy} onPress={arrive} accessibilityRole="button" accessibilityLabel="I've arrived. End the journey"><QuietText>I've arrived</QuietText></Quiet>
@@ -165,9 +235,11 @@ export default function JourneyScreen() {
             {journey.shareLocation && !paused && location.permission === 'granted' ? (
               <Quiet onPress={() => setPaused(true)} accessibilityRole="button" accessibilityLabel="Stop saving my position for this journey"><QuietText>Stop saving my position</QuietText></Quiet>
             ) : null}
+            {indicator}
             <Big disabled={state.busy} onPress={arrive} accessibilityRole="button" accessibilityLabel="I've arrived. End the journey"><BigText>I've arrived</BigText></Big>
             <Quiet disabled={state.busy} onPress={() => more(15)} accessibilityRole="button" accessibilityLabel="I need 15 more minutes"><QuietText>I need 15 more minutes</QuietText></Quiet>
             <Quiet disabled={state.busy} onPress={cancel} accessibilityRole="button" accessibilityLabel="Cancel the journey. Nobody is told"><QuietText>Cancel the journey</QuietText></Quiet>
+            {shareControl}
           </>
         ) : null}
 
@@ -179,6 +251,7 @@ export default function JourneyScreen() {
               <Big onPress={() => navigation.navigate('Emergency', { incidentId: journey.incidentId })} accessibilityRole="button" accessibilityLabel="See who was alerted and call for help"><BigText>See who was alerted</BigText></Big>
             ) : null}
             <Quiet disabled={state.busy} onPress={arrive} accessibilityRole="button" accessibilityLabel="I'm safe. I've arrived. This ends the alert and tells the contacts who were alerted"><QuietText>I'm safe — I've arrived</QuietText></Quiet>
+            {indicator}
           </>
         ) : null}
 

@@ -1,0 +1,145 @@
+# Offline SOS (milestone 1.13)
+
+> Implements RES-16 for the SOS path. Refines [`OFFLINE_ARCHITECTURE.md`](OFFLINE_ARCHITECTURE.md) and
+> [`INCIDENTS.md`](INCIDENTS.md); closes KI-87 and KI-91 as far as the platform allows.
+
+## The honest premise
+
+An offline phone cannot deliver a remote alert, and Lumo cannot send an SMS silently on either platform
+([`../engineering/PLATFORM_CAPABILITY_MATRIX.md`](../engineering/PLATFORM_CAPABILITY_MATRIX.md)). So 1.13 does four things and
+promises nothing more:
+
+1. **Never lose the press.** It is written to the device before anything else, with when it happened.
+2. **Say plainly that nothing has been sent**, and keep the way to real help (the dialler) in front of the person.
+3. **Send it as soon as there is a signal, if the app is running**, and tell the contact how late it is.
+4. **Offer a text the person sends themselves**, pre-filled, with one tap. Not zero.
+
+**What it does not do, and the UI must say:** it cannot send while the app is closed, killed, or the phone is off or dead (there is no
+background task: see Limits). A person who is offline and whose app is killed is protected only by the dialler.
+
+## The four-part contract
+
+| Part              | Offline SOS                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner             | The device until the server has the incident; the server after.                                                                                             |
+| Platform          | Android and iOS, foreground. Background send is not offered.                                                                                                |
+| Failure path      | Offline · API down but network up · request lost mid-flight · app killed · token expired · clock wrong · cancelled while offline. Each below.               |
+| Completion        | An incident the server holds with the **same idempotency key**, and its ledger. Until that exists the screen says "not sent", never "queued for delivery". |
+
+## The press (device)
+
+1. Local feedback at once (< 100 ms), before any I/O.
+2. **Written to secure storage before the request**: key, trigger, `startedAt`, and the last known fix. (The existing "active SOS"
+   record, extended with the fix; ids, a time and a position, nothing else.)
+3. The local countdown runs on the device whatever the network does (3 s manual, 10 s automatic), with Cancel.
+4. The request goes out **at once** with the same key (the server owns the countdown when it can). If it fails, the device does not
+   give up: it **retries with the same key** while the app is open, backing off (2, 4, 8 … capped at 30 s), and on the app coming to the
+   foreground. A retry that actually got through earlier returns the existing incident (idempotent), so there is never a second one.
+5. **State shown, in the spec's words, while nothing has reached the server:** "Nothing has been sent. Lumo will alert your contacts as
+   soon as there is a signal, if Lumo stays open. To get help now, call <number>." The number is from the region profile, the dialler is
+   one tap, and a **"Text your contacts"** control is offered (see below).
+6. **A local notification** is scheduled for when the countdown ends ("Your alert has not been sent. Open Lumo, or call"), cancelled the
+   moment the server has the incident. It is the only thing that can reach a person whose app was killed, and it is a reminder, not a send.
+
+## Time: never the device's clock for a claim about the past
+
+A phone's clock can be minutes wrong; an alert that tells a contact "triggered 10 minutes ago" because the clock is slow is a false
+statement. So the device reports **how long ago** it pressed (`elapsedSeconds`, measured on the device between the press and this
+send), and the **server** works out the rest from its own clock: `pressedAt = now − elapsed`. Only the device's _elapsed_ time is
+trusted, and only within bounds:
+
+- `0 ≤ elapsedSeconds ≤ MAX_LATE_SOS_SECONDS` (**6 hours**, the same window as resuming a shown SOS). Beyond it the request is refused
+  with a plain message, nothing is sent, and the screen says it was too long ago and offers the dialler. (A decision, KI-120: an
+  SOS older than that is more likely stale than urgent, and a contact woken by it cannot tell.)
+- The countdown that remains is `max(0, countdown − elapsed)`. If the deadline has passed, **it dispatches at once**: a late alert
+  beats no alert.
+- `lateBySeconds = max(0, elapsed − countdown)` is stored on the incident. If it is two minutes or more, **every message says so**
+  ("It was triggered about 14 minutes ago; Lumo could not send it until now."), so the contact knows how old it is.
+
+## The pre-filled text (`device_direct_sms`)
+
+Offered whenever the server has not yet got the incident, and again if all channels failed. Opens the system SMS composer, addressed to
+the contacts who have **agreed** (consent applies to this channel: `requiresConsent`), with the last known position **and its age**.
+The person presses send.
+
+- It is **attempted, never sent**: the composer's result is "sent" or "cancelled" on some platforms and unknown on others, and a text
+  that left the phone is still not delivered. Lumo records only that the composer was opened (and, when online, posts that to the
+  incident as an attempt on `device_direct_sms`, ceiling `SENT`, never `DELIVERED`).
+- Needs the contacts' numbers **on the device while offline**: an encrypted cache in secure storage, refreshed whenever settings load,
+  cleared on logout. This is personal data at rest on the phone (KI-121).
+- Needs a native SMS-composer module (a dev-build rebuild, a Jest mock). Without it the control is not shown, and the screen says so.
+
+## Cancel while offline
+
+- During the local countdown: nothing was sent, so cancel clears the record and the reminder. Nothing is queued.
+- After the countdown, before the server has it: cancel **clears the pending record first**, so no retry can send it, then, if a
+  request may have reached the server unseen, cancels by key once online. Within the server's cancel window it works; after, the person is
+  told it already went (409), as today.
+
+## Reconciliation (server)
+
+Idempotency key first; the server's state wins; an illegal-on-arrival event is logged `RECONCILIATION_CONFLICT`, never dropped
+(`OFFLINE_ARCHITECTURE.md`). Only the SOS request is replayed by 1.13; check-ins and positions are not (see Limits).
+
+## Limits, stated so the UI can state them
+
+- **No background send.** No background-task module is installed, iOS limits background work, and a dead or off phone sends nothing.
+  Only the dialler, and the reminder notification, work with the app killed.
+- **No siren or strobe** (RES-19, Phase 2).
+- **Journey check-ins and positions are not queued by this slice** (KI-57, KI-107): a journey's deadline is the server's, and an
+  offline phone simply stops saving positions, as today.
+- The text fallback depends on a SIM and credit, and is one tap by the person, never silent.
+
+## Required tests
+
+Offline at the press · offline at the deadline · request lost mid-flight then retried (one incident) · app killed and reopened (the
+record resumes) · cancel during and after the countdown, offline · reconnect after a long delay dispatches and **marks the delay** ·
+elapsed over the cap is refused and sends nothing · a wrong device clock changes nothing the server states · a duplicate key from another
+user · the composer is never reported as sent · no screen says "queued" or "will be sent" without the qualifier that the app must stay open.
+
+## Slices
+
+- **1.13a** server: late dispatch from `elapsedSeconds`, the cap, `lateBySeconds`, and the delay in every message.
+- **1.13b** app: the durable press, retry with the same key, the offline states and copy, the reminder notification, cancel offline.
+- **1.13c** the pre-filled text: the contact cache and the composer (built, with `expo-sms`). The attempt record on the ledger is not built (KI-127).
+
+## As built (1.13b: the app, and cancel-by-key on the server)
+
+- **The press is saved first**, with the position at the press (`ActiveSos.fix`), before any request; **`elapsedSeconds`** goes on every send,
+  measured by the device's stopwatch. The server decides the rest (1.13a).
+- **Automatic retry with the same key**, 2, 4, 8, 16, then every 30 s, and **at once when the app returns to the foreground** ("Try now"
+  does the same). A try never overlaps another. It stops, and says why, when the answer cannot change: signed out, **too long ago**
+  (`tooLate`: the saved press is cleared so it never comes back), or refused. Practice never retries in the background.
+- **The offline screen** says nothing has been sent, that Lumo will keep trying and will _try_ to alert contacts as soon as it can **as long
+  as Lumo stays open**, names the number to call with the dialler one tap away, shows the device's own countdown and when the next try is, and
+  never says sent, queued or delivered (a test scans for it). Once through, a press that was late says so in the same terms the contacts got.
+- **A reminder notification** ("Your alert has not been sent. Open Lumo to keep trying, or call") is scheduled on the first failure and
+  cancelled when Lumo has the incident or the person cancels. Without notification permission there is none, and nothing claims one.
+- **Cancel is available whenever Lumo does not yet have the alert** (in flight, or unreachable), because with no signal a request can hang for
+  its whole timeout. It stops sending first, writes `cancelled` to the saved press (so a restart finishes the cancel and **never sends**), then
+  asks Lumo to cancel **by key** (`POST /api/v1/sos/cancel`). If the request had arrived, that incident is cancelled; if not, Lumo makes the
+  incident already cancelled under that key, so a request still in flight sends nothing. If Lumo cannot be reached it says so and keeps
+  trying; if the alert had already gone out it shows the incident as it is, not "cancelled". A response that arrives after the cancel never
+  becomes a live ledger.
+- A saved press older than 6 hours is dropped at launch, not offered and not sent.
+
+Not in this slice: the pre-filled text (1.13c), a background send, journey queues. See Limits.
+
+## As built (1.13c: the pre-filled text)
+
+- **"Text my contacts"** appears on the SOS screen exactly when Lumo does not have the alert: no signal, the login rejected, or every
+  channel failed. It opens the phone's own composer (`expo-sms`), **addressed** to the contacts who agreed and **written** for the person, who
+  presses send. It is never described as Lumo sending, and the screen says so beside it.
+- **The text** is in the first person ("I pressed SOS in the Lumo app, but my phone has no signal, so Lumo could not alert you
+  automatically"), with the last known position, **when it was and how precise**, "I may have moved" if it is old, or "I do not have a
+  location" rather than a guess. It never says help is coming.
+- **After the composer** the screen says only what the composer said: "Your messages app says you sent the text to Maya, Dad. Lumo can't tell
+  whether it arrived", or "You didn't send the text. Nothing has been sent", or that it can't tell. No outcome says delivered.
+- **Contacts on the device**: the agreed contacts, as id, name and number only (at most 10), in the platform's encrypted store. Refreshed
+  whenever settings load or are saved, so a withdrawal removes them; **removed on logout**; left alone when settings cannot load (offline is when
+  they are needed). With nothing cached it falls back to the agreed contacts in the loaded settings, and never to one who has not agreed.
+- **Who it goes to is shown before it opens** ("It will be addressed to: Maya, Dad."), and the dashboard re-reads settings on every return to the
+  foreground, which refreshes the copy. A withdrawal the phone has not yet heard of is still possible (KI-128).
+- A phone with no composer is told so, and still has the dialler.
+
+Not built: recording the text on the incident's ledger as a `device_direct_sms` attempt (KI-127).

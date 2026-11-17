@@ -78,6 +78,12 @@ jest.mock('react-native-maps', () => {
 });
 
 
+// expo-sms: native. Defaults are "the composer is available, and the result cannot be known"; a test drives it.
+jest.mock('expo-sms', () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  sendSMSAsync: jest.fn(async () => ({ result: 'unknown' })),
+}));
+
 // expo-notifications / expo-constants: native. Defaults are "no permission, nothing arrives, no project id".
 jest.mock('expo-notifications', () => ({
   AndroidImportance: { MAX: 5 },
@@ -90,6 +96,9 @@ jest.mock('expo-notifications', () => ({
   addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   getLastNotificationResponseAsync: jest.fn(async () => null),
+  SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval' },
+  scheduleNotificationAsync: jest.fn(async () => 'reminder-1'),
+  cancelScheduledNotificationAsync: jest.fn(async () => undefined),
 }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { extra: {} }, easConfig: undefined } }));
 jest.mock('expo-device', () => ({ isDevice: true }));
