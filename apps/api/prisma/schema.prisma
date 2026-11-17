@@ -517,18 +517,22 @@ model NotificationEvent {
 }
 
 model JourneyLink {
-  id           String        @id @default(uuid())
-  sessionId    String
-  session      SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                String        @id @default(uuid())
+  sessionId         String
+  session           SafetySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   // Only the HASH is stored, never the token (T6).
-  tokenHash    String        @unique
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  pinHash      String?
-  viewCount    Int           @default(0)
-  lastViewedAt DateTime?
+  tokenHash         String        @unique
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  pinHash           String?
+  // Wrong PIN guesses so far. The link locks (is revoked) at MAX_PIN_FAILURES: a PIN is only worth anything if it cannot be guessed.
+  failedPinAttempts Int           @default(0)
+  createdAt         DateTime      @default(now())
+  viewCount         Int           @default(0)
+  lastViewedAt      DateTime?
 
   @@index([expiresAt])
+  @@index([sessionId])
 }
 
 model Device {

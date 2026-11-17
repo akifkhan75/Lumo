@@ -341,3 +341,16 @@ Tracked in [ROADMAP.md](../product/ROADMAP.md); listed here so nobody looks for 
 | `POST /api/v1/devices`                                        | Push token registration                                                                   |
 | `POST /api/v1/auth/refresh`, `/forgot-password`               | Session and account recovery                                                              |
 | `GET /api/v1/me`                                              | Identity without the whole settings payload                                               |
+
+## Journey links (1.11)
+
+| Endpoint | Auth | Notes |
+| --- | --- | --- |
+| `POST /api/v1/safety-sessions/:id/links` | JWT | Mint a link: `{ expiresInMinutes?: 15–10080, pin?: "4–8 digits" }`. Returns `path` (`/j/<token>`) **once**; only a SHA-256 of the token is stored. Max 5 live links per journey. Lumo sends nothing (`sentByLumo: false`). |
+| `GET /api/v1/safety-sessions/:id/links` | JWT | Every link with `viewCount`, `lastViewedAt`, `live`, `hasPin`. Never the token. |
+| `DELETE /api/v1/safety-sessions/:id/links/:linkId` | JWT | Revoke. Idempotent; unknown id is 404. |
+| `GET /api/v1/j/:token` | token (+ optional `x-link-pin`) | The link holder's view: exact keys `who, status, expectedArrivalAt, location, asOf, canRespond, responding`. Unknown, expired and revoked are one 404; a missing or wrong PIN is 401 `{ pinRequired }`. `Cache-Control: no-store`. The PIN locks the link after 10 wrong guesses. |
+| `POST /api/v1/j/:token/respond`, `/unrespond` | token (+ PIN) | "I'm responding": recorded as someone holding the link, halts or resumes escalation. Only while an incident is active. |
+
+When a journey ends (arrived, cancelled, expired or closed), every link of it is capped to expire 30 minutes later, so a contact who opens one just
+after still reads "This journey has ended" and then it stops working. A link already shorter is left alone.
