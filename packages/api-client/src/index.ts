@@ -210,6 +210,9 @@ export class ApiClient {
   async postJourneyLocation(id: string, snapshots: JourneyFix[]): Promise<{ stored: number; duplicates: number; atDestination: boolean; arrived: boolean }> {
     return this.send(`/api/v1/safety-sessions/${encodeURIComponent(id)}/location`, {
       method: 'POST', headers: this.getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ snapshots }),
+    });
+  }
+
   // The contact side: a push address, joining as someone's contact, and the device's own report back.
   async registerDevice(input: { platform: 'ios' | 'android'; osVersion: string; pushToken: string }): Promise<{ id: string }> {
     return this.send('/api/v1/devices', {
