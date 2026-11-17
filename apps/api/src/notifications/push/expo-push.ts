@@ -68,7 +68,7 @@ export class ExpoPush implements PushProvider {
   async send({ tokens, title, body, attemptId }: { tokens: readonly string[]; title: string; body: string; attemptId: string }): Promise<PushOutcome> {
     if (!this.config) return { kind: 'rejected', reason: 'PROVIDER_NOT_CONFIGURED', deadTokens: [] };
     // Ids and the sender's name only: this crosses third parties and shows on a lock screen.
-    const messages = tokens.map(to => ({ to, title, body, data: { attemptId }, sound: 'default', priority: 'high' }));
+    const messages = tokens.map(to => ({ to, title, body, data: { attemptId }, sound: 'default', priority: 'high', channelId: 'alerts', categoryId: 'lumo-alert' }));
     const res = await this.post(EXPO_SEND_URL, messages);
     if (res === null) return { kind: 'ambiguous' };
     if (res.status < 200 || res.status >= 300) return { kind: 'rejected', reason: `HTTP_${res.status}`, deadTokens: [] };

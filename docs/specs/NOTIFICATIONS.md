@@ -225,7 +225,7 @@ test alert.**
   tested against a fake HTTP server; **"a real SMS to a real phone with receipts disabled is recorded
   `UNKNOWN`" — the plan's exit — is not met** and stays open until credentials exist.
 - US delivery needs A2P 10DLC registration, which takes weeks and can be refused.
-- **The mobile half of push is not built**: the app does not yet register a push token, offer "claim this invite",
+- **(1.8c) The mobile half of push is now built (see _The app's half_), but unproven on a device.** Previously: the mobile half of push was not built: the app does not yet register a push token, offer "claim this invite",
   or post device receipts. Until it ships, **no contact can have a push address and nothing can reach `DELIVERED` or be
   acknowledged by push** (KI-78). Nothing creates an incident yet (1.8), so nothing is sent to anyone.
 - At-most-once has a crash window (above).
@@ -257,3 +257,24 @@ test alert.**
 | A bad or missing signature → 403, nothing applied                        | webhook                          |
 | The signed URL comes from config, not from the `Host` header             | webhook                          |
 | No number, body or signature in any log line                             | database suite with captured log |
+
+## The app's half of push (milestone 1.8c)
+
+- **Where:** Settings → **Being a contact** (`ContactRole`) and an alert screen (`ContactAlert`). Nothing asks for permission by
+  itself: the notification prompt appears only from the **Turn on alerts** button.
+- **Turning alerts on** asks the system, creates the Android channel (before the token, as Android requires), gets the Expo push
+  token, and registers it (`POST /devices`). It is "on" only once the server has the registration. **Turning off, and logging
+  out, revoke it** (logout clears the login first and synchronously, then revokes with a copy of it, bounded to 2 s, so a failed
+  revoke can never hold up a logout).
+- **Joining:** the person pastes the link (or the whole message that contained it) or follows `lumo://claim/<token>`; the app sends
+  **only the token**, after a format check, to `POST /contacts/invites/:token/claim`, and says why when it did not work (not valid,
+  already claimed, signed out, no connection). Joining is also how they agree.
+- **What the phone reports:** a notification that **arrives while the app is open** or is **tapped** is reported `delivered`; the
+  **"I'm responding"** notification button reports `delivered` then `acknowledged`; the alert screen's button reports
+  `acknowledged` and says only what the server answered. A notification that arrives while the app is **closed or in the
+  background is not reported**, because that needs a background task (and on iOS the notification service extension of 1.16), so
+  the sender records "sent, not confirmed". That is true, not a failure.
+- **A build needs an EAS project id** (`extra.eas.projectId`) to obtain a push token. Without one the screen says the build can't
+  receive alerts yet and offers no button (KI-97).
+- **Payload:** the server now sends `channelId: alerts` and `categoryId: lumo-alert` so the action button and the high-importance
+  channel exist; the data is still `{ attemptId }` only.

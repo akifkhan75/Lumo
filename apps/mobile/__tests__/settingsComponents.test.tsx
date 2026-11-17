@@ -95,6 +95,11 @@ describe('Settings Screens', () => {
       act(() => {
         buttons[3].props.onPress();
       });
+      expect(mockNavigate).toHaveBeenCalledWith('ContactRole', expect.anything());
+
+      act(() => {
+        buttons[4].props.onPress();
+      });
       expect(mockNavigate).toHaveBeenCalledWith('AlertSettings', expect.any(Object));
 
       // Logout button (last)

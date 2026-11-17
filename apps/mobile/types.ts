@@ -25,6 +25,8 @@ export type RootStackParamList = {
   SafetyAssistant: undefined;
   // Settings are optional: Emergency is reachable signed out and before the
   // settings fetch finishes, and must open either way.
+  JoinContact: { token?: string } | undefined;
+  ContactAlert: { attemptId: string; title: string; body: string; responded: boolean };
   Emergency: { settings?: UserSettings; trigger?: 'manual' | 'shake' | 'voice' | 'crash'; resume?: boolean } | undefined;
 };
 
@@ -33,4 +35,5 @@ export type SettingsStackParamList = {
     ProfileSettings: { currentSettings: UserSettings; onSave: (settings: UserSettings) => Promise<void>; };
     ContactSettings: { currentSettings: UserSettings; onSave: (settings: UserSettings) => Promise<void>; };
     AlertSettings: { currentSettings: UserSettings; onSave: (settings: UserSettings) => Promise<void>; };
+    ContactRole: { token?: string } | undefined;
 };

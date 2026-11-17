@@ -861,7 +861,11 @@ profile marks incomplete.
 
 ## Found while building milestone 1.7b (part 2) — 2026-11-17
 
-### 🔴 KI-78 — The app does not do its half of push
+### 🟠 KI-78 — The app's half of push (built in 1.8c, unproven)
+
+_Update: built — see KI-97 – KI-100._ Original text:
+
+#### The app does not do its half of push
 
 Nothing in `apps/mobile` registers a push token, offers "claim this invite", or posts device receipts and
 acknowledgements. So no contact can have a push address, and nothing can reach `DELIVERED` or be acknowledged by
@@ -974,6 +978,31 @@ requirement (RES-4) — until the app shows `GET /escalation-policy`.
 
 A step's deadline is honoured to within the queue's one-second poll plus any backlog; a long outage of the worker delays the next
 contact by that long. An incident whose worker is down is not advanced at all until it returns.
+
+## Found while building milestone 1.8c — 2026-11-19
+
+### 🔴 KI-97 — Push has never run, and a build needs an EAS project id
+
+There is no Expo project, so `getExpoPushTokenAsync` has nothing to use: the screen says the build can't receive alerts yet. Even with
+one, nothing here has run on an iOS or Android device (a native rebuild is needed for `expo-notifications`), nor against Expo's
+service. The plan's real-delivery exits stay open.
+
+### 🟠 KI-98 — A contact cannot say "I can't help after all" from a notification
+
+The push carries only an attempt id, by design (it crosses third parties and shows on a lock screen). `unack` needs the incident id.
+Resuming the ladder after an acknowledgement therefore has no button yet; the alert screen could look the incident up through the
+attempt, which needs a (contact-scoped) endpoint.
+
+### 🟠 KI-99 — A link followed while signed out is lost
+
+`lumo://claim/<token>` is handled only once the dashboard is mounted. A person who opens the link signed out, or while the session
+is restoring, lands on the sign-in screen and the token is dropped; they paste the link again after signing in.
+
+### 🟡 KI-100 — Receipts exist only while the app runs
+
+A notification that arrives with the app closed or backgrounded is never reported, so those alerts will always read "sent, not
+confirmed" to the sender, however well they landed. A background notification task (Android), and the service extension (iOS,
+milestone 1.16), are the fix.
 
 ## Found while building milestone 1.10a — 2026-11-20
 
