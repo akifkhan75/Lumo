@@ -76,3 +76,20 @@ jest.mock('react-native-maps', () => {
   const Circle = (props) => React.createElement(View, { testID: 'map-circle', ...props });
   return { __esModule: true, default: MapView, Marker, Circle };
 });
+
+
+// expo-notifications / expo-constants: native. Defaults are "no permission, nothing arrives, no project id".
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { MAX: 5 },
+  setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn(async () => undefined),
+  setNotificationCategoryAsync: jest.fn(async () => undefined),
+  getPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'undetermined', canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ granted: false, status: 'denied', canAskAgain: false })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[abcdefghijklmnopqrstuv]' })),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+}));
+jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { extra: {} }, easConfig: undefined } }));
+jest.mock('expo-device', () => ({ isDevice: true }));

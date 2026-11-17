@@ -96,6 +96,12 @@ export const loadActiveSos = async (): Promise<ActiveSos | null> => {
 };
 export const clearActiveSos = () => deleteKey(ACTIVE_KEY);
 
+const PUSH_DEVICE_KEY = 'lumo.push.deviceId';
+/** The server-side id of THIS phone's push registration, so logout can revoke it. Not the push token itself. */
+export const savePushDeviceId = (id: string) => writeKey(PUSH_DEVICE_KEY, id);
+export const loadPushDeviceId = () => readKey(PUSH_DEVICE_KEY);
+export const clearPushDeviceId = () => deleteKey(PUSH_DEVICE_KEY);
+
 export const saveToken = async (token: string): Promise<void> => {
   try {
     await SecureStore.setItemAsync(TOKEN_KEY, token, OPTIONS);

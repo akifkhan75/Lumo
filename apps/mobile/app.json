@@ -37,6 +37,13 @@
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1e3a8a",
+          "defaultChannel": "alerts"
+        }
       ]
     ]
   }
