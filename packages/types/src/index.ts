@@ -199,3 +199,35 @@ export interface EmergencyToken {
   token: string;
   expiresAt: string;
 }
+
+export type SessionKindName = 'walk_home' | 'date' | 'ride' | 'travel' | 'outdoor' | 'custom';
+export type SessionStateName =
+  | 'CREATED' | 'ACTIVE' | 'CHECK_IN_DUE' | 'GRACE' | 'ESCALATING' | 'ALERTED' | 'ARRIVED' | 'CLOSED' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED';
+
+/** A journey as the server describes it (docs/specs/JOURNEYS.md). Dates arrive as ISO strings. */
+export interface Journey {
+  id: string;
+  kind: SessionKindName;
+  state: SessionStateName;
+  expectedArrivalAt: string | null;
+  checkInDueAt: string | null;
+  destination: { latitude: number; longitude: number; label: string | null } | null;
+  shareLocation: boolean;
+  /** What happens if the check-in is missed: the grace, and who would be tried, in order. */
+  plan: { graceSeconds: number; contacts: string[] };
+  /** The person is being asked "are you OK?" right now. */
+  needsAnswer: boolean;
+  incidentId: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+export interface CreateJourneyInput {
+  kind: SessionKindName;
+  expectedArrivalAt: string;
+  destination?: { latitude: number; longitude: number; label?: string | null };
+  shareLocation?: boolean;
+}
+
+export interface JourneyFix { latitude: number; longitude: number; accuracyM: number; capturedAt: number; batteryPct?: number | null; source: string }
+

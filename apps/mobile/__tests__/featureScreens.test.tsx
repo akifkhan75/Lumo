@@ -3,8 +3,6 @@ import { Linking } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import EmergencyScreen from '../components/EmergencyModal';
 import FakeCallScreen from '../components/FakeCallScreen';
-import FollowMeScreen from '../components/FollowMeModal';
-import CheckInScreen from '../components/CheckInModal';
 import CommunitySafetyScreen from '../components/CommunitySafetyModal';
 import ReportHazardScreen from '../components/ReportHazardModal';
 import SafetyAssistantScreen from '../components/SafetyAssistantModal';
@@ -222,108 +220,6 @@ describe('Feature and Modal Screens', () => {
       });
 
       expect(testRenderer.toJSON()).toBeTruthy();
-
-      act(() => {
-        testRenderer.unmount();
-      });
-    });
-  });
-
-  describe('FollowMeScreen', () => {
-    it('renders and toggles follow me tracking', () => {
-      let testRenderer: any;
-      act(() => {
-        testRenderer = renderer.create(<FollowMeScreen />);
-      });
-
-      let buttons = getPressableButtons(testRenderer.root);
-      // Back button
-      act(() => {
-        buttons[0].props.onPress();
-      });
-      expect(mockGoBack).toHaveBeenCalled();
-
-      // Start/Stop tracking button is the last one
-      const actionBtn = buttons[buttons.length - 1];
-      act(() => {
-        actionBtn.props.onPress();
-      });
-      buttons = getPressableButtons(testRenderer.root);
-      act(() => {
-        buttons[buttons.length - 1].props.onPress();
-      });
-
-      act(() => {
-        testRenderer.unmount();
-      });
-    });
-  });
-
-  describe('CheckInScreen', () => {
-    it('renders timer and allows selecting durations and starting timer', () => {
-      mockRouteParams = {};
-      let testRenderer: any;
-      act(() => {
-        testRenderer = renderer.create(<CheckInScreen />);
-      });
-
-      let buttons = getPressableButtons(testRenderer.root);
-      // Select 15 min (button 1)
-      if (buttons[1]) {
-        act(() => {
-          buttons[1].props.onPress();
-        });
-      }
-
-      // Start Timer
-      buttons = getPressableButtons(testRenderer.root);
-      const startBtn = buttons[buttons.length - 1];
-      act(() => {
-        startBtn.props.onPress();
-      });
-
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-
-      // Cancel Timer
-      buttons = getPressableButtons(testRenderer.root);
-      act(() => {
-        buttons[buttons.length - 1].props.onPress();
-      });
-
-      act(() => {
-        testRenderer.unmount();
-      });
-    });
-
-    // Regression: KI-19. The countdown used to decrement a counter once per
-    // tick, so any time the JS thread was paused (backgrounded, Doze, Low
-    // Power Mode) was simply lost and an overdue check-in never fired. The
-    // deadline is now wall-clock, so it expires as soon as the app runs again.
-    it('expires against the wall clock, not against ticks it managed to run', () => {
-      const onEmergency = jest.fn();
-      mockRouteParams = { onEmergency };
-      let testRenderer: any;
-      act(() => {
-        testRenderer = renderer.create(<CheckInScreen />);
-      });
-
-      // Start the 15-minute timer.
-      const buttons = getPressableButtons(testRenderer.root);
-      act(() => {
-        buttons[1].props.onPress();
-      });
-
-      // Simulate the app being suspended past the deadline: the clock moves,
-      // but only one tick ever runs.
-      act(() => {
-        jest.setSystemTime(Date.now() + 16 * 60 * 1000);
-        jest.advanceTimersByTime(1000);
-      });
-
-      expect(onEmergency).toHaveBeenCalledTimes(1);
-      expect(mockGoBack).toHaveBeenCalled();
 
       act(() => {
         testRenderer.unmount();

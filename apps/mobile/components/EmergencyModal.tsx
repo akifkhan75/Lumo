@@ -195,7 +195,7 @@ const clockOf = (ms: number | null) => (ms ? new Date(ms).toLocaleTimeString([],
 const EmergencyScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const params = route.params as { settings?: UserSettings; trigger?: SosTrigger; resume?: boolean } | undefined;
+  const params = route.params as { settings?: UserSettings; trigger?: SosTrigger; resume?: boolean; incidentId?: string } | undefined;
   const settings = params?.settings;
 
   const [showDefenseGuide, setShowDefenseGuide] = useState(false);
@@ -234,6 +234,7 @@ const EmergencyScreen = () => {
 
   // The press registers at once and does not wait on anything. A screen opened to LOOK (resume) does not start a new one.
   useEffect(() => {
+    if (params?.incidentId) { sos.watch(params.incidentId).catch(() => undefined); return; }
     if (params?.resume) { sos.resume().catch(() => undefined); return; }
     if (params?.trigger) sos.start(params.trigger);
     // eslint-disable-next-line react-hooks/exhaustive-deps

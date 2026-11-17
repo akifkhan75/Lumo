@@ -1,5 +1,5 @@
 import { NativeModules } from 'react-native';
-import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, Incident, RaiseSosInput } from '@lumo/types';
+import { UserSettings, HazardReport, CreateHazardReportInput, FakeCallScript, PersonalInfo, Incident, RaiseSosInput, CreateJourneyInput, JourneyFix } from '@lumo/types';
 import { ApiClient } from '@lumo/api-client';
 import * as tokenStorage from './tokenStorage';
 
@@ -86,6 +86,13 @@ export const signOut = async (): Promise<void> => {
     await tokenStorage.clearToken();
 };
 
+// Journeys (docs/specs/JOURNEYS.md).
+export const createJourney = (input: CreateJourneyInput) => apiClient.createJourney(input);
+export const getActiveJourney = () => apiClient.getActiveJourney();
+export const checkInJourney = (id: string, expectedArrivalAt: string) => apiClient.checkInJourney(id, expectedArrivalAt);
+export const arriveJourney = (id: string) => apiClient.arriveJourney(id);
+export const cancelJourney = (id: string) => apiClient.cancelJourney(id);
+export const postJourneyLocation = (id: string, snapshots: JourneyFix[]) => apiClient.postJourneyLocation(id, snapshots);
 // The contact side (docs/specs/NOTIFICATIONS.md): a push address, joining as someone's contact, and the phone's own report back.
 export const registerPushDevice = async (input: { platform: 'ios' | 'android'; osVersion: string; pushToken: string }): Promise<string> => {
     const { id } = await apiClient.registerDevice(input);
